@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function email() { return request.auth.token.email.lower(); }
+    function isAdmin() {
+      return signedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/admins/$(email())));
+    }
+    function myPid() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.pid; }
+    function isMember() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function canRead() { return isMember() || isAdmin(); }
+
+    // Administradores: se crean a mano en la consola (id = UID o correo en minúsculas)
+    match /admins/{id} {
+      allow read: if signedIn() && (id == request.auth.uid || id == email());
+      allow write: if false;
+    }
+
+    // Nombre de la lista ligado a un Gmail. Uno por jugador y uno por Gmail.
+    match /claims/{pid} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == email();
+      allow update: if signedIn()
+        && resource.data.email == email()
+        && request.resource.data.email == email()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+    match /users/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow create, update: if signedIn() && uid == request.auth.uid
+        && request.resource.data.email == email()
+        && getAfter(/databases/$(database)/documents/claims/$(request.resource.data.pid)).data.uid == uid;
+      allow delete: if isAdmin() || uid == request.auth.uid;
+    }
+
+    // Temporadas disponibles y temporada actual
+    match /meta/{doc} { allow read: if canRead(); allow write: if isAdmin(); }
+    // Fotos recortadas (una por jugador, se usan en toda la app). _team = foto del equipo
+    match /photos/{id} { allow read: if canRead(); allow write: if isAdmin() && request.resource.data.d.size() < 950000; allow delete: if isAdmin(); }
+    // Teléfonos para recordatorios: solo administradores
+    match /private/{doc} { allow read, write: if isAdmin(); }
+
+    match /seasons/{season} {
+      allow read: if canRead();
+      allow write: if isAdmin();
+      // Disponibilidad (estado e histórico): la ve el equipo, cada uno escribe la suya; el capitán puede anotar a mano
+      match /avail/{pid} { allow read: if canRead(); allow write: if isAdmin() || (isMember() && myPid() == pid); }
+      // Comentarios de disponibilidad: solo su autor y los administradores
+      match /availNotes/{pid} { allow read, write: if isAdmin() || (isMember() && myPid() == pid); }
+      match /picks/{pid} { allow read: if canRead(); allow write: if isAdmin() || (isMember() && myPid() == pid); }
+      // Encuestas postpartido: privadas
+      match /ballots/{pid} { allow read, write: if isAdmin() || (isMember() && myPid() == pid); }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "headers": [
+    { "source": "/(.*)", "headers": [
+      { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+    ] },
+    { "source": "/(app.js|styles.css|config.js)", "headers": [ { "key": "Cache-Control", "value": "no-cache" } ] }
+  ]
+}
