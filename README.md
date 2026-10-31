@@ -1,54 +1,40 @@
-# Polo A · Lliga Catalana 2026-27
+# Polo A · Lliga Catalana
 
 App privada del equipo masculino absoluto del Real Club de Polo de Barcelona.
-Mismo stack que la Americana: GitHub + Vercel + Firebase (Google y Firestore).
+GitHub + Vercel + Firebase. Instalable en el móvil y con notificaciones.
 
-## Archivos
+## Archivos (todo en la raíz del repositorio, respetando estas carpetas)
 ```
-index.html        estructura
-styles.css        diseño y animaciones
-app.js            lógica, datos oficiales y pantallas
-config.js         configuración de Firebase (la rellenas tú)
-firestore.rules   reglas de seguridad
-vercel.json       cabeceras (noindex, ventana de Google)
+index.html  styles.css  app.js  config.js  sw.js  manifest.webmanifest
+vercel.json  package.json  firestore.rules  README.md
+icons/      icon-192.png  icon-512.png  maskable-512.png  apple-touch-icon.png  badge-96.png
+img/        escudo.webp  escudo-sm.webp  ball.webp  intro-photo.jpg  intro-bg-blur.jpg   (escudo y pelota de la intro)
+api/        notify.js      (función de Vercel que envía las notificaciones)
 ```
-Las fotos ya no van en carpetas: se suben y recortan desde **Administración > Plantilla y fotos** y se guardan en Firestore (no hace falta Firebase Storage ni el plan de pago).
-Si `config.js` está vacío, la app funciona en **modo vista previa**: entra sin Google y guarda los datos solo en ese navegador. Sirve para probarla.
 
-## 1. Firebase (unos 10 minutos)
-1. https://console.firebase.google.com > **Añadir proyecto** (por ejemplo, `polo-lliga`). Analytics no hace falta.
-2. **Authentication > Comenzar > Google > Habilitar**. Elige tu correo de asistencia y guarda.
-3. **Authentication > Configuración > Dominios autorizados > Añadir dominio**: el dominio que te dé Vercel (por ejemplo `polo-lliga.vercel.app`).
-4. **Firestore Database > Crear base de datos**, ubicación `europe-west` y modo producción.
-5. **Firestore > Reglas**: pega todo `firestore.rules` y **Publicar**.
-6. **Configuración del proyecto > Tus apps > Web (</>)**: registra la app y copia el objeto `firebaseConfig` dentro de `config.js`.
+## Roles
+- **Jugador**: entra con Google, elige su nombre y gestiona lo suyo desde **Yo**: foto, teléfono, ficha de tenista, disponibilidad y encuestas.
+- **Capitán**: los marcados como capitán en la plantilla. Piden disponibilidad, convocan, preparan el cartel, ponen resultados y publican el MVP.
+- **Administrador**: además gestiona plantilla, capitanes y temporadas. Se da de alta en Firestore > colección `admins` > documento con su Gmail en minúsculas.
 
-## 2. Administradores
-En **Firestore > Iniciar colección** crea la colección `admins` y dentro un documento cuyo **ID sea tu Gmail en minúsculas** (por ejemplo `pepevilarp@gmail.com`). Sin campos, o con uno cualquiera. Repite con el capitán.
-Los administradores ven el icono de ajustes arriba a la derecha.
+## Puesta en marcha de las notificaciones (una vez)
+1. **Clave web**: Firebase > ⚙️ Configuración del proyecto > **Cloud Messaging** > *Certificados push web* > **Generar par de claves**. Copia la clave en `vapidKey` dentro de `config.js`.
+2. **Cuenta de servicio**: Firebase > ⚙️ > **Cuentas de servicio** > **Generar nueva clave privada**. Se descarga un JSON. No lo subas a GitHub.
+3. **Vercel**: Proyecto > **Settings > Environment Variables**. Nombre `FIREBASE_SERVICE_ACCOUNT`, valor: todo el contenido del JSON. Guarda y haz **Redeploy**.
+4. Cada jugador pulsa **Activar** en **Yo**. En iPhone primero hay que instalar la app (Safari > Compartir > Añadir a pantalla de inicio) y activarlas desde la app instalada.
 
-## 3. GitHub y Vercel
-1. Sube todos los archivos a un repositorio nuevo, respetando las carpetas.
-2. En Vercel: **Add New > Project**, importa el repositorio y **Deploy** (sin build, es estático).
-3. Comprueba que el dominio de Vercel está en los dominios autorizados de Firebase (paso 1.3).
+Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien falta), al publicar la convocatoria (a los convocados), al guardar el resultado (encuesta a los que jugaron) y al publicar el MVP (a todos). Si las notificaciones no están configuradas, la app sigue funcionando y los avisos se hacen por WhatsApp.
 
-## 4. Primer uso
-1. Entra con tu Gmail y elige tu nombre.
-2. En **Administración > Ajustes** pulsa **Guardar** una vez: crea la temporada en la base de datos.
-3. Pasa el enlace al grupo. Cada uno entra con Google y elige su nombre una sola vez. Queda ligado a su Gmail en cualquier dispositivo; nadie puede quedarse el de otro.
+## Cada jornada (Capitanes > Centro de jornada)
+1. Disponibilidad: mensaje de WhatsApp + notificación. Los jugadores responden con un toque hasta el plazo.
+2. Convocatoria: 4 individuales y la pareja de dobles (solo juega si queda 2-2). Publicar avisa a los convocados.
+3. Cartel: se compone solo con las fotos. Vertical, cuadrado u horizontal.
+4. Resultados: al guardarlos se abre la encuesta para los que jugaron y se les avisa.
+5. Encuesta: valoraciones y comentarios de los que jugaron. No incluye votaciones.
+6. MVP: la única votación. Se abre sola al guardar el resultado (48 horas por defecto). Vota todo el equipo, un voto por jugador, nunca a uno mismo y sin poder cambiarlo; Firebase lo impide en el servidor. Los capitanes ven la participación y el recuento, pueden cambiar el plazo, cerrar, anular un voto por una incidencia y publicar. El MVP sale en la jornada con foto, votos, rival y fecha, y hay ranking de temporada en Estadísticas > MVP.
 
-## Cómo funciona cada jornada (Administración > Centro de jornada)
-1. **Disponibilidad**: pulsa «Solicitar disponibilidad». Se genera el mensaje con rival, fecha, hora, plazo y enlace; lo editas y se abre WhatsApp. WhatsApp no deja elegir un grupo desde un enlace: al abrirse eliges el grupo del equipo. También puedes copiarlo o compartirlo.
-2. **Respuestas**: cada jugador abre el enlace, entra con Google y marca Disponible, No disponible o Pendiente de confirmar, con comentario opcional. Puede cambiarla hasta el plazo (por defecto 2 días antes a las 21:00, editable por jornada).
-3. **Panel**: disponibles, pendientes, no disponibles y sin respuesta, % de disponibilidad, comentarios, hora de cada respuesta, cuántas veces ha cambiado y evolución. Recordatorio al grupo con la lista de quién falta, o individual a quien tenga teléfono guardado. Si alguien te contesta por otro lado, lo anotas a mano.
-4. **Convocatoria**: eliges convocados, los 4 individuales y la pareja de dobles; el resto quedan como suplentes. Se guarda como borrador hasta que pulsas «Publicar».
-5. **Cartel**: se compone solo con las fotos y se adapta al número de convocados. Formatos vertical (stories), cuadrado y horizontal; fondo de pista o foto del equipo; títulos, orden y jugadores editables. Se descarga en PNG o se comparte desde el móvil.
-6. **Resultados**: 4 individuales y, si queda 2-2, el dobles. Las estadísticas se actualizan solas.
-7. **Encuesta y MVP**: se abre sola para los que jugaron; luego publicas premios.
-
-Todo queda en la temporada: la disponibilidad guarda la respuesta final de cada jornada y todos los cambios anteriores. «Sin respuesta» se cuenta aparte de «No disponible», y la disponibilidad declarada se compara con las convocatorias en **Estadísticas > Disponibilidad**.
+## Intro
+Al abrir la app se reproduce una vez por sesión (unos 3,5 segundos, con «Saltar»). Con «reducir movimiento» activado o en dispositivos muy limitados se muestra una transición corta con el escudo.
 
 ## Temporadas
-En **Temporadas y ajustes** creas la siguiente temporada (copia plantilla y clubes, calendario vacío) sin tocar las anteriores, y puedes volver a ver o editar cualquiera.
-
-Los rivales se nombran siempre por su club.
+En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteriores.
