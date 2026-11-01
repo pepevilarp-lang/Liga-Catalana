@@ -127,6 +127,7 @@ function normalize(d){
 
 /* ===================== BACKEND: Firebase o vista previa ===================== */
 const CFG = window.POLO_CONFIG || {};
+const DEL = Symbol('borrar');
 const clone = x => x==null? x : JSON.parse(JSON.stringify(x));
 function makeDemo(){
   const KEY='polo-preview-v2'; let mem={}; let u=null; const L=[]; let authCb=()=>{};
@@ -142,6 +143,7 @@ function makeDemo(){
     async signOut(){ u=null; try{ localStorage.removeItem(KEY+'-u'); }catch(e){} authCb(null); },
     watchDoc:(p,cb)=>watch(p,cb,false), watchColl:(p,cb)=>watch(p,cb,true),
     async set(p,d){ mem[p]=clone(d); persist(); emit(); },
+    async update(p,changes){ const doc=mem[p]||{}; Object.entries(changes).forEach(([k,v])=>{ const parts=k.split('.'); let o=doc; parts.slice(0,-1).forEach(x=>{ o[x]=o[x]&&typeof o[x]==='object'? o[x] : {}; o=o[x]; }); const last=parts.at(-1); if(v===DEL) delete o[last]; else o[last]=clone(v); }); mem[p]=doc; persist(); emit(); },
     async del(p){ delete mem[p]; persist(); emit(); },
     async claim(pid){ const c=mem['claims/'+pid]; if(c && c.email!==u.email) throw new Error('Ese nombre ya está elegido'); Object.keys(mem).forEach(k=>{ if(k.startsWith('claims/') && mem[k].email===u.email) delete mem[k]; }); mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now()}; mem['users/'+u.uid]={pid,email:u.email}; persist(); emit(); },
     async relink(){ return null; },
@@ -152,6 +154,7 @@ function makeDemo(){
 }
 function makeFirebase(){
   firebase.initializeApp(CFG.firebase); const auth=firebase.auth(); const fs=firebase.firestore();
+  try{ fs.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}   // los cambios sin conexión se guardan y se suben al volver la red
   const pathRef=p=>fs.doc(p);
   return {
     mode:'firebase',
@@ -162,6 +165,7 @@ function makeFirebase(){
     watchDoc(p,cb){ return pathRef(p).onSnapshot(s=>cb(s.exists? s.data():null), e=>console.warn(p,e.code)); },
     watchColl(p,cb){ return fs.collection(p).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
     set:(p,d)=>pathRef(p).set(clone(d)),
+    update:(p,changes)=>{ const o={}; Object.entries(changes).forEach(([k,v])=>o[k]= v===DEL? firebase.firestore.FieldValue.delete() : clone(v)); return pathRef(p).update(o); },
     del:(p)=>pathRef(p).delete(),
     async claim(pid){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const b=fs.batch();
       b.set(fs.doc('claims/'+pid),{uid:u.uid,email,at:Date.now()}); b.set(fs.doc('users/'+u.uid),{pid,email}); await b.commit(); },
@@ -861,6 +865,17 @@ function pushCard(){
   if(st==='denied') return `<div class="mcard"><span class="mi">🔕</span><div><b>Notificaciones bloqueadas</b><small>Actívalas en los ajustes del navegador para esta web y vuelve a intentarlo.</small></div><button class="btn ghost sm" data-act="push-on">Reintentar</button></div>`;
   return `<div class="mcard"><span class="mi">🔔</span><div><b>Activa las notificaciones</b><small>Disponibilidad, convocatoria y encuesta, directas al móvil.</small></div><button class="btn brass sm" data-act="push-on">Activar</button></div>`;
 }
+function connCard(){
+  const fb=B.mode==='firebase', online=navigator.onLine!==false;
+  const rows=[['Datos', fb? '<b class="ok">Conectado a la base de datos del equipo</b>' : '<b class="ko">Vista previa: los datos se guardan solo en este navegador</b>'],
+    ['Conexión', online? 'En línea' : '<b class="ko">Sin conexión</b> (los cambios se subirán al volver)'],
+    ['Cuenta', esc(authUser?.email||'–')],
+    ['Puede editar la temporada', canManage? '<b class="ok">Sí</b> ('+(isAdmin?'administrador':'capitán')+')' : 'No (solo lo suyo: disponibilidad, encuesta, voto, foto y ficha)'],
+    ['Último guardado', sync.at? relTime(sync.at) : 'Ninguno en esta sesión'+(sync.st==='error'? '. <b class="ko">'+esc(sync.msg)+'</b>' : '')],
+    ['Temporada', esc(viewSeason)+(S.updatedAt? ', actualizada '+relTime(S.updatedAt) : '')]];
+  return `<section class="sec"><div class="sec-h"><h2>Conexión y datos</h2></div><dl class="conn">${rows.map(([a,b])=>`<div><dt>${a}</dt><dd>${b}</dd></div>`).join('')}</dl>
+    ${!fb? '<p class="notice" style="margin-top:10px">Para que todos veáis lo mismo, abrid siempre la web de Vercel con la configuración de Firebase puesta, no el enlace de vista previa.</p>':''}</section>`;
+}
 function vYo(){
   if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1></div><div class="notice">Tu usuario de administrador no está ligado a ningún jugador. <button class="textlink" data-act="unskip">Elegir mi nombre</button></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
   const p=player(me), pr=profiles[me]||{}, tasks=[];
@@ -871,6 +886,7 @@ function vYo(){
   return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Mi ficha de jugador</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
   <section class="sec"><div class="sec-h"><h2>Pendiente</h2></div>${tasks.length? `<div class="tasks stagger">${tasks.join('')}</div>` : '<div class="empty">Todo al día. Cuando haya disponibilidad que responder o una encuesta tuya, aparecerá aquí.</div>'}</section>
   <section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>
+  ${connCard()}
   <section class="sec"><div class="split"><div><div class="sec-h"><h2>Mi foto</h2></div><div class="row" style="gap:18px">${avatar(p,'lg')}<div><button class="btn brass sm" data-act="crop" data-target="${esc(me)}">${photos[me]?'Cambiar o reencuadrar':'Subir mi foto'}</button><p class="muted small" style="margin:8px 0 0">Vertical, con la cara en el tercio de arriba. Sale en tu ficha, la plantilla, los rankings y los carteles.</p></div></div>
     <div class="sec-h" style="margin-top:28px"><h2>Mi teléfono</h2></div><p class="muted small" style="margin-top:-6px">Solo lo ven los capitanes, para avisarte por WhatsApp si falta tu respuesta.</p><div class="row"><input type="tel" id="my-phone" value="${esc(phones[me]||'')}" placeholder="+34 600 000 000" style="max-width:240px"><button class="btn sm" data-act="phone-save">Guardar</button></div></div>
   <div><div class="sec-h"><h2>Mi ficha de tenista</h2></div><div class="tfields">${TENNIS_FIELDS.map(([k,l,t,o])=>`<label>${l}${t==='select'? `<select data-tf="${k}"><option value="">Sin indicar</option>${o.map(x=>`<option ${pr[k]===x?'selected':''}>${esc(x)}</option>`).join('')}</select>` : `<input type="${t}" data-tf="${k}" value="${esc(pr[k]||'')}">`}</label>`).join('')}</div>
@@ -1596,11 +1612,39 @@ function toast(m){ const t=$('#toast'); if(!t) return; t.textContent=m; t.classL
 
 /* ===================== ESCRITURA ===================== */
 let chain=Promise.resolve();
-function saveState(msg='Guardado'){ S.updatedAt=Date.now(); S.captains=S.captains||S.players.filter(p=>p.captain).map(p=>p.id); const body=clone(S);
+let serverS=null;                 // última versión confirmada de la temporada (para guardar solo lo que cambia)
+const SPLIT=['ties','mvp','published'];
+function diffState(a,b){ const out={}, J=x=>JSON.stringify(x===undefined? null : x);
+  new Set([...Object.keys(a||{}),...Object.keys(b||{})]).forEach(k=>{ if(k==='updatedAt') return;
+    if(SPLIT.includes(k) && a&&a[k]&&typeof a[k]==='object' && b&&b[k]&&typeof b[k]==='object'){
+      new Set([...Object.keys(a[k]),...Object.keys(b[k])]).forEach(x=>{ if(J(a[k][x])!==J(b[k][x])) out[k+'.'+x]= b[k][x]===undefined? DEL : b[k][x]; }); }
+    else if(J(a?.[k])!==J(b?.[k])) out[k]= b?.[k]===undefined? DEL : b[k]; });
+  return out; }
+function errMsg(e){ const c=e?.code||''; if(/permission/.test(c)) return 'No tienes permiso para guardar. Tu cuenta debe estar en «admins» de Firebase o marcada como capitán.';
+  if(/unavailable|network|offline/.test(c)||/offline|network/i.test(e?.message||'')) return 'Sin conexión: el cambio se subirá cuando vuelva la red.';
+  if(/not-found/.test(c)) return 'La temporada aún no existe en la base de datos. Un administrador debe guardar algo primero.';
+  return 'No se ha podido guardar ('+(c||e?.message||'error')+').'; }
+const sync={st:'idle',msg:'',at:null,pending:0};
+function setSync(st,msg){ sync.st=st; if(msg!=null) sync.msg=msg; if(st==='saved') sync.at=Date.now(); drawSync(); }
+function drawSync(){ let el=document.getElementById('syncpill'); if(!el){ el=document.createElement('button'); el.id='syncpill'; el.type='button'; el.addEventListener('click',()=>{ if(sync.st==='error') toast(sync.msg); if(sync.st!=='saving') { sync.st='idle'; drawSync(); } }); document.body.appendChild(el); }
+  const t={saving:'Guardando…',offline:'Pendiente de subir (sin conexión)',saved:'Guardado',error:'No se ha guardado. Toca para ver el motivo'}[sync.st]||'';
+  el.className='syncpill '+sync.st; el.textContent=t; el.hidden=!t;
+  clearTimeout(drawSync._t); if(sync.st==='saved') drawSync._t=setTimeout(()=>{ if(sync.st==='saved'){ sync.st='idle'; drawSync(); } },2200); }
+function trackWrite(promise,msg){ sync.pending++; setSync('saving'); const slow=setTimeout(()=>{ if(sync.st==='saving') setSync('offline'); },5000);
+  return promise.then(r=>{ clearTimeout(slow); sync.pending=Math.max(0,sync.pending-1); if(!sync.pending) setSync('saved'); if(msg) toast(msg); return r; })
+    .catch(e=>{ clearTimeout(slow); sync.pending=Math.max(0,sync.pending-1); setSync('error',errMsg(e)); toast(errMsg(e)); throw e; }); }
+window.addEventListener('beforeunload',e=>{ if(sync.pending && B.mode==='firebase'){ e.preventDefault(); e.returnValue=''; } });
+function saveState(msg='Guardado'){ S.updatedAt=Date.now(); S.captains=S.captains||S.players.filter(p=>p.captain).map(p=>p.id);
   if(isAdmin && !meta){ meta={current:viewSeason,seasons:[viewSeason]}; B.set('meta/app',meta).catch(()=>{}); }
-  chain=chain.then(()=>B.set(SEASON_PATH,body)).then(()=>{ toast(msg); silentSnapshot(body); }).catch(e=>toast('No se ha podido guardar: '+(e?.code||e?.message||'error'))); renderQuiet(); }
+  const body=clone(S), base=serverS? clone(serverS) : null;
+  chain=chain.then(()=>{ if(!base) return B.set(SEASON_PATH,body);
+      const ch=diffState(base,body); if(!Object.keys(ch).length) return null; ch.updatedAt=body.updatedAt; return B.update(SEASON_PATH,ch); })
+    .then(()=>{ serverS=body; silentSnapshot(body); })
+    .catch(e=>{ if(/not-found/.test(e?.code||'') && base) return B.set(SEASON_PATH,body).then(()=>{ serverS=body; }); throw e; });
+  trackWrite(chain,msg).catch(()=>{ if(serverS){ S=normalize(clone(serverS)); renderQuiet(); } });   // si falla, no se muestra como guardado
+  renderQuiet(); }
 function silentSnapshot(body){ if(!canManage||B.mode!=='firebase') return; const d=new Date().toISOString().slice(0,10), key=viewSeason+d; if(ui.snap===key) return; ui.snap=key; B.set(SEASON_PATH+'/snapshots/'+d,body).catch(()=>{}); }
-async function safe(fn,ok){ try{ await fn(); if(ok) toast(ok); }catch(e){ toast(e?.message?.includes('elegido')? e.message : 'No se ha podido guardar: '+(e?.code||e?.message||'error')); } }
+async function safe(fn,ok){ try{ await trackWrite(Promise.resolve().then(fn), ok); }catch(e){ if(e?.message?.includes('elegido')) toast(e.message); } }
 
 document.addEventListener('click', async e=>{
   const pl=e.target.closest('[data-player]'); if(pl){ e.preventDefault(); stageClose(); openSheet(pl.dataset.player); return; }
@@ -1633,7 +1677,7 @@ document.addEventListener('click', async e=>{
   else if(a==='survey-next'){ ui.survey.step++; renderQuiet(); }
   else if(a==='ans'){ const q=S.survey.questions.find(x=>x.id===el.dataset.q); ui.survey.a[el.dataset.q]=q?.type==='scale'? +el.dataset.v : el.dataset.v; renderQuiet(); setTimeout(()=>{ if(ui.survey){ ui.survey.step++; renderQuiet(); } },220); }
   else if(a==='survey-send'){ const k=jid(ui.survey.j); const body={j:{...(myBallot?.j||{}),[k]:{a:ui.survey.a,at:Date.now()}}};
-    try{ await B.set(SEASON_PATH+'/ballots/'+me,body); myBallot=body; ui.survey=null; render(); scrollTo(0,0); toast('Respuestas enviadas'); confetti(innerWidth/2,innerHeight/3); }catch(err){ toast('No se ha podido enviar: '+(err?.code||err?.message||'error')); } }
+    try{ await trackWrite(B.set(SEASON_PATH+'/ballots/'+me,body)); myBallot=body; ui.survey=null; render(); scrollTo(0,0); toast('Respuestas enviadas'); confetti(innerWidth/2,innerHeight/3); }catch(err){ toast('No se ha podido enviar: '+(err?.code||err?.message||'error')); } }
   else if(a==='save-tie'){ const j=+el.dataset.j, t=ensureTie(j);
     document.querySelectorAll('.redit').forEach(row=>{ const r=t.rubbers[+row.dataset.r]; const g=n=>row.querySelector(`[name=${n}]`)?.value??'';
       r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); r.score=g('score').trim(); r.res=g('res')||null; r.note=g('note').trim(); });
@@ -1688,7 +1732,7 @@ document.addEventListener('click', async e=>{
     const cur=avail[me]||{}; const prev=avOf(me,j);
     const next={j:{...(cur.j||{}),[k]:{s:d.s,at:now}}, h:{...(cur.h||{}),[k]:[...((cur.h||{})[k]||[]),{s:d.s,at:now}].slice(-30)}};
     avail[me]=next; const curN=notes[me]||{}, prevC=curN.j?.[k]?.c||'';
-    try{ await B.set(SEASON_PATH+'/avail/'+me,next);
+    try{ await trackWrite(B.set(SEASON_PATH+'/avail/'+me,next));
       if(d.c!==prevC){ const nn={j:{...(curN.j||{}),[k]:{c:d.c,at:now}}, h:{...(curN.h||{}),[k]:[...((curN.h||{})[k]||[]),{c:d.c,at:now}].slice(-20)}}; notes[me]=nn; await B.set(SEASON_PATH+'/availNotes/'+me,nn); }
       toast(prev? 'Respuesta actualizada' : 'Respuesta enviada'); if(d.s==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,50); } renderQuiet();
     }catch(err){ toast('No se ha podido guardar: '+(err?.code||err?.message||'error')); } }
@@ -1743,7 +1787,7 @@ document.addEventListener('click', async e=>{
     await safe(async()=>{ await B.set('seasons/'+id,ns); meta={current:id,seasons:[...list,id]}; await B.set('meta/app',meta); },'Temporada '+id+' creada'); switchSeason(id); }
   else if(a==='mvp-pick'){ ui.mvpPick=el.dataset.pid; renderQuiet(); }
   else if(a==='mvp-cast'){ const j=+el.dataset.j, k=jid(j), v=ui.mvpPick; if(!v||!me||v===me) return; if(!confirm('¿Votar a '+pname(v)+' como MVP? No se puede cambiar.')) return;
-    try{ await B.set(SEASON_PATH+'/mvp/'+k+'/votes/'+me,{v,at:Date.now()}); myVotes[k]=v; ui.mvpPick=null; render(); scrollTo(0,0); toast('Voto registrado'); confetti(innerWidth/2,innerHeight/3,90); navigator.vibrate?.(40); }
+    try{ await trackWrite(B.set(SEASON_PATH+'/mvp/'+k+'/votes/'+me,{v,at:Date.now()})); myVotes[k]=v; ui.mvpPick=null; render(); scrollTo(0,0); toast('Voto registrado'); confetti(innerWidth/2,innerHeight/3,90); navigator.vibrate?.(40); }
     catch(err){ toast(/permission/i.test(err?.code||err?.message||'')? 'No se ha podido votar: la votación está cerrada o ya has votado' : 'No se ha podido votar: '+(err?.code||err?.message)); } }
   else if(a==='mvp-open'){ const j=+el.dataset.j, k=jid(j), v=$('#mvp-dl')?.value; const dl=v? new Date(v).getTime() : Date.now()+(+S.rules.mvpHours||48)*3600e3; if(dl<=Date.now()) return toast('La fecha límite tiene que ser futura');
     const was=S.mvp[k]?.open; S.mvp[k]={...(S.mvp[k]||{}),open:true,openedAt:S.mvp[k]?.openedAt||Date.now(),deadline:dl}; saveState(was?'Plazo actualizado':'Votación abierta'); if(!was) setTimeout(()=>notify('mvp',j),400); }
@@ -1794,7 +1838,7 @@ function subscribeData(){ // se rehace al identificarse o al cambiar de temporad
   dataSubs.push(B.watchDoc('meta/app', d=>{ meta=d; if(!ui.seasonPicked && d?.current && d.current!==viewSeason){ switchSeason(d.current,true); return; } softRender(); }));
   dataSubs.push(B.watchColl('photos', m=>{ photos=m; softRender(); }));
   dataSubs.push(B.watchColl('profiles', m=>{ profiles=m; softRender(); }));
-  dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ S=d? normalize(clone(d)) : (viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
+  dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
     const before=canManage; updRoles(); if(before!==canManage) subscribePriv(); syncMvpSubs(); softRender(); }));
   dataSubs.push(B.watchColl(SEASON_PATH+'/avail', m=>{ avail=m; softRender(); }));
   if(me){ dataSubs.push(B.watchDoc(SEASON_PATH+'/availNotes/'+me, d=>{ if(!canManage){ notes={[me]:d||{}}; softRender(); } }));
