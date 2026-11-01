@@ -8,7 +8,7 @@ GitHub + Vercel + Firebase. Instalable en el móvil y con notificaciones.
 index.html  styles.css  app.js  config.js  sw.js  manifest.webmanifest
 vercel.json  package.json  firestore.rules  README.md
 icons/      icon-192.png  icon-512.png  maskable-512.png  apple-touch-icon.png  badge-96.png
-img/        escudo.webp  escudo-sm.webp  ball.webp  intro-photo.jpg  intro-bg-blur.jpg   (escudo y pelota de la intro)
+img/        escudo.webp  escudo-sm.webp  ball.webp  court.jpg  felt.jpg  fuzz.webp   (escudo, pelota y texturas de la intro)
 api/        notify.js      (función de Vercel que envía las notificaciones)
 ```
 
@@ -25,7 +25,13 @@ api/        notify.js      (función de Vercel que envía las notificaciones)
 
 Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien falta), al publicar la convocatoria (a los convocados), al guardar el resultado (encuesta a los que jugaron) y al publicar el MVP (a todos). Si las notificaciones no están configuradas, la app sigue funcionando y los avisos se hacen por WhatsApp.
 
-## Cada jornada (Capitanes > Centro de jornada)
+## Estadísticas
+- **Individuales**: son la estadística principal de cada jugador (perfil, rankings, portada, comparativas, gráficos e índice). Win rate = victorias individuales / individuales jugados.
+- **Dobles**: estadística independiente, con su ranking y el balance con cada pareja. Nunca alteran el porcentaje, la racha ni el ranking individual.
+- Los rankings por porcentaje ordenan con un intervalo de confianza: con pocos partidos el porcentaje pesa menos, y siempre se muestra cuántos se han jugado.
+- Si se corrige o se borra un resultado, todo se recalcula solo. La app valida los marcadores (sets de tenis válidos, ganador coherente, sin jugadores repetidos) y distingue entre resultado provisional y oficial.
+
+## Cada jornada (Capitanes > Matchday)
 1. Disponibilidad: mensaje de WhatsApp + notificación. Los jugadores responden con un toque hasta el plazo.
 2. Convocatoria: 4 individuales y la pareja de dobles (solo juega si queda 2-2). Publicar avisa a los convocados.
 3. Cartel: se compone solo con las fotos. Vertical, cuadrado u horizontal.
@@ -34,7 +40,7 @@ Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien fa
 6. MVP: la única votación. Se abre sola al guardar el resultado (48 horas por defecto). Vota todo el equipo, un voto por jugador, nunca a uno mismo y sin poder cambiarlo; Firebase lo impide en el servidor. Los capitanes ven la participación y el recuento, pueden cambiar el plazo, cerrar, anular un voto por una incidencia y publicar. El MVP sale en la jornada con foto, votos, rival y fecha, y hay ranking de temporada en Estadísticas > MVP.
 
 ## Intro
-Al abrir la app se reproduce una vez por sesión (unos 3,5 segundos, con «Saltar»). Con «reducir movimiento» activado o en dispositivos muy limitados se muestra una transición corta con el escudo.
+Al abrir la app se reproduce una vez por sesión (unos 3,5 segundos, con «Saltar»): la pelota cae y bota sobre una pista en 3D, sale disparada hacia la cámara, el fieltro llena la pantalla, aparece el escudo y se abre hacia la app. Con «reducir movimiento» activado o en dispositivos muy limitados se muestra una transición corta con el escudo.
 
 ## Temporadas
 En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteriores.
