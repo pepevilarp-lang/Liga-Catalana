@@ -62,7 +62,7 @@ const PLAYERS0 = [
  [19,'Antonio Mañas Vilaclara','Antonio Mañas','Sènior +30',0]
 ];
 const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-const RUBBERS = [{n:1,type:'S',label:'Individual 1'},{n:2,type:'S',label:'Individual 2'},{n:3,type:'S',label:'Individual 3'},{n:4,type:'S',label:'Individual 4'},{n:5,type:'D',label:'Dobles decisivo'}];
+const RUBBERS = [{n:1,type:'S',label:'Individual 1'},{n:2,type:'S',label:'Individual 2'},{n:3,type:'S',label:'Individual 3'},{n:4,type:'S',label:'Individual 4'},{n:5,type:'D',label:'Dobles'}];
 
 const DEFAULT_Q = [
  {id:'q_jornada',   scope:'team', type:'scale',  text:'¿Cómo valorarías la jornada del equipo?'},
@@ -93,7 +93,7 @@ function seed(){
   return {
     seasonId: SEASON_ID,
     comp: {...COMP},
-    rules: {win:3, loss:1, availDays:6, deadlineDays:2, deadlineTime:'21:00', mvpHours:48, teamManage:true},
+    rules: {win:3, loss:1, availDays:6, deadlineDays:2, deadlineTime:'21:00', mvpHours:48, teamManage:true, doubles:'always'},
     mvp: {},
     msgs: {...DEFAULT_MSGS},
     teams: TEAMS0.map(t=>({...t})),
@@ -240,6 +240,8 @@ function rubberCalc(r){
   const res = r.res || (sets.length>=2 && sw!==sl ? (sw>sl?'W':'L') : null);
   return {sets, sw, sl, gw, gl, res, three: sets.length===3, comeback: res==='W'&&lostFirst, bagelsW, tbs, tbW, tbL};
 }
+const dblDecider = () => S.rules?.doubles==='decider';   // 'always': el dobles cuenta siempre que se juegue; 'decider': solo si queda 2-2
+const dblHint = () => dblDecider()? 'Solo si queda 2-2' : 'Cuenta si se juega';
 function setOk(a,b,i){ const w=Math.max(a,b), l=Math.min(a,b); if(a===b) return false; if(w===6&&l<=4) return true; if(w===7&&(l===5||l===6)) return true; if(i===2&&w>=10&&w-l>=2&&(w===10||l===w-2)) return true; return false; }
 function validateRubber(r){ const errs=[], raw=String(r.score||'').trim(); if(!raw) return r.res&&!(r.polo||[]).length? ['Falta el jugador'] : [];
   const toks=raw.split(/[\s,;]+/), sets=parseScore(raw); if(toks.length!==sets.length) errs.push('Formato de sets no válido (usa 6-4 6-3)');
@@ -256,14 +258,14 @@ function validateTie(t){ const out={errors:[],warnings:[]}; if(!t) return out;
   const d=t.rubbers.find(r=>r.type==='D'); if(d && d.polo?.length===2 && d.polo[0]===d.polo[1]) out.errors.push('La pareja de dobles repite jugador');
   t.rubbers.forEach((r,i)=>validateRubber(r).forEach(e=>out.errors.push(`${RUBBERS[i].label}: ${e}`)));
   const c=tieFromRubbers2(t); if(c.singles===4 && c.sw===2 && c.sl===2 && !rubberCalc(d||{}).res) out.warnings.push('2-2 en individuales: falta el dobles decisivo');
-  if(c.singles===4 && !(c.sw===2&&c.sl===2) && rubberCalc(d||{}).res) out.warnings.push('El dobles solo cuenta si queda 2-2; no se suma al marcador');
+  if(dblDecider() && c.singles===4 && !(c.sw===2&&c.sl===2) && rubberCalc(d||{}).res) out.warnings.push('El dobles solo cuenta si queda 2-2; no se suma al marcador (puedes cambiarlo en Temporadas y ajustes)');
   return out; }
 function tieFromRubbers2(t){ let sw=0,sl=0,singles=0; t.rubbers.forEach(r=>{ if(r.type!=='S') return; const c=rubberCalc(r); if(!c.res) return; singles++; c.res==='W'? sw++ : sl++; }); return {sw,sl,singles}; }
 function tieFromRubbers(j){
   const t=tie(j); if(!t) return null; let w=0,l=0,singles=0, dRes=null;
   t.rubbers.forEach(r=>{ const c=rubberCalc(r); if(!c.res) return; if(r.type==='S'){ singles++; c.res==='W'? w++ : l++; } else dRes=c.res; });
   const needsDoubles = singles===4 && w===2 && l===2;
-  if(dRes && needsDoubles){ dRes==='W'? w++ : l++; }
+  if(dRes && (needsDoubles || !dblDecider())){ dRes==='W'? w++ : l++; }
   return {w,l,decided:w+l,singles,needsDoubles,complete: singles===4 && (!needsDoubles || !!dRes)};
 }
 
@@ -356,7 +358,7 @@ function cronica(j){
   const t=tie(j), bits=[];
   if(t){ const calc=t.rubbers.map(r=>({r,c:rubberCalc(r)})).filter(x=>x.c.res);
     const dbl=calc.find(x=>x.r.type==='D'); const cb=calc.filter(x=>x.c.comeback); const clean=calc.filter(x=>x.c.res==='W'&&x.c.sets.length===2&&x.c.gl<=4); const three=calc.filter(x=>x.c.three);
-    if(dbl) bits.push(`con el dobles decisivo ${dbl.c.res==='W'?'ganado':'perdido'} por ${listNames([dbl.r.polo])}`);
+    if(dbl) bits.push(`con el dobles ${tieFromRubbers(j)?.needsDoubles?'decisivo ':''}${dbl.c.res==='W'?'ganado':'perdido'} por ${listNames([dbl.r.polo])}`);
     if(cb.length) bits.push(`${cb.length>1?'remontadas':'una remontada'} de ${listNames(cb.map(x=>x.r.polo))} tras perder el primer set`);
     else if(clean.length) bits.push(`${clean.length>1?'victorias rotundas':'una victoria rotunda'} de ${listNames(clean.map(x=>x.r.polo))}`);
     else if(three.length) bits.push(`${three.length} ${three.length>1?'partidos se fueron':'partido se fue'} al tercer set`); }
@@ -410,7 +412,7 @@ function scoreboard(f, big=false){
   const t=tieFromRubbers(f.j), p=persp(f), rubs=tie(f.j)?.rubbers||[];
   const rows=[f.home,f.away].map(id=>{ const us=id===POLO; let k=0;
     const cells=RUBBERS.map((R,i)=>{ const c=rubs[i]? rubberCalc(rubs[i]).res : null; const won=c&&((us&&c==='W')||(!us&&c==='L'));
-      const na = R.type==='D' && !c && !(t&&t.needsDoubles); return `<span class="cell ${won?'w':''} ${na?'na':''}" style="--i:${won?k++:0}">${won?'●':''}</span>`; }).join('');
+      const na = R.type==='D' && !c && dblDecider() && !(t&&t.needsDoubles); return `<span class="cell ${won?'w':''} ${na?'na':''}" style="--i:${won?k++:0}">${won?'●':''}</span>`; }).join('');
     const tot = isPlayed(f)? (id===f.home? f.hs : f.as) : (t&&t.decided? (us? t.w : t.l) : '–');
     return `<span class="board-n ${us?'us':''}">${esc(us? 'Polo' : team(id).short)}${id===f.home?'<i class="loc">Local</i>':''}</span>${cells}<span class="board-t ${tot==='–'?'dim':''}">${tot}</span>`; }).join('');
   const status = isPlayed(f)? (f.status==='official'? 'Final' : 'Final, provisional') : (t&&t.decided? '<span class="live">En juego</span>' : countdown(f));
@@ -535,7 +537,7 @@ function momentsList(){
   return `<ul class="insights stagger">${items.slice(0,6).map(i=>`<li><a href="#jornada-${i.j}" style="text-decoration:none">${esc(i.t)}</a><small>J${i.j}, ${esc(i.s)}</small></li>`).join('')}</ul>`;
 }
 function rubberRow(r,i,f){
-  const c=rubberCalc(r), tr=tieFromRubbers(f.j); const skip = r.type==='D' && !c.res && !(tr&&tr.needsDoubles) && !(r.polo||[]).length;
+  const c=rubberCalc(r), tr=tieFromRubbers(f.j); const skip = r.type==='D' && !c.res && dblDecider() && !(tr&&tr.needsDoubles) && !(r.polo||[]).length;
   const who=(r.polo||[]).length? r.polo.map(id=>plink(id)).join(' y ') : '<span class="muted">Por designar</span>';
   return `<div class="rubber ${skip?'skip':''}"><span class="rn">${r.type==='D'?'D':r.n}</span><div><div class="p">${who}</div><div class="r">${RUBBERS[i].label} contra ${esc(clubName(persp(f).rival))}${skip?'. Solo si hay 2-2':''}</div></div>
   <div class="sets">${c.sets.length? c.sets.map(s=>s.join('-')).join('  ') : '–'}${r.note?`<small>${esc(r.note)}</small>`:''}<div style="margin-top:4px">${resBadge(c.res)}</div></div></div>`;
@@ -700,6 +702,7 @@ function vJugador(id){
       <p class="hlab">Individuales${a.pos&&a.pos!=='DOB'?`, posición habitual: individual ${a.pos.replace('IND ','')}`:''}</p>
       <div class="hfigs five stagger"><div><b>${count(st.pj)}</b><span>partidos</span></div><div><b>${count(st.w)}</b><span>victorias</span></div><div><b>${count(st.l)}</b><span>derrotas</span></div><div><b>${st.pj? count(pct(st.w,st.pj),'%') : '–'}</b><span>win rate</span></div><div><b>${st.streak.n? (st.streak.t==='W'?'+':'−')+st.streak.n : '–'}</b><span>racha</span></div></div></div></div></section>
   <div class="wrap">
+  ${fichaDisplay(id, own)}
   <section class="sec"><div class="split cardsplit"><div class="cardcol">${playerCard(id)}<p class="source" style="text-align:center">Índice Polo: se calcula solo con sus resultados, su disponibilidad y los votos publicados. Se recalcula cada jornada. No es un ranking oficial.</p></div>
     <div><div class="sec-h"><h2>Atributos</h2></div>${radar(id)}<ul class="attrlist">${ATTRS.map(([k,l,d])=>`<li><b>${k}</b> ${l}<small>${d}</small></li>`).join('')}</ul></div></div></section>
   <section class="sec"><div class="split"><div><div class="sec-h"><h2>Victorias y derrotas por jornada</h2><span class="muted small">Individuales</span></div>${wlBars(id)}</div>
@@ -713,8 +716,8 @@ function vJugador(id){
   <section class="sec"><div class="sec-h"><h2>Individuales partido a partido</h2></div>${scoreboards(id,'S')}</section>
   ${doublesSection(id)}
   ${availProfile(id)}
-  <section class="sec"><div class="split"><div><div class="sec-h"><h2>Lectura del rendimiento</h2></div>${ins.length? `<ul class="insights stagger">${ins.map(i=>`<li>${esc(i.t)}<small>Fuente: ${esc(i.s)}</small></li>`).join('')}</ul>` : '<div class="empty">El análisis aparecerá con sus partidos y votos.</div>'}</div>
-    <div><div class="sec-h"><h2>Ficha técnica</h2>${own?'<a href="#yo">Editar</a>':''}</div>${TENNIS_FIELDS.some(([k])=>pr[k])? `<dl class="bio">${TENNIS_FIELDS.filter(([k])=>pr[k]&&k!=='nick').map(([k,l])=>`<div><dt>${l}</dt><dd>${esc(pr[k])}</dd></div>`).join('')}</dl>` : `<div class="empty">${own? 'Completa tu ficha de tenista en <a class="textlink" href="#yo">Yo</a>.' : 'Aún no ha rellenado su ficha.'}</div>`}</div></div></section>`;
+  <section class="sec"><div><div class="sec-h"><h2>Lectura del rendimiento</h2></div>${ins.length? `<ul class="insights stagger">${ins.map(i=>`<li>${esc(i.t)}<small>Fuente: ${esc(i.s)}</small></li>`).join('')}</ul>` : '<div class="empty">El análisis aparecerá con sus partidos y votos.</div>'}</div>
+</div></section>`;
   if(own) h+=privateBlock();
   return h+`<div class="row" style="margin-top:20px"><a class="textlink" href="#stats" data-act="cmp" data-id="${esc(id)}">Comparar con un compañero</a></div></div>`;
 }
@@ -862,12 +865,74 @@ function availProfile(pid){
 }
 
 /* ---------------- Votar ---------------- */
-const TENNIS_FIELDS=[
- ['nick','Apodo','text'],['hand','Mano','select',['Diestro','Zurdo']],['backhand','Revés','select',['A una mano','A dos manos']],
- ['style','Estilo de juego','select',['Fondo de pista','Agresivo desde el fondo','Saque y red','Todoterreno','Contragolpeador']],
- ['surface','Superficie favorita','select',['Tierra batida','Pista rápida','Hierba','Indoor']],
- ['shot','Golpe favorito','select',['Saque','Derecha','Revés','Volea','Dejada','Globo','Resto']],
- ['racket','Raqueta','text'],['idol','Ídolo','text'],['since','Juega desde (año)','number'],['motto','Grito de guerra','text']];
+/* ===================== MI FICHA DE JUGADOR ===================== */
+const SHOTS=['Saque','Derecha','Revés','Volea','Dejada','Globo','Resto','Smash','Passing'];
+const FICHA=[
+  {sec:'Tu juego', sub:'Cómo juegas en la pista', fields:[
+    {k:'hand',l:'Mano',t:'chips',o:['Diestro','Zurdo'],i:'✋'},
+    {k:'backhand',l:'Revés',t:'chips',o:['A una mano','A dos manos'],i:'↩️'},
+    {k:'style',l:'Estilo de juego',t:'chips',o:['Fondo de pista','Agresivo desde el fondo','Saque y red','Todoterreno','Contragolpeador'],i:'🧠'},
+    {k:'surface',l:'Superficie favorita',t:'chips',o:['Tierra batida','Pista rápida','Hierba','Indoor'],i:'🟤'},
+    {k:'shot',l:'Golpe favorito',t:'chips',o:SHOTS,i:'💥'},
+    {k:'weak',l:'Talón de Aquiles',t:'chips',o:[...SHOTS,'Segundo saque','Bolas altas','Los nervios'],i:'🎯'}]},
+  {sec:'Tu tenis', sub:'Lo que te inspira', fields:[
+    {k:'idol',l:'Jugador favorito',t:'text',o:['Rafa Nadal','Roger Federer','Novak Djokovic','Carlos Alcaraz','Jannik Sinner','Andre Agassi','Pete Sampras','Juan Carlos Ferrero','Carlos Moyà','Àlex Corretja'],i:'⭐',ph:'¿A quién te pareces jugando?'},
+    {k:'tournament',l:'Torneo soñado',t:'chips',o:['Roland Garros','Wimbledon','US Open','Open de Australia','Conde de Godó','Mutua Madrid Open','Copa Davis'],i:'🏆'},
+    {k:'racket',l:'Raqueta',t:'text',o:['Babolat Pure Aero','Babolat Pure Drive','Wilson Blade','Wilson Pro Staff','Head Speed','Head Radical','Yonex EZONE','Yonex VCORE','Tecnifibre TF40'],i:'🎾',ph:'Marca y modelo'},
+    {k:'since',l:'Juega desde',t:'year',i:'📅',ph:'Año'}]},
+  {sec:'Tu personalidad en pista', sub:'Lo que te hace único', fields:[
+    {k:'nick',l:'Apodo',t:'text',o:[],i:'🏷️',ph:'Cómo te llaman en el equipo'},
+    {k:'motto',l:'Grito de guerra más usado',t:'text',o:['¡Vamos!','¡Come on!','¡Venga!','¡Sí señor!','¡Allez!','¡Vamos Polo!'],i:'📣',ph:'Lo que gritas tras un gran punto'},
+    {k:'ritual',l:'Ritual antes de sacar',t:'text',o:['Tres botes y al lío','Mirar las cuerdas','Secarme con la toalla','Elegir la bola buena'],i:'🔁',ph:'Tu manía antes del saque'},
+    {k:'song',l:'Canción para calentar',t:'text',o:[],i:'🎧',ph:'Lo que suena en tus cascos'},
+    {k:'quote',l:'Frase que te define',t:'text',o:[],i:'💬',ph:'En una línea'}]}];
+const FICHA_FIELDS=FICHA.flatMap(s=>s.fields);
+const TENNIS_FIELDS=FICHA_FIELDS.map(f=>[f.k,f.l,f.t==='chips'?'select':f.t,f.o]);
+function fichaPct(pid, pr){ pr=pr||profiles[pid]||{}; const n=FICHA_FIELDS.filter(f=>String(pr[f.k]||'').trim()).length+(photos[pid]?1:0); return Math.round(n*100/(FICHA_FIELDS.length+1)); }
+function fichaDisplay(pid, own){
+  const pr=profiles[pid]||{}, has=f=>String(pr[f.k]||'').trim();
+  if(!FICHA_FIELDS.some(has)) return own? `<section class="sec"><a class="fcta" href="#mi-ficha"><span class="fci">✍️</span><span><b>Completa tu ficha de jugador</b><small>Golpe favorito, jugador favorito, grito de guerra, ritual… Sale aquí, en tu carta y en la plantilla.</small></span><span class="btn sm brass">Empezar</span></a></section>` : '';
+  const tiles=FICHA_FIELDS.filter(f=>has(f) && !['motto','quote','nick'].includes(f.k));
+  return `<section class="sec"><div class="sec-h"><h2>El jugador</h2>${own?'<a href="#mi-ficha">Editar mi ficha</a>':''}</div>
+    ${has({k:'motto'})? `<div class="warcry"><span class="wl">📣 Grito de guerra</span><span class="wt">${esc(pr.motto)}</span></div>` : ''}
+    ${tiles.length? `<div class="ftiles stagger">${tiles.map(f=>`<div class="ftile ${f.k==='idol'?'wide':''}"><span class="fi">${f.i}</span><span class="fl">${f.l}</span><b>${esc(pr[f.k])}</b></div>`).join('')}</div>` : ''}
+    ${has({k:'quote'})? `<p class="fquote">«${esc(pr.quote)}»</p>` : ''}</section>`;
+}
+function fePreviewHTML(){
+  const pr=ui.fe.draft, pct=fichaPct(me,pr);
+  return `${playerCard(me)}
+    <div class="fe-prog"><div class="row" style="justify-content:space-between"><b>Ficha completada</b><b id="fe-pct">${pct}%</b></div><span class="fbar"><i style="width:${pct}%"></i></span>
+      <small>${pct>=100? '¡Ficha completa! 🎾' : pct>=60? 'Ya casi. Te faltan '+(FICHA_FIELDS.length+1-Math.round(pct*(FICHA_FIELDS.length+1)/100))+' datos.' : 'Cuanto más rellenes, mejor luce tu perfil.'}</small></div>
+    ${pr.motto? `<div class="warcry sm"><span class="wl">📣 Grito de guerra</span><span class="wt">${esc(pr.motto)}</span></div>` : ''}`;
+}
+function feRefresh(){ const box=$('#fe-preview'); if(!box||!ui.fe) return; const saved=profiles[me]; profiles[me]=ui.fe.draft; box.innerHTML=fePreviewHTML(); profiles[me]=saved; afterRender(box); }
+function feStatus(t,cls=''){ const el=$('#fe-status'); if(el){ el.textContent=t; el.className='fe-status '+cls; } }
+function feQueue(){ if(!ui.fe) return; ui.fe.dirty=true; ui.fe.touched=true; feStatus('Guardando…','saving'); clearTimeout(ui.fe.t); ui.fe.t=setTimeout(feFlush,900); }
+async function feFlush(){ if(!ui.fe||!me||!ui.fe.dirty) return; clearTimeout(ui.fe.t); const o={}; Object.entries(ui.fe.draft).forEach(([k,v])=>{ if(k!=='at' && v!=null && String(v).trim()!=='') o[k]=String(v).trim(); }); o.at=Date.now();
+  ui.fe.dirty=false; try{ await trackWrite(B.set('profiles/'+me,o)); profiles[me]=o; feStatus('Guardado ✓','ok'); if(fichaPct(me,o)>=100 && !ui.fe.celebrated){ ui.fe.celebrated=true; confetti(innerWidth/2,innerHeight/3,110); } }catch(e){ ui.fe.dirty=true; feStatus('No se ha guardado. Toca el aviso rojo para ver el motivo','ko'); } }
+function vMiFicha(){
+  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Mi ficha</h1></div><div class="notice">Primero elige tu nombre de la lista en la pestaña Yo.</div></div>`;
+  if(!ui.fe || ui.fe.pid!==me || (!ui.fe.touched && JSON.stringify(ui.fe.base)!==JSON.stringify(profiles[me]||{})))
+    ui.fe={pid:me, base:clone(profiles[me]||{}), draft:{...(profiles[me]||{})}, phone:phones[me]||'', dirty:false, touched:false};
+  const p=player(me), d=ui.fe.draft, ph=photos[me]?.d;
+  const field=f=>{ const v=d[f.k]||'';
+    if(f.t==='chips') return `<div class="fe-f"><label class="fe-l"><span>${f.i}</span>${f.l}</label><div class="fe-chips" data-group="${f.k}">${f.o.map(o=>`<button type="button" class="fchip press" data-act="fe-chip" data-k="${f.k}" data-v="${esc(o)}" aria-pressed="${v===o}">${esc(o)}</button>`).join('')}</div></div>`;
+    return `<div class="fe-f"><label class="fe-l" for="fe-${f.k}"><span>${f.i}</span>${f.l}</label><input id="fe-${f.k}" data-fe="${f.k}" type="${f.t==='year'?'number':'text'}" ${f.t==='year'?'min="1950" max="2026" inputmode="numeric"':'maxlength="80"'} value="${esc(v)}" placeholder="${esc(f.ph||'')}" ${f.o?.length?`list="dl-${f.k}"`:''}>
+      ${f.o?.length? `<datalist id="dl-${f.k}">${f.o.map(o=>`<option value="${esc(o)}">`).join('')}</datalist><div class="sugs">${f.o.slice(0,6).map(o=>`<button type="button" class="sug" data-act="fe-sug" data-k="${f.k}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : ''}</div>`; };
+  return `<div class="wrap fe"><div class="pagehead"><a class="textlink" href="#yo">← Yo</a><h1 style="margin-top:10px">Mi ficha</h1><p class="lede">Lo que rellenes sale en tu perfil, en tu carta de jugador y en la plantilla. Todo es opcional y se guarda solo.</p></div>
+    <div class="fe-grid"><aside class="fe-side"><div id="fe-preview">${(()=>{ const s=profiles[me]; profiles[me]=d; const h=fePreviewHTML(); profiles[me]=s; return h; })()}</div>
+      <div class="row" style="margin-top:14px;justify-content:center"><a class="btn ghost sm" href="#jugador-${esc(me)}">Ver mi perfil</a></div></aside>
+    <div class="fe-main">
+      <section class="fe-card"><h2>Tu foto</h2><p class="muted small">Vertical, con la cara en el tercio de arriba. Se usa en tu perfil, la carta, la plantilla, los rankings y los carteles de convocatoria.</p>
+        <div class="fe-photo"><div class="fe-ph">${ph? `<img src="${esc(ph)}" alt="Tu foto">` : `<span>${esc(p.name.split(' ').map(x=>x[0]).slice(0,2).join(''))}</span>`}</div>
+          <div class="fe-phbtns"><button class="btn brass" data-act="crop" data-target="${esc(me)}" data-pick="1">${ph?'Subir otra foto':'Subir mi foto'}</button>${ph? `<button class="btn ghost" data-act="crop" data-target="${esc(me)}">Reencuadrar</button><button class="btn ghost sm" data-act="photo-del" data-target="${esc(me)}">Quitar</button>` : ''}
+            <p class="muted small">Desde el móvil puedes hacerte una foto en el momento.</p></div></div></section>
+      ${FICHA.map(s=>`<section class="fe-card"><h2>${s.sec}</h2><p class="muted small">${s.sub}</p>${s.fields.map(field).join('')}</section>`).join('')}
+      <section class="fe-card"><h2>Tu teléfono</h2><p class="muted small">Privado: solo lo usa el equipo para avisarte por WhatsApp si falta tu respuesta. No se muestra en tu perfil.</p>
+        <div class="fe-f"><label class="fe-l" for="fe-phone"><span>📱</span>Móvil</label><input id="fe-phone" data-fe-phone type="tel" value="${esc(ui.fe.phone)}" placeholder="+34 600 000 000"></div></section>
+    </div></div>
+    <div class="fe-bar"><span id="fe-status" class="fe-status">${ui.fe.dirty?'Guardando…':'Todo guardado'}</span><a class="btn sm" href="#jugador-${esc(me)}">Ver cómo queda</a></div></div>`;
+}
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
 function installCard(){
@@ -908,14 +973,12 @@ function vYo(){
   pendingMvp().forEach(j=>tasks.push(`<a class="task hot" href="#mvp-${j}"><span class="ti">🏆</span><span><b>Vota al MVP, jornada ${j}</b><small>Un voto, hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</small></span></a>`));
   pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>Encuesta de la jornada ${j}</b><small>Has jugado contra ${esc(clubName(persp(poloFix(j)).rival))}. 2 minutos.</small></span></a>`));
   const roles=[isCaptain?'Capitán':'',isAdmin?'Administrador':''].filter(Boolean);
-  return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Mi ficha de jugador</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
+  return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Ver mi perfil</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
+  <section class="sec"><a class="fcta big press" href="#mi-ficha">${avatar(p,'lg')}<span><b>Mi ficha de jugador</b><small>${(()=>{ const pc=fichaPct(me); return pc? pc+'% completada. ' : ''; })()}Foto, golpe favorito, jugador favorito, grito de guerra, ritual…</small><span class="fbar"><i style="width:${fichaPct(me)}%"></i></span></span><span class="btn brass sm">${fichaPct(me)?'Editar':'Empezar'}</span></a></section>
   <section class="sec"><div class="sec-h"><h2>Pendiente</h2></div>${tasks.length? `<div class="tasks stagger">${tasks.join('')}</div>` : '<div class="empty">Todo al día. Cuando haya disponibilidad que responder o una encuesta tuya, aparecerá aquí.</div>'}</section>
   <section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>
   ${connCard()}
-  <section class="sec"><div class="split"><div><div class="sec-h"><h2>Mi foto</h2></div><div class="row" style="gap:18px">${avatar(p,'lg')}<div><button class="btn brass sm" data-act="crop" data-target="${esc(me)}">${photos[me]?'Cambiar o reencuadrar':'Subir mi foto'}</button><p class="muted small" style="margin:8px 0 0">Vertical, con la cara en el tercio de arriba. Sale en tu ficha, la plantilla, los rankings y los carteles.</p></div></div>
-    <div class="sec-h" style="margin-top:28px"><h2>Mi teléfono</h2></div><p class="muted small" style="margin-top:-6px">Solo lo ven los capitanes, para avisarte por WhatsApp si falta tu respuesta.</p><div class="row"><input type="tel" id="my-phone" value="${esc(phones[me]||'')}" placeholder="+34 600 000 000" style="max-width:240px"><button class="btn sm" data-act="phone-save">Guardar</button></div></div>
-  <div><div class="sec-h"><h2>Mi ficha de tenista</h2></div><div class="tfields">${TENNIS_FIELDS.map(([k,l,t,o])=>`<label>${l}${t==='select'? `<select data-tf="${k}"><option value="">Sin indicar</option>${o.map(x=>`<option ${pr[k]===x?'selected':''}>${esc(x)}</option>`).join('')}</select>` : `<input type="${t}" data-tf="${k}" value="${esc(pr[k]||'')}">`}</label>`).join('')}</div>
-    <div class="row" style="margin-top:12px"><button class="btn brass" data-act="tf-save">Guardar mi ficha</button></div></div></div></section></div>`;
+</div>`;
 }
 function vEncuesta(j){
   const f=poloFix(j); if(!f) return vNotFound(); const k=jid(j), parts=participants(j);
@@ -1089,8 +1152,8 @@ function aConv(j){
   const warn=[...assigned].filter(x=>(avOf(x,j)?.s||'none')!=='yes');
   return `<section class="sec"><div class="sec-h"><h2>Convocados</h2><span class="muted small">${conv.size} seleccionados</span></div>
     <div class="cvgrid">${order.map(id=>{ const n=noteOf(id,j); return `<label title="${esc(n?.c||'')}"><input type="checkbox" name="conv" value="${esc(id)}" ${conv.has(id)?'checked':''}> ${esc(pname(id))}${badge(id)}</label>`; }).join('')}</div></section>
-  <section class="sec"><div class="sec-h"><h2>Orden de juego</h2></div><p class="muted small">4 individuales y la pareja de dobles por si queda 2-2. Los convocados sin partido asignado quedan como suplentes.</p>
-    ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}" style="grid-template-columns:150px 1fr 1fr"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>Solo si queda 2-2</small>':''}</span><select name="p1">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2">${popts(r.polo[1])}</select>`:'<span></span>'}</div>`).join('')}
+  <section class="sec"><div class="sec-h"><h2>Orden de juego</h2></div><p class="muted small">4 individuales y la pareja de dobles (${dblDecider()?'solo cuenta si queda 2-2':'cuenta siempre que se juegue'}). Los convocados sin partido asignado quedan como suplentes.</p>
+    ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}" style="grid-template-columns:150px 1fr 1fr"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span><select name="p1">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2">${popts(r.polo[1])}</select>`:'<span></span>'}</div>`).join('')}
     <p class="small" style="margin-top:10px">Suplentes: ${subs.length? subs.map(pname).join(', ') : 'ninguno'}.</p>
     ${hasDupe?'<div class="notice" style="margin-top:8px">Hay un jugador repetido en los individuales.</div>':''}
     ${warn.length?`<div class="notice" style="margin-top:8px">Sin «disponible» confirmado: ${warn.map(pname).join(', ')}.</div>`:''}
@@ -1125,14 +1188,14 @@ function aResultados(j){
   return `<section class="sec"><div class="resbar"><div><span class="muted small">Eliminatoria</span><b>Polo ${tr.decided? tr.w+'-'+tr.l : (p.ps??'–')+'-'+(p.rs??'–')}</b></div><div>${status}</div></div>
     ${v.errors.length? `<div class="vbox err"><b>Corrige antes de guardar</b><ul>${v.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}${v.warnings.length? `<div class="vbox warn"><ul>${v.warnings.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     <p class="muted small">Marcador desde el punto de vista del Polo, sets separados por espacios: <b>6-4 3-6 6-3</b>. El resultado se calcula solo; fuerza uno a mano para W.O. o abandono. Los jugadores vienen de la convocatoria; cámbialos si hubo cambios de última hora.</p>
-    ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>Solo si queda 2-2</small>':''}</span>
+    ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span>
       <select name="p1" aria-label="Jugador">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2" aria-label="Pareja">${popts(r.polo[1])}</select>`:'<span></span>'}
       <input type="text" name="score" placeholder="6-4 6-3" value="${esc(r.score)}">
       <select name="res"><option value="">Auto</option><option value="W" ${r.res==='W'?'selected':''}>Gana Polo</option><option value="L" ${r.res==='L'?'selected':''}>Pierde Polo</option></select>
       <input type="text" name="note" placeholder="Nota: W.O., abandono…" value="${esc(r.note)}" style="grid-column:2 / -2"><button class="btn sm ghost" data-act="res-clear" data-j="${j}" data-r="${i}" ${r.score||r.res?'':'disabled'}>Borrar</button>
       ${(()=>{ const e=validateRubber(r); return e.length&&(r.score||r.res)? `<p class="rerr">${esc(e.join('. '))}</p>` : (rubberCalc(r).res? `<p class="rok">${rubberCalc(r).res==='W'?'Gana el Polo':'Gana el rival'}</p>`:''); })()}</div>`).join('')}
     <label class="f" for="moment">Momento de la jornada (público)</label><input type="text" id="moment" value="${esc(t.moment||'')}">
-    <div class="panel" style="margin-top:16px"><b>Marcador por equipos</b><p class="muted small" style="margin:4px 0 10px">Se calcula solo con los 4 individuales (y el dobles si hubo 2-2). Si solo tienes el oficial, escríbelo aquí.</p>
+    <div class="panel" style="margin-top:16px"><b>Marcador por equipos</b><p class="muted small" style="margin:4px 0 10px">Se calcula solo con los 4 individuales y el dobles (${dblDecider()?'este solo si hubo 2-2':'si se jugó'}). Si solo tienes el oficial, escríbelo aquí.</p>
       <div class="row"><label>Polo <input type="number" id="ps" min="0" max="5" value="${p.ps??''}" style="width:80px"></label><label>${esc(clubName(p.rival))} <input type="number" id="rs" min="0" max="5" value="${p.rs??''}" style="width:80px"></label></div></div>
     <div class="row" style="margin-top:16px"><button class="btn brass" data-act="save-tie" data-j="${j}">Guardar resultados</button>${isPlayed(fx)&&fx.status!=='official'?`<button class="btn ghost" data-act="res-confirm" data-j="${j}">Confirmar como resultado oficial</button>`:''}${fx.status==='official'&&isPlayed(fx)?`<button class="btn ghost sm" data-act="res-unconfirm" data-j="${j}">Marcar como provisional</button>`:''}<a class="textlink" href="#jornada-${j}">Ver la jornada</a></div>
     <p class="muted small">Si corriges o borras un resultado, todas las estadísticas, rankings y perfiles se recalculan solos. «Oficial» significa que coincide con el acta de la federación.</p>
@@ -1258,6 +1321,7 @@ function aTemporadas(){
     <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="msgs-save">Guardar mensajes</button><button class="btn ghost sm" data-act="msgs-reset">Restaurar</button></div></section>
   <section class="sec"><div class="sec-h"><h2>Reglas</h2></div><div class="row"><label>Victoria <input type="number" id="r-win" value="${S.rules.win}" style="width:80px"></label><label>Derrota <input type="number" id="r-loss" value="${S.rules.loss}" style="width:80px"></label></div>
     <div class="row" style="margin-top:10px"><label>Avisar en la app <input type="number" id="r-av" value="${S.rules.availDays}" min="1" max="21" style="width:70px"> días antes</label><label>Plazo por defecto <input type="number" id="r-dd" value="${S.rules.deadlineDays}" min="0" max="14" style="width:70px"> días antes, a las <input type="time" id="r-dt" value="${esc(S.rules.deadlineTime)}" style="width:120px"></label></div>
+    <div class="row" style="margin-top:10px"><label>Dobles <select id="r-dbl" style="width:auto"><option value="always" ${!dblDecider()?'selected':''}>Cuenta siempre que se juegue</option><option value="decider" ${dblDecider()?'selected':''}>Solo cuenta si queda 2-2</option></select></label></div>
     <div class="row" style="margin-top:10px"><label>Votación MVP abierta <input type="number" id="r-mvp" value="${S.rules.mvpHours||48}" min="1" max="240" style="width:80px"> horas tras el resultado</label></div>
     <div class="row" style="margin-top:12px"><button class="btn sm" data-act="rules-save">Guardar reglas</button></div></section>
 `;
@@ -1290,7 +1354,7 @@ function openSheet(pid){
   const p=player(pid); if(!p) return; const st=playerStats(pid);
   let bg=$('.sheet-bg'), sh=$('.sheet'); if(!bg){ bg=document.createElement('div'); bg.className='sheet-bg'; sh=document.createElement('div'); sh.className='sheet'; sh.setAttribute('role','dialog'); sh.setAttribute('aria-modal','true'); document.body.append(bg,sh); bg.addEventListener('click',closeSheet); }
   const vs=Object.entries(st.vs);
-  sh.innerHTML=`<div class="handle"></div><div class="top">${avatar(p,'lg')}<div><h2>${esc(p.name)}</h2><p class="muted small" style="margin:4px 0 0">Nº ${p.order}, ${esc(p.cat)}${p.captain?', capitán':''}</p></div></div>
+  sh.innerHTML=`<div class="handle"></div><div class="top">${avatar(p,'lg')}<div><h2>${esc(p.name)}</h2><p class="muted small" style="margin:4px 0 0">Nº ${p.order}, ${esc(p.cat)}${p.captain?', capitán':''}${profiles[pid]?.nick? ', «'+esc(profiles[pid].nick)+'»' : ''}</p>${profiles[pid]?.motto? `<p class="sheetcry">📣 ${esc(profiles[pid].motto)}</p>` : ''}</div></div>
     <div class="row" style="gap:20px;margin-top:18px;align-items:center">${ring(st.pj?st.wr:null,'victorias')}<div class="figs stagger" style="flex:1;grid-template-columns:repeat(2,1fr)"><div class="fig"><b>${st.w}-${st.l}</b><span>individuales</span></div><div class="fig"><b>${(()=>{ const d=playerStats(pid,null,'D'); return d.w+'-'+d.l; })()}</b><span>dobles</span></div><div class="fig" style="border-left:0;padding-left:0;border-top:1px solid var(--line)"><b>${st.sw}-${st.sl}</b><span>sets</span></div><div class="fig" style="border-top:1px solid var(--line)"><b>${st.streak.n?(st.streak.t==='W'?'+':'−')+st.streak.n:'–'}</b><span>racha</span></div></div></div>
     <div style="margin-top:14px">${formStrip(st.seq,8)} <span class="muted small">últimos individuales</span></div>
     <div style="margin-top:10px">${meter('Juegos ganados','% del total',st.gw+st.gl?st.gw/(st.gw+st.gl):null,st.gw+st.gl?pct(st.gw,st.gw+st.gl)+'%':'–')}${meter('Votos','de los compañeros',totalVotes(pid)/Math.max(1,...S.players.map(x=>totalVotes(x.id))),totalVotes(pid),'sv')}</div>
@@ -1619,6 +1683,7 @@ function render(){
     else if(r.startsWith('disponibilidad-')){ html=vDisponibilidad(+r.slice(15)); nav='yo'; }
     else if(r.startsWith('encuesta-')){ html=vEncuesta(+r.slice(9)); nav='yo'; }
     else if(r.startsWith('mvp-')){ html=vMvp(+r.slice(4)); nav='yo'; }
+    else if(r==='mi-ficha'){ html=vMiFicha(); nav='yo'; }
     else if(r==='stats') html=vStats(); else if(r==='yo'||r==='votar') { html=vYo(); nav='yo'; } else if(r==='admin') html=vAdmin(); else html=vNotFound();
     html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del equipo masculino absoluto del Real Club de Polo de Barcelona.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
   app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
@@ -1635,7 +1700,7 @@ function renderQuiet(){ // re-render sin repetir la animación de entrada
 }
 document.addEventListener('focusout',()=>setTimeout(()=>{ if(ui.pendingRender&&!editing()){ ui.pendingRender=false; renderQuiet(); } },150));
 let lastRoute=null;
-window.addEventListener('hashchange',()=>{ ui.survey=null; ui.avDraft=null; ui.compose=null; closeSheet(); stageClose(); closePosterModal(); render(); if(route()!==lastRoute) scrollTo(0,0); lastRoute=route(); });
+window.addEventListener('hashchange',()=>{ if(ui.fe?.dirty) feFlush(); ui.survey=null; ui.avDraft=null; ui.compose=null; closeSheet(); stageClose(); closePosterModal(); render(); if(route()!==lastRoute) scrollTo(0,0); lastRoute=route(); });
 function toast(m){ const t=$('#toast'); if(!t) return; t.textContent=m; t.classList.add('on'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('on'),2600); }
 
 /* ===================== ESCRITURA ===================== */
@@ -1725,6 +1790,9 @@ document.addEventListener('click', async e=>{
       setTimeout(()=>notify('survey',j),400); ui.compose={kind:'survey',j,text:composeText('survey',j)}; renderQuiet(); } }
   else if(a==='team-save'){ if(!isAdmin) return; S.rules={...S.rules,teamManage:$('#team-manage').checked}; saveState(S.rules.teamManage? 'Gestión abierta a todo el equipo' : 'Gestión solo para capitanes'); }
   else if(a==='diag'){ ui.diag=[['Comprobando…','',true]]; renderQuiet(); try{ ui.diag=await B.diag(SEASON_PATH, clone(S)); }catch(e){ ui.diag=[['Error',e.code||e.message,false]]; } renderQuiet(); }
+  else if(a==='fe-chip'){ const k=el.dataset.k, v=el.dataset.v; ui.fe.draft[k] = ui.fe.draft[k]===v? '' : v;
+    el.closest('.fe-chips').querySelectorAll('.fchip').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.v===ui.fe.draft[k]))); feRefresh(); feQueue(); }
+  else if(a==='fe-sug'){ const k=el.dataset.k, inp=document.getElementById('fe-'+k); if(inp){ inp.value=el.dataset.v; } ui.fe.draft[k]=el.dataset.v; feRefresh(); feQueue(); }
   else if(a==='poster-scroll'){ $('#poster-canvas')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   else if(a==='cal-ok'){ const t=ensureTie(+el.dataset.j); t.calOk=true; saveState('Calendario confirmado'); }
   else if(a==='prep-save'){ const j=+el.dataset.j, f=poloFix(j), rv=$('#pp-rival').value, home=$('#pp-home').value==='1', d=$('#pp-date').value, tm=$('#pp-time').value;
@@ -1754,7 +1822,7 @@ document.addEventListener('click', async e=>{
   else if(a==='teams-save'){ document.querySelectorAll('#tlist [data-id]').forEach(row=>{ const t=team(row.dataset.id); ['name','short','abbr'].forEach(n=>{ const v=row.querySelector(`[name=${n}]`).value.trim(); if(v) t[n]=v; }); }); saveState('Clubes guardados'); }
   else if(a==='fixtures-save'){ document.querySelectorAll('#flist [data-k]').forEach(row=>{ const f=S.fixtures[+row.dataset.k], g=n=>row.querySelector(`[name=${n}]`).value; f.date=g('date')||f.date; f.time=g('time')||f.time; f.home=g('home'); f.away=g('away'); const hs=g('hs'),as=g('as'); if(hs!==''&&as!==''){ f.hs=+hs; f.as=+as; } else { f.hs=null; f.as=null; } }); saveState('Jornada '+el.dataset.j+' guardada'); }
   else if(a==='official-save'){ const order=[...document.querySelectorAll('#offlist select')].map(x=>x.value); if(new Set(order).size!==order.length) return toast('Hay clubes repetidos'); S.official={asOf:+$('#off-j').value||0,order}; saveState('Clasificación oficial guardada'); }
-  else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48))}; saveState('Reglas guardadas'); }
+  else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48)), doubles:$('#r-dbl')?.value||'always'}; saveState('Reglas guardadas'); }
   else if(a==='go-admin'){ ui.adminTab='jornada'; ui.adminJ=+el.dataset.j; const tt=el.dataset.t||'disp'; ui.jTab= tt==='enc'||tt==='mvp'? 'post' : tt==='cartel'? 'conv' : tt; ui.jTabSet=true; ui.jTabFor=+el.dataset.j; location.hash='admin'; }
   else if(a==='jtab'){ ui.jTab=el.dataset.v; ui.compose=null; render(); }
   else if(a==='av-pick'){ ui.avDraft.s=el.dataset.v; const ta=$('#av-c'); if(ta) ui.avDraft.c=ta.value; renderQuiet(); }
@@ -1795,7 +1863,7 @@ document.addEventListener('click', async e=>{
   else if(a==='pm-fmt'){ ui.pmFmt=el.dataset.v; openPosterModal(+el.dataset.j); }
   else if(a==='pm-dl'||a==='pm-share'){ posterExport(+el.dataset.j, a==='pm-share'?'share':'dl', $('.pmodal canvas')); }
   else if(a==='pm-close') closePosterModal();
-  else if(a==='crop'){ const t=el.dataset.target; if(t===me || canManage || isAdmin) openCropper(t); }
+  else if(a==='crop'){ const t=el.dataset.target; if(t===me || canManage || isAdmin) openCropper(t, el.dataset.pick==='1'); }
   else if(a==='crop-close') closeCropper();
   else if(a==='crop-save') saveCrop();
   else if(a==='photo-del'){ const t=el.dataset.target; if(!confirm('¿Quitar la foto?')) return; delete photos[t]; renderQuiet(); await safe(()=>B.del('photos/'+t),'Foto quitada'); }
@@ -1847,7 +1915,9 @@ document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
     const next= el.value? {j:{...(cur.j||{}),[k]:{s:el.value,at:now,by:'capitán'}}, h:{...(cur.h||{}),[k]:[...((cur.h||{})[k]||[]),{s:el.value,at:now,by:'capitán'}].slice(-30)}} : null;
     if(next){ avail[pid]=next; safe(()=>B.set(SEASON_PATH+'/avail/'+pid,next),'Anotado para '+pname(pid)); renderQuiet(); } } else if(a==='rank-filter'){ ui.rankFilter=el.value; renderQuiet(); }
   else if(a==='cmp-a'){ ui.cmpA=el.value; renderQuiet(); } else if(a==='cmp-b'){ ui.cmpB=el.value; renderQuiet(); } });
-document.addEventListener('input', e=>{ const el=e.target; if(el.dataset?.act==='ans-text'&&ui.survey) ui.survey.a[el.dataset.q]=el.value; if(el.dataset?.act==='av-text'&&ui.avDraft) ui.avDraft.c=el.value; if(el.id==='compose-text'&&ui.compose) ui.compose.text=el.value; });
+document.addEventListener('input', e=>{ const el=e.target;
+  if(el.dataset?.fe && ui.fe){ ui.fe.draft[el.dataset.fe]=el.value; clearTimeout(ui.fe.pt); ui.fe.pt=setTimeout(feRefresh,180); feQueue(); }
+  if(el.hasAttribute?.('data-fe-phone') && ui.fe && me){ ui.fe.phone=el.value; clearTimeout(ui.fe.ft); feStatus('Guardando…','saving'); ui.fe.ft=setTimeout(async()=>{ const v=ui.fe.phone.trim(); phones[me]=v; try{ await trackWrite(v? B.set('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me)); feStatus('Guardado ✓','ok'); }catch(err){ feStatus('No se ha guardado','ko'); } },900); } if(el.dataset?.act==='ans-text'&&ui.survey) ui.survey.a[el.dataset.q]=el.value; if(el.dataset?.act==='av-text'&&ui.avDraft) ui.avDraft.c=el.value; if(el.id==='compose-text'&&ui.compose) ui.compose.text=el.value; });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeSheet(); stageClose(); closePosterModal(); closeCropper(); } });
 function readQuestions(){ document.querySelectorAll('#qlist .qedit').forEach(row=>{ const q=S.survey.questions[+row.dataset.i]; if(!q) return; q.text=row.querySelector('[name=text]').value.trim(); q.scope=row.querySelector('[name=scope]').value; q.type=row.querySelector('[name=type]').value; if(q.scope==='peer') q.type='player'; }); S.survey.questions=S.survey.questions.filter(q=>q.text); }
 
