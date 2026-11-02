@@ -913,3 +913,43 @@ body.intro-on .page{animation:pageSlide .9s var(--ease) both}
 @media (max-width:420px){.ftile.wide{grid-column:span 1}}
 .fquote{margin:16px 0 0;font-size:1.25rem;font-style:italic;max-width:60ch;color:var(--ink);border-left:3px solid var(--brass);padding-left:14px}
 .sheetcry{margin:6px 0 0;font-weight:700;color:var(--brass)}
+
+/* ===== Gestión reorganizada: 4 pestañas, jornada en pasos, ajustes plegados ===== */
+.atabs4{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line);margin:14px 0 18px}
+.atabs4 button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 2px 9px;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--muted);font-size:.86rem;font-weight:650;cursor:pointer}
+.atabs4 button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--brass)}
+.jhead select{width:100%;max-width:none}
+.jhead .row .textlink{font-size:.88rem}
+.jmeta{display:flex;gap:12px;align-items:center;margin:12px 0 8px;font-size:.92rem;color:var(--muted);line-height:1.35}
+.jmeta b{color:var(--ink);font-size:1.05rem}
+.jmeta .crest,.jmeta .crestimg{width:40px;height:40px;flex:none;font-size:.62rem}
+.jsteps{list-style:none;margin:18px 0 0;padding:0;display:grid;gap:10px}
+.jstep{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);scroll-margin-top:72px}
+.jstep.is-now{border-color:var(--brass);box-shadow:inset 0 0 0 1px var(--brass)}
+.jstep-h{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:0;text-align:left;cursor:pointer;color:inherit}
+.jstep .sn{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:.85rem;font-weight:800;background:var(--surface2);color:var(--muted)}
+.jstep.st-done .sn{background:var(--win);color:#fff}
+.jstep.is-now .sn{background:var(--brass);color:#fff}
+.jstep .sl{flex:1;min-width:0}
+.jstep .sl b{display:block;font-size:1.04rem}
+.jstep .sl small{display:block;color:var(--muted);font-size:.85rem;margin-top:2px;line-height:1.3}
+.jstep .sl em{font-style:normal;color:var(--brass);font-weight:700}
+.jstep .chev{color:var(--muted);font-size:1.1rem}
+.jstep-b{padding:0 16px 16px;border-top:1px solid var(--line)}
+.jstep-b>.sec,.jstep-b .sec{padding:16px 0 4px}
+.jstep-b .split{gap:16px}
+.subdet,.aset{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-top:12px}
+.subdet>summary,.aset>summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:700}
+.subdet>summary::-webkit-details-marker,.aset>summary::-webkit-details-marker{display:none}
+.subdet>summary::after,.aset>summary::after{content:"▾";color:var(--muted);font-weight:400}
+.subdet[open]>summary::after,.aset[open]>summary::after{content:"▴"}
+.aset summary small{display:block;font-weight:400;color:var(--muted);font-size:.85rem;margin-top:2px}
+.aset-b,.subdet>.sec{padding:0 16px 16px;border-top:1px solid var(--line)}
+.subdet>.sec{padding-top:14px}
+.asets{display:grid;gap:10px}
+.asets .aset{margin:0}
+@media (max-width:620px){
+  #flist .qedit{grid-template-columns:1fr 112px 40px!important;grid-template-areas:"date time del" "home hs ." "away as ."}
+  #flist .qedit>:nth-child(1){grid-area:date} #flist .qedit>:nth-child(2){grid-area:time} #flist .qedit>:nth-child(3){grid-area:home}
+  #flist .qedit>:nth-child(4){grid-area:away} #flist .qedit>:nth-child(5){grid-area:hs} #flist .qedit>:nth-child(6){grid-area:as} #flist .qedit>:nth-child(7){grid-area:del}
+}
