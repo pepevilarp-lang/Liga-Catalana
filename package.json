@@ -1,0 +1,7 @@
+{
+  "name": "polo-lliga",
+  "private": true,
+  "description": "App del Polo A. Web estática + función de notificaciones en /api/notify",
+  "engines": { "node": ">=18" },
+  "dependencies": { "firebase-admin": "^12.7.0" }
+}
