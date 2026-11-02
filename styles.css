@@ -58,7 +58,7 @@ body.gate .topbar,body.gate .tabbar{display:none}
 @media (max-width:820px){
   .topnav{display:none}
   .topicons{margin-left:auto}
-  .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:25;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .tabbar{display:grid;grid-template-columns:repeat(6,1fr);position:fixed;left:0;right:0;bottom:0;z-index:25;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
   .tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0 8px;text-decoration:none;font-size:.7rem;font-weight:600;color:var(--muted);position:relative}
   .tabbar a[aria-current="page"]{color:var(--ink)}
   .tabbar a[aria-current="page"] svg{color:var(--brass);animation:tabpop .35s var(--ease)}
@@ -953,7 +953,5 @@ body.intro-on .page{animation:pageSlide .9s var(--ease) both}
   #flist .qedit>:nth-child(1){grid-area:date} #flist .qedit>:nth-child(2){grid-area:time} #flist .qedit>:nth-child(3){grid-area:home}
   #flist .qedit>:nth-child(4){grid-area:away} #flist .qedit>:nth-child(5){grid-area:hs} #flist .qedit>:nth-child(6){grid-area:as} #flist .qedit>:nth-child(7){grid-area:del}
 }
-/* Liga: Clasificación y Calendario separados */
-.segtabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin:14px 0 4px}
-.segtabs a{text-align:center;padding:12px 4px 10px;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--muted);font-weight:650;text-decoration:none}
-.segtabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--brass)}
+/* Barra inferior con 6 pestañas: textos que no se corten */
+@media (max-width:820px){.tabbar a{font-size:.64rem;letter-spacing:-.01em;white-space:nowrap}.tabbar a span{max-width:100%;overflow:hidden;text-overflow:ellipsis}}

@@ -482,7 +482,7 @@ function vInicio(){
   if(last){ const c=cronica(last.j);
     h+=`<section class="sec"><div class="sec-h"><h2>Última jornada</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${mvpCard(last.j)}</div></div></section>`; }
-  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#liga">Liga completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
+  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">Completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
     <div><div class="sec-h"><h2>Momentos</h2></div>${momentsList()}</div></div></section>${Object.values(S.published).some(p=>p.mvp)? `<section class="sec">${mvpRanking(true)}</section>`:''}</div>`;
   return h;
 }
@@ -547,12 +547,11 @@ function rubberRow(r,i,f){
 
 function vLiga(view){
   const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos})), nx=nextPoloFix();
-  let h=`<div class="wrap"><div class="pagehead"><h1>La liga</h1><p class="lede">${esc(S.comp.name)}, ${esc(S.comp.memorial)}. ${esc(S.comp.group)}. Siete clubes, catorce jornadas a doble vuelta; cada jornada descansa uno.</p></div>
-  <nav class="segtabs" aria-label="Liga"><a href="#liga" ${view!=='cal'?'aria-current="page"':''}>Clasificación</a><a href="#calendario" ${view==='cal'?'aria-current="page"':''}>Calendario</a></nav>`;
-  if(view!=='cal') return h+`<section class="sec"><div class="sec-h"><h2>Clasificación</h2></div>${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
+  let h=`<div class="wrap"><div class="pagehead"><h1>${view==='cal'?'Calendario':'Clasificación'}</h1><p class="lede">${esc(S.comp.name)}, ${esc(S.comp.memorial)}. ${esc(S.comp.group)}. Siete clubes, catorce jornadas a doble vuelta; cada jornada descansa uno.</p></div>`;
+  if(view!=='cal') return h+`<section class="sec" style="padding-top:22px">${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
   <section class="sec"><div class="sec-h"><h2>Evolución del Polo</h2></div>${evo.length? lineChart(evo,{invert:true,min:1,max:S.teams.length,unit:'º'}) : '<div class="empty">Sin jornadas disputadas.</div>'}</section>
-  <p class="source"><a class="textlink" href="#calendario">Ver el calendario y los resultados →</a></p></div>`;
-  h+=`<section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el Polo</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
+  </div>`;
+  h+=`<section class="sec" style="padding-top:22px"><div class="sec-h"><h2>Jornadas</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el Polo</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
   for(let j=1;j<=NJ();j++){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=fs[0];
     if(!ui.ligaAll){ if(pf){ const p=persp(pf);
         h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
@@ -1685,8 +1684,8 @@ function render(){
   else if(!authUser) html=vLogin();
   else if(!me && !adminSkip) html=vClaim();
   else { const r=nav;
-    if(r==='inicio') html=vInicio(); else if(r==='liga') html=vLiga(); else if(r==='calendario'){ html=vLiga('cal'); nav='liga'; }
-    else if(r.startsWith('jornada-')){ html=vJornada(+r.slice(8)); nav='liga'; }
+    if(r==='inicio') html=vInicio(); else if(r==='clasificacion'||r==='liga'){ html=vLiga(); nav='clasificacion'; } else if(r==='calendario') html=vLiga('cal');
+    else if(r.startsWith('jornada-')){ html=vJornada(+r.slice(8)); nav='calendario'; }
     else if(r==='equipo') html=vEquipo();
     else if(r.startsWith('jugador-')){ html=vJugador(r.slice(8)); nav='equipo'; }
     else if(r.startsWith('disponibilidad-')){ html=vDisponibilidad(+r.slice(15)); nav='yo'; }
