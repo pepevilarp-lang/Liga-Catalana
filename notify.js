@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
       pids = [...set]; title = `Convocado para la jornada ${j}`; text = `Polo contra ${rival}, ${fecha}. Mira el orden de juego.`; url = `/#jornada-${j}`;
     }
     else if (type === 'survey') {
-      const set = new Set(); (tie.rubbers || []).forEach(r => { if (r.res || won(r.score)) (r.polo || []).forEach(p => set.add(p)); });
+      const set = new Set(); (tie.rubbers || []).forEach(r => { if (r.res !== 'NP' && (r.res || won(r.score))) (r.polo || []).forEach(p => set.add(p)); });
       pids = [...set]; title = `Encuesta de la jornada ${j}`; text = `Has jugado contra ${rival}. Cuéntanos qué tal: 2 minutos.`; url = `/#encuesta-${j}`;
     }
     else if (type === 'mvp') { pids = active; title = `🏆 Vota al MVP de la jornada ${j}`; text = `Polo contra ${rival}. Un voto por jugador.`; url = `/#mvp-${j}`; }

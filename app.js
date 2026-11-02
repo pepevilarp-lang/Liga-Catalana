@@ -235,6 +235,7 @@ const blankTie = () => ({convocados:[], subs:[], lineupPub:false, poster:{}, rub
 function ensureTie(j){ const k=jid(j); if(!S.ties[k]) S.ties[k]=blankTie(); return S.ties[k]; }
 function parseScore(str){ if(!str) return []; return String(str).split(/[\s,;]+/).map(x=>x.match(/^(\d{1,2})[-\/](\d{1,2})$/)).filter(Boolean).map(m=>[+m[1],+m[2]]); }
 function rubberCalc(r){
+  if(r.res==='NP') return {sets:[],sw:0,sl:0,gw:0,gl:0,res:null,three:false,comeback:false,bagelsW:0,tbs:0,tbW:0,tbL:0,np:true};   // dobles no disputado
   const sets=parseScore(r.score); let sw=0,sl=0,gw=0,gl=0,lostFirst=false,bagelsW=0,tbs=0;
   let tbW=0,tbL=0; sets.forEach(([a,b],i)=>{ if(a>b) sw++; else if(b>a) sl++; gw+=a; gl+=b; if(a===6&&b===0) bagelsW++; if(a===7&&b===6){tbs++;tbW++;} if(a===6&&b===7){tbs++;tbL++;} if(i===0&&b>a) lostFirst=true; });
   const res = r.res || (sets.length>=2 && sw!==sl ? (sw>sl?'W':'L') : null);
@@ -243,7 +244,7 @@ function rubberCalc(r){
 const dblDecider = () => S.rules?.doubles==='decider';   // 'always': el dobles cuenta siempre que se juegue; 'decider': solo si queda 2-2
 const dblHint = () => dblDecider()? 'Solo si queda 2-2' : 'Cuenta si se juega';
 function setOk(a,b,i){ const w=Math.max(a,b), l=Math.min(a,b); if(a===b) return false; if(w===6&&l<=4) return true; if(w===7&&(l===5||l===6)) return true; if(i===2&&w>=10&&w-l>=2&&(w===10||l===w-2)) return true; return false; }
-function validateRubber(r){ const errs=[], raw=String(r.score||'').trim(); if(!raw) return r.res&&!(r.polo||[]).length? ['Falta el jugador'] : [];
+function validateRubber(r){ if(r.res==='NP') return []; const errs=[], raw=String(r.score||'').trim(); if(!raw) return r.res&&!(r.polo||[]).length? ['Falta el jugador'] : [];
   const toks=raw.split(/[\s,;]+/), sets=parseScore(raw); if(toks.length!==sets.length) errs.push('Formato de sets no válido (usa 6-4 6-3)');
   sets.forEach(([a,b],i)=>{ if(!setOk(a,b,i)) errs.push(`El set ${a}-${b} no es un resultado de tenis válido`); });
   if(sets.length>3) errs.push('Máximo tres sets');
@@ -257,7 +258,7 @@ function validateTie(t){ const out={errors:[],warnings:[]}; if(!t) return out;
   if(dup.length) out.errors.push(`${[...new Set(dup)].map(pname).join(', ')} aparece en dos individuales`);
   const d=t.rubbers.find(r=>r.type==='D'); if(d && d.polo?.length===2 && d.polo[0]===d.polo[1]) out.errors.push('La pareja de dobles repite jugador');
   t.rubbers.forEach((r,i)=>validateRubber(r).forEach(e=>out.errors.push(`${RUBBERS[i].label}: ${e}`)));
-  const c=tieFromRubbers2(t); if(c.singles===4 && c.sw===2 && c.sl===2 && !rubberCalc(d||{}).res) out.warnings.push('2-2 en individuales: falta el dobles decisivo');
+  const c=tieFromRubbers2(t); if(c.singles===4 && c.sw===2 && c.sl===2 && !rubberCalc(d||{}).res) out.warnings.push(d&&d.res==='NP'? '2-2 en individuales y el dobles marcado como no jugado: la eliminatoria queda empatada' : '2-2 en individuales: falta el dobles decisivo');
   if(dblDecider() && c.singles===4 && !(c.sw===2&&c.sl===2) && rubberCalc(d||{}).res) out.warnings.push('El dobles solo cuenta si queda 2-2; no se suma al marcador (puedes cambiarlo en Temporadas y ajustes)');
   return out; }
 function tieFromRubbers2(t){ let sw=0,sl=0,singles=0; t.rubbers.forEach(r=>{ if(r.type!=='S') return; const c=rubberCalc(r); if(!c.res) return; singles++; c.res==='W'? sw++ : sl++; }); return {sw,sl,singles}; }
@@ -412,7 +413,7 @@ function scoreboard(f, big=false){
   const t=tieFromRubbers(f.j), p=persp(f), rubs=tie(f.j)?.rubbers||[];
   const rows=[f.home,f.away].map(id=>{ const us=id===POLO; let k=0;
     const cells=RUBBERS.map((R,i)=>{ const c=rubs[i]? rubberCalc(rubs[i]).res : null; const won=c&&((us&&c==='W')||(!us&&c==='L'));
-      const na = R.type==='D' && !c && dblDecider() && !(t&&t.needsDoubles); return `<span class="cell ${won?'w':''} ${na?'na':''}" style="--i:${won?k++:0}">${won?'●':''}</span>`; }).join('');
+      const na = R.type==='D' && !c && (rubs[i]?.res==='NP' || (dblDecider() && !(t&&t.needsDoubles))); return `<span class="cell ${won?'w':''} ${na?'na':''}" style="--i:${won?k++:0}">${won?'●':''}</span>`; }).join('');
     const tot = isPlayed(f)? (id===f.home? f.hs : f.as) : (t&&t.decided? (us? t.w : t.l) : '–');
     return `<span class="board-n ${us?'us':''}">${esc(us? 'Polo' : team(id).short)}${id===f.home?'<i class="loc">Local</i>':''}</span>${cells}<span class="board-t ${tot==='–'?'dim':''}">${tot}</span>`; }).join('');
   const status = isPlayed(f)? (f.status==='official'? 'Final' : 'Final, provisional') : (t&&t.decided? '<span class="live">En juego</span>' : countdown(f));
@@ -451,7 +452,7 @@ function posters(j){
   const any = t && t.rubbers.some(r=>(r.polo||[]).length);
   if(!any || !lineupVisible(j)) return '';
   return `<div class="posters stagger">${t.rubbers.map((r,i)=>{ const c=rubberCalc(r);
-    if(r.type==='D' && !(r.polo||[]).length && !(tr&&tr.needsDoubles)) return '';
+    if(r.type==='D' && (r.res==='NP' || (!(r.polo||[]).length && !(tr&&tr.needsDoubles)))) return '';
     const left = r.type==='D'? `<span class="duo">${(r.polo.length?r.polo:['','']).map(id=>avatar(player(id))).join('')}</span><span>${r.polo.length? r.polo.map(id=>esc(pname(id).split(' ')[0])).join(' y ') : 'Pareja por decidir'}</span>` : `${avatar(player(r.polo[0]))}<span>${esc(pname(r.polo[0]))}</span>`;
     return `<button class="poster press" data-present="${j}:${i}">${c.res? resBadge(c.res):''}<span class="lab">${RUBBERS[i].label}</span>
       <span class="side">${left}</span><span class="vsx">VS</span><span class="side">${crest(p.rival)}<span>${esc(team(p.rival).short)}</span></span>
@@ -537,9 +538,10 @@ function momentsList(){
   return `<ul class="insights stagger">${items.slice(0,6).map(i=>`<li><a href="#jornada-${i.j}" style="text-decoration:none">${esc(i.t)}</a><small>J${i.j}, ${esc(i.s)}</small></li>`).join('')}</ul>`;
 }
 function rubberRow(r,i,f){
-  const c=rubberCalc(r), tr=tieFromRubbers(f.j); const skip = r.type==='D' && !c.res && dblDecider() && !(tr&&tr.needsDoubles) && !(r.polo||[]).length;
-  const who=(r.polo||[]).length? r.polo.map(id=>plink(id)).join(' y ') : '<span class="muted">Por designar</span>';
-  return `<div class="rubber ${skip?'skip':''}"><span class="rn">${r.type==='D'?'D':r.n}</span><div><div class="p">${who}</div><div class="r">${RUBBERS[i].label} contra ${esc(clubName(persp(f).rival))}${skip?'. Solo si hay 2-2':''}</div></div>
+  const c=rubberCalc(r), tr=tieFromRubbers(f.j); const np = r.type==='D' && r.res==='NP';
+  const skip = np || (r.type==='D' && !c.res && dblDecider() && !(tr&&tr.needsDoubles) && !(r.polo||[]).length);
+  const who=np && !(r.polo||[]).length? '<span class="muted">No se jugó</span>' : (r.polo||[]).length? r.polo.map(id=>plink(id)).join(' y ') : '<span class="muted">Por designar</span>';
+  return `<div class="rubber ${skip?'skip':''}"><span class="rn">${r.type==='D'?'D':r.n}</span><div><div class="p">${who}</div><div class="r">${RUBBERS[i].label} contra ${esc(clubName(persp(f).rival))}${np?'. No se jugó':skip?'. Solo si hay 2-2':''}</div></div>
   <div class="sets">${c.sets.length? c.sets.map(s=>s.join('-')).join('  ') : '–'}${r.note?`<small>${esc(r.note)}</small>`:''}<div style="margin-top:4px">${resBadge(c.res)}</div></div></div>`;
 }
 
@@ -1191,9 +1193,9 @@ function aResultados(j){
     ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span>
       <select name="p1" aria-label="Jugador">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2" aria-label="Pareja">${popts(r.polo[1])}</select>`:'<span></span>'}
       <input type="text" name="score" placeholder="6-4 6-3" value="${esc(r.score)}">
-      <select name="res"><option value="">Auto</option><option value="W" ${r.res==='W'?'selected':''}>Gana Polo</option><option value="L" ${r.res==='L'?'selected':''}>Pierde Polo</option></select>
+      <select name="res"><option value="">Auto</option><option value="W" ${r.res==='W'?'selected':''}>Gana Polo</option><option value="L" ${r.res==='L'?'selected':''}>Pierde Polo</option>${r.type==='D'?`<option value="NP" ${r.res==='NP'?'selected':''}>No se jugó</option>`:''}</select>
       <input type="text" name="note" placeholder="Nota: W.O., abandono…" value="${esc(r.note)}" style="grid-column:2 / -2"><button class="btn sm ghost" data-act="res-clear" data-j="${j}" data-r="${i}" ${r.score||r.res?'':'disabled'}>Borrar</button>
-      ${(()=>{ const e=validateRubber(r); return e.length&&(r.score||r.res)? `<p class="rerr">${esc(e.join('. '))}</p>` : (rubberCalc(r).res? `<p class="rok">${rubberCalc(r).res==='W'?'Gana el Polo':'Gana el rival'}</p>`:''); })()}</div>`).join('')}
+      ${(()=>{ const e=validateRubber(r); return e.length&&(r.score||r.res)? `<p class="rerr">${esc(e.join('. '))}</p>` : (r.res==='NP'? '<p class="rok">No se jugó: no cuenta en el marcador ni en las estadísticas</p>' : rubberCalc(r).res? `<p class="rok">${rubberCalc(r).res==='W'?'Gana el Polo':'Gana el rival'}</p>`:''); })()}</div>`).join('')}
     <label class="f" for="moment">Momento de la jornada (público)</label><input type="text" id="moment" value="${esc(t.moment||'')}">
     <div class="panel" style="margin-top:16px"><b>Marcador por equipos</b><p class="muted small" style="margin:4px 0 10px">Se calcula solo con los 4 individuales y el dobles (${dblDecider()?'este solo si hubo 2-2':'si se jugó'}). Si solo tienes el oficial, escríbelo aquí.</p>
       <div class="row"><label>Polo <input type="number" id="ps" min="0" max="5" value="${p.ps??''}" style="width:80px"></label><label>${esc(clubName(p.rival))} <input type="number" id="rs" min="0" max="5" value="${p.rs??''}" style="width:80px"></label></div></div>
