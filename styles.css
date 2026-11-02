@@ -852,3 +852,9 @@ body.intro-on .page{animation:pageSlide .9s var(--ease) both}
 .conn dd{margin:2px 0 0;font-size:.92rem}
 .conn .ok{color:var(--win)}.conn .ko{color:var(--loss)}
 @media (max-width:620px){.conn{grid-template-columns:1fr}}
+.diag{list-style:none;margin:12px 0 0;padding:0}
+.diag li{display:grid;grid-template-columns:22px 170px 1fr;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.diag li span{font-weight:800}
+.diag li.ok span{color:var(--win)}.diag li.ko span,.diag li.ko em{color:var(--loss)}
+.diag em{font-style:normal}
+@media (max-width:520px){.diag li{grid-template-columns:22px 1fr}.diag li em{grid-column:2}}
