@@ -482,7 +482,7 @@ function vInicio(){
   if(last){ const c=cronica(last.j);
     h+=`<section class="sec"><div class="sec-h"><h2>Última jornada</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${mvpCard(last.j)}</div></div></section>`; }
-  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#liga">Liga completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
+  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">Completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
     <div><div class="sec-h"><h2>Momentos</h2></div>${momentsList()}</div></div></section>${Object.values(S.published).some(p=>p.mvp)? `<section class="sec">${mvpRanking(true)}</section>`:''}</div>`;
   return h;
 }
@@ -545,12 +545,13 @@ function rubberRow(r,i,f){
   <div class="sets">${c.sets.length? c.sets.map(s=>s.join('-')).join('  ') : '–'}${r.note?`<small>${esc(r.note)}</small>`:''}<div style="margin-top:4px">${resBadge(c.res)}</div></div></div>`;
 }
 
-function vLiga(){
+function vLiga(view){
   const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos})), nx=nextPoloFix();
-  let h=`<div class="wrap"><div class="pagehead"><h1>La liga</h1><p class="lede">${esc(S.comp.name)}, ${esc(S.comp.memorial)}. ${esc(S.comp.group)}. Siete clubes, catorce jornadas a doble vuelta; cada jornada descansa uno.</p></div>
-  <section class="sec"><div class="sec-h"><h2>Clasificación</h2></div>${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
+  let h=`<div class="wrap"><div class="pagehead"><h1>${view==='cal'?'Calendario':'Clasificación'}</h1><p class="lede">${esc(S.comp.name)}, ${esc(S.comp.memorial)}. ${esc(S.comp.group)}. Siete clubes, catorce jornadas a doble vuelta; cada jornada descansa uno.</p></div>`;
+  if(view!=='cal') return h+`<section class="sec" style="padding-top:22px">${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
   <section class="sec"><div class="sec-h"><h2>Evolución del Polo</h2></div>${evo.length? lineChart(evo,{invert:true,min:1,max:S.teams.length,unit:'º'}) : '<div class="empty">Sin jornadas disputadas.</div>'}</section>
-  <section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el Polo</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
+  </div>`;
+  h+=`<section class="sec" style="padding-top:22px"><div class="sec-h"><h2>Jornadas</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el Polo</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
   for(let j=1;j<=NJ();j++){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=fs[0];
     if(!ui.ligaAll){ if(pf){ const p=persp(pf);
         h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
@@ -563,7 +564,7 @@ function vLiga(){
 function vJornada(j){
   if(!(j>=1&&j<=NJ())) return vNotFound();
   const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO);
-  let h=`<div class="wrap"><div class="pagehead"><div class="row" style="justify-content:space-between"><a class="textlink" href="#liga">Calendario</a><span class="row">${j>1?`<a class="chip" href="#jornada-${j-1}">J${j-1}</a>`:''}${j<NJ()?`<a class="chip" href="#jornada-${j+1}">J${j+1}</a>`:''}</span></div>
+  let h=`<div class="wrap"><div class="pagehead"><div class="row" style="justify-content:space-between"><a class="textlink" href="#calendario">Calendario</a><span class="row">${j>1?`<a class="chip" href="#jornada-${j-1}">J${j-1}</a>`:''}${j<NJ()?`<a class="chip" href="#jornada-${j+1}">J${j+1}</a>`:''}</span></div>
     <h1 style="margin-top:14px">Jornada ${j}</h1><p class="lede">${esc(fdate(fs[0],{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}, ${esc(fs[0].time)} h</p></div>`;
   if(!pf) h+=`<section class="sec"><div class="empty">El Polo descansa en esta jornada.</div></section>`;
   else { const p=persp(pf), c=cronica(j), t=tie(j);
@@ -881,7 +882,8 @@ const FICHA=[
     {k:'idol',l:'Jugador favorito',t:'text',o:['Rafa Nadal','Roger Federer','Novak Djokovic','Carlos Alcaraz','Jannik Sinner','Andre Agassi','Pete Sampras','Juan Carlos Ferrero','Carlos Moyà','Àlex Corretja'],i:'⭐',ph:'¿A quién te pareces jugando?'},
     {k:'tournament',l:'Torneo soñado',t:'chips',o:['Roland Garros','Wimbledon','US Open','Open de Australia','Conde de Godó','Mutua Madrid Open','Copa Davis'],i:'🏆'},
     {k:'racket',l:'Raqueta',t:'text',o:['Babolat Pure Aero','Babolat Pure Drive','Wilson Blade','Wilson Pro Staff','Head Speed','Head Radical','Yonex EZONE','Yonex VCORE','Tecnifibre TF40'],i:'🎾',ph:'Marca y modelo'},
-    {k:'since',l:'Juega desde',t:'year',i:'📅',ph:'Año'}]},
+    {k:'since',l:'Juega desde',t:'year',i:'📅',ph:'Año'},
+    {k:'seasons',l:'Temporadas en el equipo',q:'¿Cuántas temporadas llevas en el equipo de la Lliga?',t:'chips',o:['Es la primera','2','3','4','5','6 a 9','10 o más'],i:'🛡️'}]},
   {sec:'Tu personalidad en pista', sub:'Lo que te hace único', fields:[
     {k:'nick',l:'Apodo',t:'text',o:[],i:'🏷️',ph:'Cómo te llaman en el equipo'},
     {k:'motto',l:'Grito de guerra más usado',t:'text',o:['¡Vamos!','¡Come on!','¡Venga!','¡Sí señor!','¡Allez!','¡Vamos Polo!'],i:'📣',ph:'Lo que gritas tras un gran punto'},
@@ -918,8 +920,8 @@ function vMiFicha(){
     ui.fe={pid:me, base:clone(profiles[me]||{}), draft:{...(profiles[me]||{})}, phone:phones[me]||'', dirty:false, touched:false};
   const p=player(me), d=ui.fe.draft, ph=photos[me]?.d;
   const field=f=>{ const v=d[f.k]||'';
-    if(f.t==='chips') return `<div class="fe-f"><label class="fe-l"><span>${f.i}</span>${f.l}</label><div class="fe-chips" data-group="${f.k}">${f.o.map(o=>`<button type="button" class="fchip press" data-act="fe-chip" data-k="${f.k}" data-v="${esc(o)}" aria-pressed="${v===o}">${esc(o)}</button>`).join('')}</div></div>`;
-    return `<div class="fe-f"><label class="fe-l" for="fe-${f.k}"><span>${f.i}</span>${f.l}</label><input id="fe-${f.k}" data-fe="${f.k}" type="${f.t==='year'?'number':'text'}" ${f.t==='year'?'min="1950" max="2026" inputmode="numeric"':'maxlength="80"'} value="${esc(v)}" placeholder="${esc(f.ph||'')}" ${f.o?.length?`list="dl-${f.k}"`:''}>
+    if(f.t==='chips') return `<div class="fe-f"><label class="fe-l"><span>${f.i}</span>${f.q||f.l}</label><div class="fe-chips" data-group="${f.k}">${f.o.map(o=>`<button type="button" class="fchip press" data-act="fe-chip" data-k="${f.k}" data-v="${esc(o)}" aria-pressed="${v===o}">${esc(o)}</button>`).join('')}</div></div>`;
+    return `<div class="fe-f"><label class="fe-l" for="fe-${f.k}"><span>${f.i}</span>${f.q||f.l}</label><input id="fe-${f.k}" data-fe="${f.k}" type="${f.t==='year'?'number':'text'}" ${f.t==='year'?'min="1950" max="2026" inputmode="numeric"':'maxlength="80"'} value="${esc(v)}" placeholder="${esc(f.ph||'')}" ${f.o?.length?`list="dl-${f.k}"`:''}>
       ${f.o?.length? `<datalist id="dl-${f.k}">${f.o.map(o=>`<option value="${esc(o)}">`).join('')}</datalist><div class="sugs">${f.o.slice(0,6).map(o=>`<button type="button" class="sug" data-act="fe-sug" data-k="${f.k}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : ''}</div>`; };
   return `<div class="wrap fe"><div class="pagehead"><a class="textlink" href="#yo">← Yo</a><h1 style="margin-top:10px">Mi ficha</h1><p class="lede">Lo que rellenes sale en tu perfil, en tu carta de jugador y en la plantilla. Todo es opcional y se guarda solo.</p></div>
     <div class="fe-grid"><aside class="fe-side"><div id="fe-preview">${(()=>{ const s=profiles[me]; profiles[me]=d; const h=fePreviewHTML(); profiles[me]=s; return h; })()}</div>
@@ -1682,8 +1684,8 @@ function render(){
   else if(!authUser) html=vLogin();
   else if(!me && !adminSkip) html=vClaim();
   else { const r=nav;
-    if(r==='inicio') html=vInicio(); else if(r==='liga') html=vLiga();
-    else if(r.startsWith('jornada-')){ html=vJornada(+r.slice(8)); nav='liga'; }
+    if(r==='inicio') html=vInicio(); else if(r==='clasificacion'||r==='liga'){ html=vLiga(); nav='clasificacion'; } else if(r==='calendario') html=vLiga('cal');
+    else if(r.startsWith('jornada-')){ html=vJornada(+r.slice(8)); nav='calendario'; }
     else if(r==='equipo') html=vEquipo();
     else if(r.startsWith('jugador-')){ html=vJugador(r.slice(8)); nav='equipo'; }
     else if(r.startsWith('disponibilidad-')){ html=vDisponibilidad(+r.slice(15)); nav='yo'; }
