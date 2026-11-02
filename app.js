@@ -1648,27 +1648,28 @@ function diffState(a,b){ const out={}, J=x=>JSON.stringify(x===undefined? null :
       new Set([...Object.keys(a[k]),...Object.keys(b[k])]).forEach(x=>{ if(J(a[k][x])!==J(b[k][x])) out[k+'.'+x]= b[k][x]===undefined? DEL : b[k][x]; }); }
     else if(J(a?.[k])!==J(b?.[k])) out[k]= b?.[k]===undefined? DEL : b[k]; });
   return out; }
-function errMsg(e){ const c=e?.code||''; if(/permission/.test(c)) return !me? 'No se ha podido guardar: primero elige tu nombre en la pestaña Yo.' : 'Firebase ha rechazado el cambio. Comprueba que las reglas de Firestore están actualizadas (Firestore > Reglas > Publicar).';
+function errMsg(e){ const c=e?.code||''; if(/permission/.test(c)) return !me? 'No se ha podido guardar: primero elige tu nombre en la pestaña Yo.' : `Firebase ha rechazado el cambio (${c}${e?.what? ', al guardar: '+e.what : ''}). Toca aquí para ver la comprobación de permisos.`;
   if(/unavailable|network|offline/.test(c)||/offline|network/i.test(e?.message||'')) return 'Sin conexión: el cambio se subirá cuando vuelva la red.';
   if(/not-found/.test(c)) return 'La temporada aún no existe en la base de datos. Un administrador debe guardar algo primero.';
   return 'No se ha podido guardar ('+(c||e?.message||'error')+').'; }
 const sync={st:'idle',msg:'',at:null,pending:0};
 function setSync(st,msg){ sync.st=st; if(msg!=null) sync.msg=msg; if(st==='saved') sync.at=Date.now(); drawSync(); }
-function drawSync(){ let el=document.getElementById('syncpill'); if(!el){ el=document.createElement('button'); el.id='syncpill'; el.type='button'; el.addEventListener('click',()=>{ if(sync.st==='error') toast(sync.msg); if(sync.st!=='saving') { sync.st='idle'; drawSync(); } }); document.body.appendChild(el); }
+function drawSync(){ let el=document.getElementById('syncpill'); if(!el){ el=document.createElement('button'); el.id='syncpill'; el.type='button'; el.addEventListener('click',()=>{ if(sync.st==='error'){ toast(sync.msg); if(/permission|rechazado/.test(sync.msg)) location.hash='yo'; } if(sync.st!=='saving') { sync.st='idle'; drawSync(); } }); document.body.appendChild(el); }
   const t={saving:'Guardando…',offline:'Pendiente de subir (sin conexión)',saved:'Guardado',error:'No se ha guardado. Toca para ver el motivo'}[sync.st]||'';
   el.className='syncpill '+sync.st; el.textContent=t; el.hidden=!t;
   clearTimeout(drawSync._t); if(sync.st==='saved') drawSync._t=setTimeout(()=>{ if(sync.st==='saved'){ sync.st='idle'; drawSync(); } },2200); }
 function trackWrite(promise,msg){ sync.pending++; setSync('saving'); const slow=setTimeout(()=>{ if(sync.st==='saving') setSync('offline'); },5000);
   return promise.then(r=>{ clearTimeout(slow); sync.pending=Math.max(0,sync.pending-1); if(!sync.pending) setSync('saved'); if(msg) toast(msg); return r; })
-    .catch(e=>{ clearTimeout(slow); sync.pending=Math.max(0,sync.pending-1); setSync('error',errMsg(e)); toast(errMsg(e)); throw e; }); }
+    .catch(e=>{ clearTimeout(slow); sync.pending=Math.max(0,sync.pending-1); setSync('error',errMsg(e)); toast(errMsg(e)); if(/permission/.test(e?.code||'') && B.mode==='firebase'){ B.diag(SEASON_PATH, clone(serverS||S)).then(d=>{ ui.diag=d; }).catch(()=>{}); } throw e; }); }
 window.addEventListener('beforeunload',e=>{ if(sync.pending && B.mode==='firebase'){ e.preventDefault(); e.returnValue=''; } });
 function saveState(msg='Guardado'){ S.updatedAt=Date.now(); S.captains=S.captains||S.players.filter(p=>p.captain).map(p=>p.id);
   if(isAdmin && !meta){ meta={current:viewSeason,seasons:[viewSeason]}; B.set('meta/app',meta).catch(()=>{}); }
   const body=clone(S), base=serverS? clone(serverS) : null;
-  chain=chain.then(()=>{ if(!base) return B.set(SEASON_PATH,body);
-      const ch=diffState(base,body); if(!Object.keys(ch).length) return null; ch.updatedAt=body.updatedAt; return B.update(SEASON_PATH,ch); })
+  let keys=[];
+  chain=chain.catch(()=>{}).then(()=>{ if(!base){ keys=['temporada completa (creación)']; return B.set(SEASON_PATH,body); }
+      const ch=diffState(base,body); if(!Object.keys(ch).length) return null; keys=Object.keys(ch); ch.updatedAt=body.updatedAt; return B.update(SEASON_PATH,ch); })
     .then(()=>{ serverS=body; silentSnapshot(body); })
-    .catch(e=>{ if(/not-found/.test(e?.code||'') && base) return B.set(SEASON_PATH,body).then(()=>{ serverS=body; }); throw e; });
+    .catch(e=>{ if(/not-found/.test(e?.code||'') && base) return B.set(SEASON_PATH,body).then(()=>{ serverS=body; }); e.what=keys.join(', '); throw e; });
   trackWrite(chain,msg).catch(()=>{ if(serverS){ S=normalize(clone(serverS)); renderQuiet(); } });   // si falla, no se muestra como guardado
   renderQuiet(); }
 function silentSnapshot(body){ if(!canManage||B.mode!=='firebase') return; const d=new Date().toISOString().slice(0,10), key=viewSeason+d; if(ui.snap===key) return; ui.snap=key; B.set(SEASON_PATH+'/snapshots/'+d,body).catch(()=>{}); }
