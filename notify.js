@@ -25,7 +25,8 @@ module.exports = async (req, res) => {
     if (!S) return res.status(404).json({ error: 'season-not-found' });
     const [a1, a2, me] = await Promise.all([db.doc('admins/' + user.uid).get(), db.doc('admins/' + email).get(), db.doc('users/' + user.uid).get()]);
     const myPid = me.exists ? me.data().pid : null;
-    const allowed = a1.exists || a2.exists || (myPid && (S.captains || []).includes(myPid));
+    const teamOn = (S.rules || {}).teamManage !== false;
+    const allowed = a1.exists || a2.exists || (myPid && ((S.captains || []).includes(myPid) || teamOn));
     if (!allowed) return res.status(403).json({ error: 'forbidden' });
 
     const k = 'j' + j, tie = (S.ties || {})[k] || {};
