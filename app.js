@@ -1631,7 +1631,7 @@ function diffState(a,b){ const out={}, J=x=>JSON.stringify(x===undefined? null :
       new Set([...Object.keys(a[k]),...Object.keys(b[k])]).forEach(x=>{ if(J(a[k][x])!==J(b[k][x])) out[k+'.'+x]= b[k][x]===undefined? DEL : b[k][x]; }); }
     else if(J(a?.[k])!==J(b?.[k])) out[k]= b?.[k]===undefined? DEL : b[k]; });
   return out; }
-function errMsg(e){ const c=e?.code||''; if(/permission/.test(c)) return 'No tienes permiso para guardar. Tu cuenta debe estar en «admins» de Firebase o marcada como capitán.';
+function errMsg(e){ const c=e?.code||''; if(/permission/.test(c)) return !me? 'No se ha podido guardar: primero elige tu nombre en la pestaña Yo.' : 'Firebase ha rechazado el cambio. Comprueba que las reglas de Firestore están actualizadas (Firestore > Reglas > Publicar).';
   if(/unavailable|network|offline/.test(c)||/offline|network/i.test(e?.message||'')) return 'Sin conexión: el cambio se subirá cuando vuelva la red.';
   if(/not-found/.test(c)) return 'La temporada aún no existe en la base de datos. Un administrador debe guardar algo primero.';
   return 'No se ha podido guardar ('+(c||e?.message||'error')+').'; }
