@@ -93,7 +93,7 @@ function seed(){
   return {
     seasonId: SEASON_ID,
     comp: {...COMP},
-    rules: {win:3, loss:1, availDays:6, deadlineDays:2, deadlineTime:'21:00', mvpHours:48},
+    rules: {win:3, loss:1, availDays:6, deadlineDays:2, deadlineTime:'21:00', mvpHours:48, teamManage:true},
     mvp: {},
     msgs: {...DEFAULT_MSGS},
     teams: TEAMS0.map(t=>({...t})),
@@ -143,6 +143,8 @@ function makeDemo(){
     async signOut(){ u=null; try{ localStorage.removeItem(KEY+'-u'); }catch(e){} authCb(null); },
     watchDoc:(p,cb)=>watch(p,cb,false), watchColl:(p,cb)=>watch(p,cb,true),
     async set(p,d){ mem[p]=clone(d); persist(); emit(); },
+    async castVote(base,voter,v){ const vp=base+'/votes/'+voter; if(mem[vp]) throw Object.assign(new Error('ya votado'),{code:'permission-denied'}); mem[vp]={v,at:Date.now()}; const t=mem[base]||{t:{},n:0}; t.t=t.t||{}; t.t[v]=(t.t[v]||0)+1; t.n=(t.n||0)+1; mem[base]=t; persist(); emit(); },
+    async annulVote(base,voter,v){ const vp=base+'/votes/'+voter; if(!mem[vp]) return; v=v||mem[vp].v; delete mem[vp]; const t=mem[base]; if(t&&v&&t.t?.[v]){ t.t[v]--; if(!t.t[v]) delete t.t[v]; t.n=Math.max(0,(t.n||1)-1); } persist(); emit(); },
     async update(p,changes){ const doc=mem[p]||{}; Object.entries(changes).forEach(([k,v])=>{ const parts=k.split('.'); let o=doc; parts.slice(0,-1).forEach(x=>{ o[x]=o[x]&&typeof o[x]==='object'? o[x] : {}; o=o[x]; }); const last=parts.at(-1); if(v===DEL) delete o[last]; else o[last]=clone(v); }); mem[p]=doc; persist(); emit(); },
     async del(p){ delete mem[p]; persist(); emit(); },
     async claim(pid){ const c=mem['claims/'+pid]; if(c && c.email!==u.email) throw new Error('Ese nombre ya está elegido'); Object.keys(mem).forEach(k=>{ if(k.startsWith('claims/') && mem[k].email===u.email) delete mem[k]; }); mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now()}; mem['users/'+u.uid]={pid,email:u.email}; persist(); emit(); },
@@ -165,6 +167,10 @@ function makeFirebase(){
     watchDoc(p,cb){ return pathRef(p).onSnapshot(s=>cb(s.exists? s.data():null), e=>console.warn(p,e.code)); },
     watchColl(p,cb){ return fs.collection(p).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
     set:(p,d)=>pathRef(p).set(clone(d)),
+    async castVote(base,voter,v){ const b=fs.batch(), inc=firebase.firestore.FieldValue.increment(1);
+      b.set(fs.doc(base+'/votes/'+voter),{v,at:Date.now()}); b.set(fs.doc(base),{t:{[v]:inc},n:inc},{merge:true}); return b.commit(); },
+    async annulVote(base,voter,v){ const b=fs.batch(), dec=firebase.firestore.FieldValue.increment(-1);
+      b.delete(fs.doc(base+'/votes/'+voter)); if(v) b.set(fs.doc(base),{t:{[v]:dec},n:dec},{merge:true}); return b.commit(); },
     update:(p,changes)=>{ const o={}; Object.entries(changes).forEach(([k,v])=>o[k]= v===DEL? firebase.firestore.FieldValue.delete() : clone(v)); return pathRef(p).update(o); },
     del:(p)=>pathRef(p).delete(),
     async claim(pid){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const b=fs.batch();
@@ -188,7 +194,9 @@ catch(e){ showFatal(e.code||e.message, CONFIG_HINT); throw e; }
 let S = seed();
 let authUser=null, authReady=false, me=null, isAdmin=false, adminSkip=false, isCaptain=false, canManage=false;
 let profiles={}, installEvt=null, pushState=null, myVotes={}, mvpVotes={}, mvpSubs=[], mvpKeys='';
-function updRoles(){ isCaptain=!!(me && (S.captains||[]).includes(me)); canManage=isAdmin||isCaptain; return canManage; }
+let canPrivate=false;   // datos privados (respuestas individuales, comentarios, quién votó a quién): solo administradores y capitanes marcados
+const teamMode = () => S.rules?.teamManage !== false;
+function updRoles(){ isCaptain=!!(me && (S.captains||[]).includes(me)); canPrivate=isAdmin||isCaptain; canManage=canPrivate || (teamMode() && !!me); return canManage; }
 let claims={}, avail={}, picks={}, ballots={}, myBallot=null, notes={}, photos={}, phones={}, meta=null;
 let subs=[], mineSub=null;
 const ui = { ligaAll:false, statsTab:'equipo', rankFilter:'season', sortKey:'w', cmpA:null, cmpB:null, adminTab:'jornada', jTab:'disp', compose:null, poster:null, adminJ:null, survey:null, pendingRender:false, revealed:{} };
@@ -936,10 +944,10 @@ function vClaim(){
 
 /* ---------------- Administración ---------------- */
 function vAdmin(){
-  if(!canManage) return `<div class="wrap"><div class="pagehead"><h1>Capitanes</h1></div><div class="notice">Esta zona es para los capitanes y administradores.</div></div>`;
-  const tabs=[['jornada','Matchday'],['calendario','Liga y calendario'],['preguntas','Encuesta'],...(isAdmin?[['plantilla','Plantilla, capitanes y fotos'],['temporadas','Temporadas y ajustes']]:[])];
+  if(!canManage) return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1></div><div class="notice">${me? 'La gestión está limitada a los capitanes marcados. Un administrador puede abrirla a todo el equipo en Temporadas y ajustes.' : 'Elige tu nombre en Yo para poder gestionar.'}</div></div>`;
+  const tabs=[['jornada','Matchday'],['calendario','Liga y calendario'],['preguntas','Encuesta'],...(canManage?[['plantilla','Plantilla y fotos'],['temporadas','Temporadas y ajustes']]:[])];
   if(!tabs.some(x=>x[0]===ui.adminTab)) ui.adminTab='jornada'; const t=ui.adminTab;
-  return `<div class="wrap"><div class="pagehead"><h1>${isAdmin?'Administración':'Capitanes'}</h1><p class="lede">Todo se edita aquí y se actualiza solo en el resto de la app.${viewSeason!==currentSeason()?` <b>Estás editando la temporada ${esc(viewSeason)}.</b>`:''}</p></div>
+  return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1><p class="lede">Todo se edita aquí y se actualiza solo en el resto de la app.${viewSeason!==currentSeason()?` <b>Estás editando la temporada ${esc(viewSeason)}.</b>`:''}</p></div>
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
     ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():t==='preguntas'?aPreguntas():aTemporadas()}</div>`;
 }
@@ -955,7 +963,7 @@ function phases(j){
     {k:'disp', l:'Disponibilidad cerrada', st: closed? 'done' : (t.availReq||a.answered)? 'doing' : 'todo', d: `${a.answered} de ${a.total} respuestas`},
     {k:'conv', l:'Convocatoria publicada', st: t.lineupPub? 'done' : (t.convocados?.length||t.rubbers.some(r=>r.polo.length))? 'doing' : 'todo', d: t.lineupPub? 'Publicada' : t.convocados?.length? 'Borrador' : 'Pendiente'},
     {k:'res', l:'Resultados introducidos', st: resDone? 'done' : (tr.decided||isPlayed(f))? 'doing' : 'todo', d: resDone? `Polo ${p.ps}-${p.rs}${f.status==='official'?', oficial':''}` : tr.decided? `${tr.decided} partidos con resultado` : 'Pendiente'},
-    {k:'post', l:'MVP publicado', st: pub.mvp? 'done' : mvpState(j)? 'doing' : 'todo', d: pub.mvp? pname(pub.mvp) : mvpOpen(j)? `Votando: ${Object.keys(mvpVotes[jid(j)]||{}).length}` : mvpState(j)? 'Por publicar' : 'Tras el partido'}];
+    {k:'post', l:'MVP publicado', st: pub.mvp? 'done' : mvpState(j)? 'doing' : 'todo', d: pub.mvp? pname(pub.mvp) : mvpOpen(j)? `Votando: ${mvpVoteCount(jid(j))}` : mvpState(j)? 'Por publicar' : 'Tras el partido'}];
 }
 function nextAction(j){
   const f=poloFix(j), t=tie(j)||blankTie(), a=availFor(j), ph=phases(j), cur=ph.find(x=>x.st!=='done');
@@ -967,7 +975,7 @@ function nextAction(j){
     case 2: return {t: a.none.length? `Faltan ${a.none.length} por responder` : 'Ya han respondido todos', d:`${a.yes.length} disponibles, ${a.maybe.length} pendientes de confirmar, ${a.no.length} no. Plazo: ${fmtDT(deadline(j))}.`, b:(a.none.length? `<button class="btn brass" data-act="go-compose" data-kind="rem" data-j="${j}">Recordar a los ${a.none.length}</button>`:'')+`<button class="btn ${a.none.length?'ghost':'brass'}" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button>`};
     case 3: return {t:'Prepara la convocatoria', d:`${a.yes.length} disponibles. Elige convocados, individuales y la pareja de dobles.`, b:`<button class="btn brass" data-act="jtab" data-v="conv">Ir a la convocatoria</button>`};
     case 4: return {t: isPlayed(f)&&!tieFromRubbers(j)?.decided? 'Faltan los partidos' : 'Introduce los resultados', d:'Al guardarlos se recalcula todo y se abren la encuesta y la votación del MVP.', b:`<button class="btn brass" data-act="jtab" data-v="res">Introducir resultados</button>`};
-    default: return {t: mvpOpen(j)? 'Votación del MVP en marcha' : 'Publica el MVP', d: mvpOpen(j)? `Han votado ${Object.keys(mvpVotes[jid(j)]||{}).length}. Plazo: ${fmtDT(new Date(mvpState(j).deadline))}.` : 'Revisa el recuento y publica al ganador.', b:`<button class="btn brass" data-act="jtab" data-v="post">Ver el MVP</button>`};
+    default: return {t: mvpOpen(j)? 'Votación del MVP en marcha' : 'Publica el MVP', d: mvpOpen(j)? `Han votado ${mvpVoteCount(jid(j))}. Plazo: ${fmtDT(new Date(mvpState(j).deadline))}.` : 'Revisa el recuento y publica al ganador.', b:`<button class="btn brass" data-act="jtab" data-v="post">Ver el MVP</button>`};
   }
 }
 function aJornada(){
@@ -979,7 +987,7 @@ function aJornada(){
   const tabs=[['prep','1. Preparación'],['disp','2. Disponibilidad'],['conv','3. Convocatoria'],['res','4. Resultados'],['post','5. Postpartido']];
   return `<section class="sec" style="padding-top:6px">
     <div class="mdhead"><div>${jSelect('admin-j',j)}<p class="mdtitle">${crest(p.rival)}<span>Polo contra ${esc(clubName(p.rival))}</span></p><p class="muted small" style="margin:0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'}. ${isPlayed(f)? 'Resultado: Polo '+p.ps+'-'+p.rs+(f.status==='official'?' (oficial)':' (provisional)') : countdown(f)}</p></div></div>
-    <div class="mdkpis stagger"><div><b>${a.yes.length}</b><span>disponibles</span></div><div class="${a.none.length?'warn':''}"><b>${a.none.length}</b><span>sin responder</span></div><div><b>${(t.convocados||[]).length}</b><span>convocados</span></div><div class="${pendRes&&(t.lineupPub||isPlayed(f))?'warn':''}"><b>${pendRes}</b><span>partidos sin resultado</span></div><div><b>${isPlayed(f)? agg.n+'/'+parts.length : '–'}</b><span>encuestas</span></div><div><b>${mvpState(j)? Object.keys(mvpVotes[jid(j)]||{}).length : '–'}</b><span>votos MVP</span></div></div>
+    <div class="mdkpis stagger"><div><b>${a.yes.length}</b><span>disponibles</span></div><div class="${a.none.length?'warn':''}"><b>${a.none.length}</b><span>sin responder</span></div><div><b>${(t.convocados||[]).length}</b><span>convocados</span></div><div class="${pendRes&&(t.lineupPub||isPlayed(f))?'warn':''}"><b>${pendRes}</b><span>partidos sin resultado</span></div><div><b>${isPlayed(f)? agg.n+'/'+parts.length : '–'}</b><span>encuestas</span></div><div><b>${mvpState(j)? mvpVoteCount(jid(j)) : '–'}</b><span>votos MVP</span></div></div>
     <ol class="steps">${ph.map((x,i)=>`<li class="${x.st}"><button data-act="jtab" data-v="${x.k}"><span class="sn">${stIcon[x.st]||i+1}</span><span class="sl"><b>${x.l}</b><small>${stTxt[x.st]}. ${esc(x.d)}</small></span></button></li>`).join('')}</ol>
     <div class="nextcard"><div><span class="nk">Siguiente paso</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${na.b}</div></div>
     <div class="mdtabs">${tabs.map(([k,l])=>`<button class="chip" data-act="jtab" data-v="${k}" aria-pressed="${ui.jTab===k}">${l}</button>`).join('')}</div></section>
@@ -1124,6 +1132,7 @@ function aggregate(k){
   Object.keys(sums).forEach(q=>out.ratings[q]=sums[q]/cnt[q]); return out;
 }
 function aEncuesta(j){
+  if(!canPrivate) return `<section class="sec"><div class="panel"><b>Encuesta de la jornada ${j}</b><p class="muted small" style="margin:6px 0 10px">Se abre sola para los que jugaron. Sus respuestas individuales son privadas: solo las ven los administradores y capitanes marcados, que publican la nota media del equipo.</p><div class="row"><button class="btn sm ghost" data-act="compose" data-kind="survey" data-j="${j}">Avisar por WhatsApp</button><button class="btn sm ghost" data-act="notify" data-type="survey" data-j="${j}">Reenviar notificación</button></div>${composer('survey',j,'Aviso de la encuesta')}</div></section>`;
   const k=jid(j), agg=aggregate(k), parts=participants(j), closed=!!S.survey.closed?.[k], missing=parts.filter(pid=>!agg.who.includes(pid));
   return `<section class="sec"><div class="panel"><b>Encuesta de la jornada ${j}: ${closed?'cerrada':isPlayed(poloFix(j))?'abierta para los que jugaron':'se abrirá al cargar el resultado'}</b>
     <p class="muted small" style="margin:6px 0 10px">${agg.n} de ${parts.length} han respondido.${missing.length?' Faltan: '+missing.map(pname).join(', ')+'.':''}</p>
@@ -1132,29 +1141,30 @@ function aEncuesta(j){
     <div class="row" style="margin-top:10px"><button class="btn sm" data-act="ratings-pub" data-j="${j}">Publicar la nota media del equipo</button></div><p class="source">Las autovaloraciones y los comentarios nunca se publican.</p></section>
   ${agg.texts.length?`<section class="sec"><div class="sec-h"><h2>Comentarios privados</h2></div><ul class="insights">${agg.texts.map(x=>`<li>${esc(x.v)}<small>${esc(pname(x.pid))}, ${esc(x.q)}</small></li>`).join('')}</ul></section>`:''}`;
 }
-function mvpTally(k){ const t={}; Object.values(mvpVotes[k]||{}).forEach(v=>{ if(v?.v) t[v.v]=(t[v.v]||0)+1; }); return t; }
+function mvpTally(k){ if(canPrivate && mvpVotes[k] && Object.keys(mvpVotes[k]).length){ const t={}; Object.values(mvpVotes[k]).forEach(v=>{ if(v?.v) t[v.v]=(t[v.v]||0)+1; }); return t; } return {...(mvpCounts[k]?.t||{})}; }
+const mvpVoteCount = k => canPrivate && mvpVotes[k] && Object.keys(mvpVotes[k]).length? Object.keys(mvpVotes[k]).length : (mvpCounts[k]?.n||0);
 function aMvp(j){
   const k=jid(j), f=poloFix(j), m=mvpState(j), pub=S.published[k], votes=mvpVotes[k]||{}, tally=mvpTally(k), voters=S.players.filter(p=>p.active!==false).map(p=>p.id);
-  const voted=voters.filter(v=>votes[v]), missing=voters.filter(v=>!votes[v]), sorted=Object.entries(tally).sort((a,b)=>b[1]-a[1]), top=sorted[0]?.[1]||0, tied=sorted.filter(x=>x[1]===top).map(x=>x[0]);
+  const nVotes=mvpVoteCount(k), voted=canPrivate? voters.filter(v=>votes[v]) : [], missing=canPrivate? voters.filter(v=>!votes[v]) : [], sorted=Object.entries(tally).sort((a,b)=>b[1]-a[1]), top=sorted[0]?.[1]||0, tied=sorted.filter(x=>x[1]===top).map(x=>x[0]);
   if(!isPlayed(f)) return `<section class="sec"><div class="empty">La votación del MVP se abre sola al guardar el resultado de la eliminatoria.</div></section>`;
   const dl=m?.deadline? new Date(+m.deadline) : new Date(Date.now()+(S.rules.mvpHours||48)*3600e3), dlv=new Date(dl.getTime()-dl.getTimezoneOffset()*6e4).toISOString().slice(0,16);
   const state = pub?.mvp? 'Publicado' : mvpOpen(j)? 'Abierta' : m? 'Cerrada, pendiente de publicar' : 'Sin abrir';
   return `<section class="sec"><div class="split"><div>
-    <div class="row" style="gap:20px;align-items:center">${ring(voters.length? voted.length/voters.length : null,'han votado')}<div><b style="font-stretch:72%;font-size:1.5rem">Votación: ${state}</b><p class="muted small" style="margin:4px 0 0">${voted.length} de ${voters.length} jugadores han votado.${m?.deadline&&!pub?.mvp?' Plazo: '+esc(fmtDT(dl))+'.':''}</p></div></div>
+    <div class="row" style="gap:20px;align-items:center">${ring(voters.length? nVotes/voters.length : null,'han votado')}<div><b style="font-stretch:72%;font-size:1.5rem">Votación: ${state}</b><p class="muted small" style="margin:4px 0 0">${nVotes} de ${voters.length} jugadores han votado.${m?.deadline&&!pub?.mvp?' Plazo: '+esc(fmtDT(dl))+'.':''}</p></div></div>
     <div class="panel" style="margin-top:14px"><label class="f" style="margin-top:0" for="mvp-dl">Fecha límite</label><div class="row"><input type="datetime-local" id="mvp-dl" value="${dlv}" style="max-width:240px">
       ${!m||!m.open? `<button class="btn brass sm" data-act="mvp-open" data-j="${j}">${m?'Reabrir votación':'Abrir votación'}</button>` : `<button class="btn sm" data-act="mvp-open" data-j="${j}">Cambiar plazo</button><button class="btn ghost sm" data-act="mvp-close" data-j="${j}">Cerrar ahora</button>`}</div>
       <div class="row" style="margin-top:10px"><button class="btn ghost sm" data-act="compose" data-kind="mvp" data-j="${j}">Avisar por WhatsApp</button><button class="btn ghost sm" data-act="notify" data-type="mvp" data-j="${j}">Enviar notificación</button></div>${composer('mvp',j,'Aviso de la votación')}</div>
     <div class="sec-h" style="margin-top:22px"><h3>Participación</h3></div>
-    <p class="small"><b>Han votado:</b> ${voted.map(pname).join(', ')||'nadie todavía'}.</p><p class="small muted"><b>Faltan:</b> ${missing.map(pname).join(', ')||'nadie'}.</p></div>
+    ${canPrivate? `<p class="small"><b>Han votado:</b> ${voted.map(pname).join(', ')||'nadie todavía'}.</p><p class="small muted"><b>Faltan:</b> ${missing.map(pname).join(', ')||'nadie'}.</p>` : `<p class="small muted">El voto es secreto: quién ha votado a quién solo lo ven los administradores y capitanes marcados.</p>`}</div>
   <div><div class="sec-h"><h2>Recuento</h2></div>${sorted.length? `<ol class="tally">${sorted.map(([pid,n])=>`<li>${avatar(player(pid),'sm')}<span>${esc(pname(pid))}</span><span class="tb"><i data-w="${Math.round(n/top*100)}"></i></span><b>${n}</b></li>`).join('')}</ol>` : '<div class="empty">Aún no hay votos.</div>'}
     ${tied.length>1?`<div class="notice" style="margin-top:10px">Empate a ${top} entre ${tied.map(pname).join(' y ')}. Elige al MVP abajo.</div>`:''}
     <div class="panel" style="margin-top:14px"><b>Publicar el MVP</b>
       <label class="f">MVP</label><select id="mvp-pick">${(tied.length? tied : mvpCandidates(j)).concat(mvpCandidates(j).filter(x=>!tied.includes(x))).filter((x,i,a)=>a.indexOf(x)===i).map(pid=>`<option value="${esc(pid)}" ${(pub?.mvp||tied[0])===pid?'selected':''}>${esc(pname(pid))} (${tally[pid]||0} ${tally[pid]===1?'voto':'votos'})</option>`).join('')}</select>
       <p class="muted small" style="margin:6px 0 0">Por defecto, el más votado. Elegir a otro queda marcado como decisión del capitán.</p>
       <div class="row" style="margin-top:12px"><button class="btn brass" data-act="mvp-publish" data-j="${j}">${pub?.mvp?'Actualizar MVP publicado':'Cerrar y publicar el MVP'}</button>${pub?.mvp?`<button class="btn ghost sm" data-act="mvp-unpublish" data-j="${j}">Retirar publicación</button>`:''}</div></div>
-    <details class="panel" style="margin-top:14px"><summary><b>Incidencias</b> <span class="muted small">(anular un voto)</span></summary>
+    ${canPrivate? '' : '<!--'}<details class="panel" style="margin-top:14px"><summary><b>Incidencias</b> <span class="muted small">(anular un voto)</span></summary>
       ${voted.length? `<ul class="avlist" style="margin-top:10px">${voted.map(v=>`<li class="row" style="justify-content:space-between"><span class="small">${esc(pname(v))} votó a <b>${esc(pname(votes[v].v))}</b> <span class="muted">${relTime(votes[v].at)}</span></span><button class="btn sm ghost" data-act="mvp-annul" data-j="${j}" data-voter="${esc(v)}">Anular</button></li>`).join('')}</ul>` : '<p class="muted small">Sin votos.</p>'}
-      <p class="muted small">Al anular un voto, ese jugador puede volver a votar mientras la votación siga abierta.</p></details></div></div></section>`;
+      <p class="muted small">Al anular un voto, ese jugador puede volver a votar mientras la votación siga abierta.</p></details>${canPrivate? '' : '-->'}</div></div></section>`;
 }
 function vMvp(j){
   const f=poloFix(j); if(!f) return vNotFound(); const k=jid(j), p=persp(f), pub=S.published[k], mine=myVotes[k], m=mvpState(j);
@@ -1192,7 +1202,7 @@ function aPlantilla(){
       <button class="phbtn" data-act="crop" data-target="${esc(p.id)}" title="Subir o recortar la foto">${avatar(p)}<span>${photos[p.id]?'Cambiar':'Subir'} foto</span></button>
       <div class="pf"><label>Nombre<input type="text" name="name" value="${esc(p.name)}"></label><label>Nombre completo<input type="text" name="full" value="${esc(p.full)}"></label></div>
       <div class="pf sm"><label>Orden<input type="number" name="order" value="${p.order}"></label><label>Categoría<input type="text" name="cat" value="${esc(p.cat)}"></label><label>Puntos FCT<input type="number" name="pts" value="${p.pts??0}"></label><label>Teléfono<input type="tel" name="phone" value="${esc(phones[p.id]||'')}" placeholder="+34 600 000 000"></label></div>
-      <div class="row small" style="gap:12px"><label><input type="checkbox" name="captain" value="${esc(p.id)}" ${(S.captains||[]).includes(p.id)?'checked':''}> Capitán</label><label><input type="checkbox" name="active" ${p.active!==false?'checked':''}> En plantilla</label>${photos[p.id]?`<button class="textlink" data-act="photo-del" data-target="${esc(p.id)}">Quitar foto</button>`:''}<span class="muted">${claims[p.id]? 'Entra como '+esc(claims[p.id].email) : 'Aún no ha entrado'}</span>${claims[p.id]?`<button class="textlink" data-act="unclaim" data-pid="${esc(p.id)}">Liberar acceso</button>`:''}</div></div>`).join('')}</div>
+      <div class="row small" style="gap:12px"><label><input type="checkbox" name="captain" value="${esc(p.id)}" ${(S.captains||[]).includes(p.id)?'checked':''} ${isAdmin?'':'disabled'}> Capitán</label><label><input type="checkbox" name="active" ${p.active!==false?'checked':''}> En plantilla</label>${photos[p.id]?`<button class="textlink" data-act="photo-del" data-target="${esc(p.id)}">Quitar foto</button>`:''}<span class="muted">${claims[p.id]? 'Entra como '+esc(claims[p.id].email) : 'Aún no ha entrado'}</span>${claims[p.id]&&isAdmin?`<button class="textlink" data-act="unclaim" data-pid="${esc(p.id)}">Liberar acceso</button>`:''}</div></div>`).join('')}</div>
     <div class="row" style="margin-top:14px"><button class="btn brass" data-act="players-save">Guardar plantilla</button></div>
     <div class="panel" style="margin-top:24px"><b>Añadir jugador</b><div class="row" style="margin-top:10px"><input type="text" id="np-name" placeholder="Nombre corto" style="max-width:200px"><input type="text" id="np-full" placeholder="Nombre completo" style="max-width:240px"><input type="text" id="np-cat" placeholder="Categoría" style="max-width:140px"><button class="btn sm" data-act="player-add">Añadir</button></div></div></section>`;
 }
@@ -1219,11 +1229,12 @@ const currentSeason = () => meta?.current || SEASON_ID;
 function aTemporadas(){
   const list=meta?.seasons?.length? meta.seasons : [SEASON_ID];
   const vars='{rival} {fecha} {hora} {lugar} {limite} {enlace} {enlaceJornada} {jornada} {pendientes} {nombre} {lista} {resultado} {jugadores} {enlaceEncuesta} {enlaceMvp} {limiteMvp} {cronica} {partidos}';
-  return `<section class="sec"><div class="sec-h"><h2>Temporadas</h2></div>
+  return `${isAdmin? `<section class="sec"><div class="sec-h"><h2>Quién gestiona</h2></div><div class="panel"><label class="row" style="gap:10px;flex-wrap:nowrap"><input type="checkbox" id="team-manage" ${teamMode()?'checked':''}> <span><b>Todo el equipo</b> puede gestionar jornadas, convocatorias, resultados, MVP, calendario, plantilla y fotos.<br><span class="muted small">Si lo desactivas, solo los capitanes marcados y los administradores. Las respuestas individuales de la encuesta y quién votó a quién siguen siendo privadas en ambos casos.</span></span></label><div class="row" style="margin-top:10px"><button class="btn sm" data-act="team-save">Guardar</button></div></div></section>` : ''}
+  ${isAdmin? '' : '<!--'}<section class="sec"><div class="sec-h"><h2>Temporadas</h2></div>
     <table><tbody>${list.map(id=>`<tr><td><b>${esc(id)}</b>${id===currentSeason()?' <span class="tag">actual</span>':''}${id===viewSeason?' <span class="tag">viendo</span>':''}</td><td>${id!==viewSeason?`<button class="btn sm ghost" data-act="season-view" data-id="${esc(id)}">Ver</button>`:''} ${id!==currentSeason()?`<button class="btn sm ghost" data-act="season-current" data-id="${esc(id)}">Hacer actual</button>`:''}</td></tr>`).join('')}</tbody></table>
     <div class="panel" style="margin-top:16px"><b>Nueva temporada</b><p class="muted small" style="margin:4px 0 10px">Las temporadas anteriores se conservan enteras: resultados, disponibilidad, encuestas y MVP. La nueva copia plantilla y clubes; el calendario empieza vacío.</p>
       <div class="row"><input type="text" id="ns-id" placeholder="2027-28" style="max-width:140px"><label class="small"><input type="checkbox" id="ns-copy" checked> Copiar plantilla y clubes</label><button class="btn sm" data-act="season-new">Crear temporada</button></div></div></section>
-  <section class="sec"><div class="sec-h"><h2>Foto del equipo</h2></div>${photos._team?`<img src="${esc(photos._team.d)}" alt="" style="border-radius:12px;max-height:240px;object-fit:cover;width:100%">`:'<div class="empty">Aún no hay foto. Saldrá a pantalla completa en la portada y como fondo opcional de los carteles.</div>'}
+  ${isAdmin? '' : '-->'}<section class="sec"><div class="sec-h"><h2>Foto del equipo</h2></div>${photos._team?`<img src="${esc(photos._team.d)}" alt="" style="border-radius:12px;max-height:240px;object-fit:cover;width:100%">`:'<div class="empty">Aún no hay foto. Saldrá a pantalla completa en la portada y como fondo opcional de los carteles.</div>'}
     <div class="row" style="margin-top:12px"><button class="btn brass" data-act="crop" data-target="_team">${photos._team?'Cambiar':'Subir'} foto del equipo</button>${photos._team?'<button class="btn ghost sm" data-act="photo-del" data-target="_team">Quitar</button>':''}</div></section>
   <section class="sec"><div class="sec-h"><h2>Mensajes de WhatsApp</h2></div><p class="muted small">Variables: ${esc(vars)}</p>
     ${[['req','Solicitud de disponibilidad'],['rem','Recordatorio al grupo'],['remOne','Recordatorio individual'],['lineup','Anuncio de convocatoria'],['survey','Aviso de encuesta postpartido'],['mvp','Aviso de votación MVP'],['summary','Resumen de la jornada']].map(([k,l])=>`<label class="f">${l}</label><textarea id="msg-${k}" rows="6">${esc(S.msgs[k])}</textarea>`).join('')}
@@ -1694,6 +1705,7 @@ document.addEventListener('click', async e=>{
     saveState(isPlayed(f)? 'Resultados guardados: estadísticas actualizadas' : 'Jornada '+j+' guardada');
     if(isPlayed(f) && !wasPlayed){ if(!S.mvp[jid(j)]){ S.mvp[jid(j)]={open:true,openedAt:Date.now(),deadline:Date.now()+(+S.rules.mvpHours||48)*3600e3}; saveState('Votación del MVP abierta'); setTimeout(()=>notify('mvp',j),1400); }
       setTimeout(()=>notify('survey',j),400); ui.compose={kind:'survey',j,text:composeText('survey',j)}; renderQuiet(); } }
+  else if(a==='team-save'){ if(!isAdmin) return; S.rules={...S.rules,teamManage:$('#team-manage').checked}; saveState(S.rules.teamManage? 'Gestión abierta a todo el equipo' : 'Gestión solo para capitanes'); }
   else if(a==='poster-scroll'){ $('#poster-canvas')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   else if(a==='cal-ok'){ const t=ensureTie(+el.dataset.j); t.calOk=true; saveState('Calendario confirmado'); }
   else if(a==='prep-save'){ const j=+el.dataset.j, f=poloFix(j), rv=$('#pp-rival').value, home=$('#pp-home').value==='1', d=$('#pp-date').value, tm=$('#pp-time').value;
@@ -1711,7 +1723,7 @@ document.addEventListener('click', async e=>{
   else if(a==='q-del'){ readQuestions(); S.survey.questions.splice(+el.dataset.i,1); renderQuiet(); }
   else if(a==='q-save'){ readQuestions(); saveState('Preguntas guardadas'); }
   else if(a==='q-reset'){ S.survey.questions=DEFAULT_Q.map(q=>({...q})); saveState('Preguntas restauradas'); }
-  else if(a==='players-save'){ const caps=[...document.querySelectorAll('input[name=captain]:checked')].map(x=>x.value);
+  else if(a==='players-save'){ const caps=isAdmin? [...document.querySelectorAll('input[name=captain]:checked')].map(x=>x.value) : (S.captains||[]);
     const ph={...phones}; const phChanged=[];
     document.querySelectorAll('#plist [data-id]').forEach(row=>{ const p=player(row.dataset.id); if(!p) return; const g=n=>row.querySelector(`[name=${n}]`);
       p.name=g('name').value.trim()||p.name; p.full=g('full').value.trim()||p.name; p.order=+g('order').value||p.order; p.cat=g('cat').value.trim(); p.pts=+g('pts').value||0; p.active=g('active').checked; p.captain=caps.includes(p.id);
@@ -1787,18 +1799,18 @@ document.addEventListener('click', async e=>{
     await safe(async()=>{ await B.set('seasons/'+id,ns); meta={current:id,seasons:[...list,id]}; await B.set('meta/app',meta); },'Temporada '+id+' creada'); switchSeason(id); }
   else if(a==='mvp-pick'){ ui.mvpPick=el.dataset.pid; renderQuiet(); }
   else if(a==='mvp-cast'){ const j=+el.dataset.j, k=jid(j), v=ui.mvpPick; if(!v||!me||v===me) return; if(!confirm('¿Votar a '+pname(v)+' como MVP? No se puede cambiar.')) return;
-    try{ await trackWrite(B.set(SEASON_PATH+'/mvp/'+k+'/votes/'+me,{v,at:Date.now()})); myVotes[k]=v; ui.mvpPick=null; render(); scrollTo(0,0); toast('Voto registrado'); confetti(innerWidth/2,innerHeight/3,90); navigator.vibrate?.(40); }
+    try{ await trackWrite(B.castVote(SEASON_PATH+'/mvp/'+k, me, v)); myVotes[k]=v; ui.mvpPick=null; render(); scrollTo(0,0); toast('Voto registrado'); confetti(innerWidth/2,innerHeight/3,90); navigator.vibrate?.(40); }
     catch(err){ toast(/permission/i.test(err?.code||err?.message||'')? 'No se ha podido votar: la votación está cerrada o ya has votado' : 'No se ha podido votar: '+(err?.code||err?.message)); } }
   else if(a==='mvp-open'){ const j=+el.dataset.j, k=jid(j), v=$('#mvp-dl')?.value; const dl=v? new Date(v).getTime() : Date.now()+(+S.rules.mvpHours||48)*3600e3; if(dl<=Date.now()) return toast('La fecha límite tiene que ser futura');
     const was=S.mvp[k]?.open; S.mvp[k]={...(S.mvp[k]||{}),open:true,openedAt:S.mvp[k]?.openedAt||Date.now(),deadline:dl}; saveState(was?'Plazo actualizado':'Votación abierta'); if(!was) setTimeout(()=>notify('mvp',j),400); }
   else if(a==='mvp-close'){ const k=jid(+el.dataset.j); if(S.mvp[k]){ S.mvp[k].open=false; S.mvp[k].closedAt=Date.now(); } saveState('Votación cerrada'); }
   else if(a==='mvp-publish'){ const j=+el.dataset.j, k=jid(j), pick=$('#mvp-pick')?.value; if(!pick) return toast('No hay candidatos');
     const tally=mvpTally(k), top=Math.max(0,...Object.values(tally)), first=!S.published[k]?.mvp;
-    S.published[k]={...(S.published[k]||{}), mvp:pick, votes:tally[pick]||0, tally, voters:Object.keys(mvpVotes[k]||{}).length, manual:(tally[pick]||0)<top, at:Date.now()};
+    S.published[k]={...(S.published[k]||{}), mvp:pick, votes:tally[pick]||0, tally, voters:mvpVoteCount(k), manual:(tally[pick]||0)<top, at:Date.now()};
     if(S.mvp[k]){ S.mvp[k].open=false; S.mvp[k].closedAt=S.mvp[k].closedAt||Date.now(); } ui.revealed[j]=false;
     saveState('MVP publicado'); confetti(innerWidth/2,innerHeight/2,120); if(first) setTimeout(()=>notify('awards',j),500); }
   else if(a==='mvp-unpublish'){ const k=jid(+el.dataset.j); if(S.published[k]){ delete S.published[k].mvp; delete S.published[k].tally; delete S.published[k].votes; } saveState('Publicación retirada'); }
-  else if(a==='mvp-annul'){ const j=+el.dataset.j, voter=el.dataset.voter; if(!confirm('¿Anular el voto de '+pname(voter)+'?')) return; await safe(()=>B.del(SEASON_PATH+'/mvp/'+jid(j)+'/votes/'+voter),'Voto anulado'); }
+  else if(a==='mvp-annul'){ const j=+el.dataset.j, voter=el.dataset.voter, vv=mvpVotes[jid(j)]?.[voter]?.v; if(!confirm('¿Anular el voto de '+pname(voter)+'?')) return; await safe(()=>B.annulVote(SEASON_PATH+'/mvp/'+jid(j), voter, vv),'Voto anulado'); }
   else if(a==='ratings-pub'){ const j=+el.dataset.j, k=jid(j), agg=aggregate(k); S.published[k]={...(S.published[k]||{}),ratings:agg.ratings,n:agg.n}; saveState('Nota del equipo publicada'); }
   else if(a==='install'){ if(!installEvt) return; installEvt.prompt(); const c=await installEvt.userChoice.catch(()=>null); installEvt=null; renderQuiet(); if(c?.outcome==='accepted') toast('Instalando…'); }
   else if(a==='push-on') enablePush();
@@ -1826,11 +1838,14 @@ function watchMine(){ if(mineSub){ try{mineSub()}catch(e){} mineSub=null; } if(m
 if(B.mode==='demo'){ const d=document.createElement('div'); d.className='demo'; d.textContent='Vista previa: datos solo en este navegador'; document.body.appendChild(d); }
 let dataSubs=[];
 let privSubs=[];
-function subscribePriv(){ privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[];
+let privKey='';
+function subscribePriv(){ const key=(canManage?1:0)+'|'+(canPrivate?1:0)+'|'+viewSeason; if(key===privKey && privSubs.length) return; privKey=key;
+  privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[];
   if(!canManage) return;
+  privSubs.push(B.watchColl('phones', m=>{ phones=Object.fromEntries(Object.entries(m).map(([k,v])=>[k,v.phone])); softRender(); }));
+  if(!canPrivate) return;
   privSubs.push(B.watchColl(SEASON_PATH+'/ballots', m=>{ ballots=m; softRender(); }));
   privSubs.push(B.watchColl(SEASON_PATH+'/availNotes', m=>{ notes=m; softRender(); }));
-  privSubs.push(B.watchColl('phones', m=>{ phones=Object.fromEntries(Object.entries(m).map(([k,v])=>[k,v.phone])); softRender(); }));
 }
 function subscribeData(){ // se rehace al identificarse o al cambiar de temporada
   dataSubs.forEach(u=>{ try{u()}catch(e){} }); dataSubs=[];
@@ -1839,21 +1854,23 @@ function subscribeData(){ // se rehace al identificarse o al cambiar de temporad
   dataSubs.push(B.watchColl('photos', m=>{ photos=m; softRender(); }));
   dataSubs.push(B.watchColl('profiles', m=>{ profiles=m; softRender(); }));
   dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
-    const before=canManage; updRoles(); if(before!==canManage) subscribePriv(); syncMvpSubs(); softRender(); }));
+    updRoles(); subscribePriv(); syncMvpSubs(); softRender(); }));
   dataSubs.push(B.watchColl(SEASON_PATH+'/avail', m=>{ avail=m; softRender(); }));
-  if(me){ dataSubs.push(B.watchDoc(SEASON_PATH+'/availNotes/'+me, d=>{ if(!canManage){ notes={[me]:d||{}}; softRender(); } }));
+  if(me){ dataSubs.push(B.watchDoc(SEASON_PATH+'/availNotes/'+me, d=>{ if(!canPrivate){ notes={[me]:d||{}}; softRender(); } }));
     dataSubs.push(B.watchDoc('phones/'+me, d=>{ if(d?.phone) phones[me]=d.phone; softRender(); })); }
   updRoles(); subscribePriv(); syncMvpSubs(true);
 }
+let mvpCounts={};
 function syncMvpSubs(force){
-  const keys=Object.keys(S.mvp||{}).sort().join(',')+'|'+(canManage?1:0)+'|'+me+'|'+viewSeason; if(!force && keys===mvpKeys) return; mvpKeys=keys;
-  mvpSubs.forEach(u=>{ try{u()}catch(e){} }); mvpSubs=[]; myVotes={}; mvpVotes={};
+  const keys=Object.keys(S.mvp||{}).sort().join(',')+'|'+(canPrivate?1:0)+'|'+me+'|'+viewSeason; if(!force && keys===mvpKeys) return; mvpKeys=keys;
+  mvpSubs.forEach(u=>{ try{u()}catch(e){} }); mvpSubs=[]; myVotes={}; mvpVotes={}; mvpCounts={};
   Object.keys(S.mvp||{}).forEach(k=>{
+    mvpSubs.push(B.watchDoc(SEASON_PATH+'/mvp/'+k, d=>{ mvpCounts[k]=d||{t:{},n:0}; softRender(); }));        // recuento (público)
     if(me) mvpSubs.push(B.watchDoc(SEASON_PATH+'/mvp/'+k+'/votes/'+me, d=>{ myVotes[k]=d?.v||null; softRender(); }));
-    if(canManage) mvpSubs.push(B.watchColl(SEASON_PATH+'/mvp/'+k+'/votes', m=>{ mvpVotes[k]=m; softRender(); }));
+    if(canPrivate) mvpSubs.push(B.watchColl(SEASON_PATH+'/mvp/'+k+'/votes', m=>{ mvpVotes[k]=m; softRender(); }));   // quién votó a quién (privado)
   });
 }
-function switchSeason(id,auto){ if(!auto) ui.seasonPicked=true; viewSeason=id; SEASON_PATH='seasons/'+id; avail={}; picks={}; ballots={}; notes={}; myBallot=null; privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[]; ui.adminJ=null; ui.calJ=null; subscribeData(); watchMine(); render(); }
+function switchSeason(id,auto){ privKey=''; if(!auto) ui.seasonPicked=true; viewSeason=id; SEASON_PATH='seasons/'+id; avail={}; picks={}; ballots={}; notes={}; myBallot=null; privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[]; ui.adminJ=null; ui.calJ=null; subscribeData(); watchMine(); render(); }
 B.onAuth(async u=>{
   unsubAll(); dataSubs.forEach(x=>{ try{x()}catch(e){} }); dataSubs=[];
   authUser=u; me=null; isAdmin=false; adminSkip=false; claims={}; avail={}; picks={}; ballots={}; myBallot=null; S=seed();
