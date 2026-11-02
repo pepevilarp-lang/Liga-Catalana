@@ -5,7 +5,7 @@ window.POLO_CONFIG = {
     projectId: "lliga-catalana-bf8e3",
     storageBucket: "lliga-catalana-bf8e3.firebasestorage.app",
     messagingSenderId: "807897020475",
-    appId: "COPIA_AQUÍ_TU_appId"
+    appId: "1:807897020475:web:0aff09bf7a8231c8b9c41e"
   },
   vapidKey: ""
 };
