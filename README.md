@@ -31,7 +31,7 @@ Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien fa
 - Los rankings por porcentaje ordenan con un intervalo de confianza: con pocos partidos el porcentaje pesa menos, y siempre se muestra cuántos se han jugado.
 - Si se corrige o se borra un resultado, todo se recalcula solo. La app valida los marcadores (sets de tenis válidos, ganador coherente, sin jugadores repetidos) y distingue entre resultado provisional y oficial.
 
-## Cada jornada (Capitanes > Matchday)
+## Cada jornada (Gestión > Jornada)
 1. Disponibilidad: mensaje de WhatsApp + notificación. Los jugadores responden con un toque hasta el plazo.
 2. Convocatoria: 4 individuales y la pareja de dobles (solo juega si queda 2-2). Publicar avisa a los convocados.
 3. Cartel: se compone solo con las fotos. Vertical, cuadrado u horizontal.
@@ -43,4 +43,4 @@ Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien fa
 Al abrir la app se reproduce una vez por sesión (unos 3,5 segundos, con «Saltar»): la pelota cae y bota sobre una pista en 3D, sale disparada hacia la cámara, el fieltro llena la pantalla, aparece el escudo y se abre hacia la app. Con «reducir movimiento» activado o en dispositivos muy limitados se muestra una transición corta con el escudo.
 
 ## Temporadas
-En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteriores.
+En **Gestión > Ajustes > Temporadas** se crea la siguiente temporada sin perder las anteriores.
