@@ -361,7 +361,7 @@ textarea{min-height:90px;resize:vertical}
 .vside .ghost{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-90deg);font-stretch:62%;font-weight:800;font-size:clamp(4rem,16vw,9rem);color:rgba(255,255,255,.05);white-space:nowrap;pointer-events:none}
 .vside .nm{font-stretch:62%;font-weight:800;font-size:clamp(1.6rem,6vw,2.6rem);line-height:.95}
 .vside .meta{font-size:.82rem;color:#A9BDB3}
-.vs{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(3);opacity:0;font-stretch:62%;font-weight:800;font-size:clamp(3.2rem,12vw,6rem);color:var(--gold);text-shadow:0 0 30px rgba(226,196,124,.6);pointer-events:none}
+.stage .vs{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(3);opacity:0;font-stretch:62%;font-weight:800;font-size:clamp(3.2rem,12vw,6rem);color:var(--gold);text-shadow:0 0 30px rgba(226,196,124,.6);pointer-events:none}
 .stage.s4 .vs{animation:slam .45s cubic-bezier(.5,0,.3,1.4) forwards}
 @keyframes slam{to{transform:translate(-50%,-50%) scale(1);opacity:1}}
 .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
@@ -953,3 +953,7 @@ body.intro-on .page{animation:pageSlide .9s var(--ease) both}
   #flist .qedit>:nth-child(1){grid-area:date} #flist .qedit>:nth-child(2){grid-area:time} #flist .qedit>:nth-child(3){grid-area:home}
   #flist .qedit>:nth-child(4){grid-area:away} #flist .qedit>:nth-child(5){grid-area:hs} #flist .qedit>:nth-child(6){grid-area:as} #flist .qedit>:nth-child(7){grid-area:del}
 }
+/* Liga: Clasificación y Calendario separados */
+.segtabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin:14px 0 4px}
+.segtabs a{text-align:center;padding:12px 4px 10px;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--muted);font-weight:650;text-decoration:none}
+.segtabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--brass)}
