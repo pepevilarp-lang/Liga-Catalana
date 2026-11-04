@@ -984,3 +984,5 @@ body.clubmode.noplayer main{padding-bottom:20px}
 .dup{display:block;color:var(--loss);font-weight:600}
 .docrev table select{min-height:34px;padding:4px 8px;font-size:.85rem;max-width:230px}
 .docrev td{vertical-align:top;white-space:normal}
+.revbar{position:sticky;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:20;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px;padding:10px 12px;border-radius:14px;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);box-shadow:0 12px 28px -18px rgba(0,0,0,.5)}
+@media (max-width:820px){.revbar{bottom:calc(env(safe-area-inset-bottom,0px) + 74px)}}
