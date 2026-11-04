@@ -500,8 +500,31 @@ function leadersBlock(){
     <p class="source">Solo individuales. El orden tiene en cuenta el número de partidos jugados.</p></section>`;
 }
 function standingsSource(){ return S.official && S.official.asOf===Math.max(0,...playedJornadas())? `Orden oficial FCT tras la jornada ${S.official.asOf}. Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.` : `Calculada con los resultados introducidos. Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.`; }
+/* Siguiente paso del capitán, en el Inicio (misma lógica que «Siguiente paso» de Matchday) */
+function captainTask(){
+  if(!canPrivate) return null;
+  const last=lastPoloPlayed(), nx=nextPoloFix(), cands=[];
+  if(last && Date.now()-kickoff(last).getTime()<10*864e5) cands.push(last.j);
+  S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&!isPlayed(f)&&kickoff(f).getTime()<Date.now()-8*3600e3&&Date.now()-kickoff(f).getTime()<10*864e5).forEach(f=>cands.push(f.j));
+  if(nx) cands.push(nx.j);
+  for(const j of cands){ const f=poloFix(j), past=kickoff(f).getTime()<Date.now(), ph=phases(j), i=ph.findIndex((x,k)=>x.st!=='done' && (!past || k>=4)); if(i<0) continue;
+    const urgent= past || daysTo(f)<=7;
+    return {j, i, f, urgent}; }
+  return null;
+}
+function captainCallout(){
+  const c=captainTask(); if(!c) return '';
+  const {j,i}=c, a=availFor(j), na0=nextAction(j), na= (i===4 && phases(j).findIndex(x=>x.st!=='done')<4)? {t:'Introduce los resultados', d:'Al guardarlos se recalcula todo y se abren la encuesta y la votación del MVP.'} : na0;
+  const go=(v,label,cls='light')=>`<button class="btn ${cls}" data-act="cap-go" data-j="${j}" data-v="${v}">${label}</button>`;
+  const dir=(act,label,cls='light')=>`<button class="btn ${cls}" data-act="${act}" data-j="${j}">${label}</button>`;
+  const btns=[ dir('cal-ok','Confirmar calendario')+go('prep','Editar','ghost'),
+    go('compose:req','Solicitar disponibilidad'),
+    (a.none.length? go('compose:rem',`Recordar a los ${a.none.length}`) : '')+dir('avail-close','Cerrar disponibilidad', a.none.length?'ghost':'light'),
+    go('conv','Ir a la convocatoria'), go('res','Introducir resultados'), go('post','Ver el MVP') ][i]||'';
+  return `<div class="callout capcall"><div><b><span class="captag">Capitán</span> Jornada ${j} · ${esc(na.t)}</b><span>${esc(na.d)} <a href="#admin" data-act="cap-go" data-j="${j}" data-v="">Ver toda la jornada en Gestión</a></span></div><div class="row">${btns}</div></div>`;
+}
 function callouts(nx){
-  let h=''; const ps=pendingSurveys();
+  let h=captainCallout(); const ps=pendingSurveys();
   pendingMvp().forEach(j=>{ h+=`<div class="callout"><div><b>🏆 Vota al MVP de la jornada ${j}</b><span>Un voto por jugador. Abierta hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</span></div><div class="row"><a class="btn light" href="#mvp-${j}">Votar</a></div></div>`; });
   ps.forEach(j=>{ h+=`<div class="callout"><div><b>Encuesta de la jornada ${j}</b><span>Jugaste contra ${esc(clubName(persp(poloFix(j)).rival))}. Tardas dos minutos.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Responder</a></div></div>`; });
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ if(!me || avOf(me,f.j)) return; const p=persp(f);
@@ -1061,7 +1084,7 @@ function phases(j){
   const resDone = !!(tr.complete) || (isPlayed(f) && f.status==='official' && !tr.decided);
   return [
     {k:'prep', l:'Calendario confirmado', st: t.calOk||isPlayed(f)? 'done' : 'todo', d: t.calOk? 'Confirmado' : isPlayed(f)? 'Disputada' : 'Confirma fecha, hora y rival'},
-    {k:'disp', l:'Disponibilidad solicitada', st: t.availReq||closed? 'done' : availOpen(f)? 'doing' : 'todo', d: t.availReq? 'Pedida '+relTime(t.availReq.at) : closed? 'Plazo cerrado' : 'Sin pedir'},
+    {k:'disp', l:'Disponibilidad solicitada', st: t.availReq||closed? 'done' : 'todo', d: t.availReq? 'Pedida '+relTime(t.availReq.at) : closed? 'Plazo cerrado' : 'Sin pedir'},
     {k:'disp', l:'Disponibilidad cerrada', st: closed? 'done' : (t.availReq||a.answered)? 'doing' : 'todo', d: `${a.answered} de ${a.total} respuestas`},
     {k:'conv', l:'Convocatoria publicada', st: t.lineupPub? 'done' : (t.convocados?.length||t.rubbers.some(r=>r.polo.length))? 'doing' : 'todo', d: t.lineupPub? 'Publicada' : t.convocados?.length? 'Borrador' : 'Pendiente'},
     {k:'res', l:'Resultados introducidos', st: resDone? 'done' : (tr.decided||isPlayed(f))? 'doing' : 'todo', d: resDone? `Polo ${p.ps}-${p.rs}${f.status==='official'?', oficial':''}` : tr.decided? `${tr.decided} partidos con resultado` : 'Pendiente'},
@@ -2116,6 +2139,7 @@ function render(){
   app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
   document.querySelectorAll('[data-nav]').forEach(a=>{ if(a.dataset.nav===nav) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   $('.adminlink').classList.toggle('on',canManage);
+  { const al=$('.adminlink'); if(al && !al.querySelector('.al-txt')) al.insertAdjacentHTML('beforeend','<span class="al-txt">Gestión</span>'); const ct=captainTask(); al?.classList.toggle('due', !!(ct && ct.urgent)); }
   const bs=$('.brand span'); if(bs) bs.innerHTML=`${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
   let tw=$('.teamsw'); if(!tw){ tw=document.createElement('button'); tw.className='teamsw'; tw.type='button'; tw.setAttribute('aria-label','Cambiar de equipo'); tw.dataset.act='team-menu'; tw.textContent='▾'; $('.brand').after(tw); }
   tw.hidden = !(clubTeams().length>1 || canClub());
@@ -2311,6 +2335,10 @@ document.addEventListener('click', async e=>{
   else if(a==='official-save'){ const order=[...document.querySelectorAll('#offlist select')].map(x=>x.value); if(new Set(order).size!==order.length) return toast('Hay clubes repetidos'); S.official={asOf:+$('#off-j').value||0,order}; saveState('Clasificación oficial guardada'); }
   else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48)), doubles:$('#r-dbl')?.value||'always'}; saveState('Reglas guardadas'); }
   else if(a==='go-admin'){ ui.adminTab='jornada'; ui.adminJ=+el.dataset.j; const tt=el.dataset.t||'disp'; ui.jTab= tt==='enc'||tt==='mvp'? 'post' : tt==='cartel'? 'conv' : tt; ui.jTabSet=true; ui.jTabFor=+el.dataset.j; location.hash='admin'; }
+  else if(a==='cap-go'){ e.preventDefault(); const j=+el.dataset.j, v=el.dataset.v||'', kind=v.startsWith('compose:')? v.slice(8) : null;
+    ui.adminTab='jornada'; ui.adminJ=j; ui.jTabFor=j; ui.jTabSet=true; if(kind) ui.jTab='disp'; else if(v) ui.jTab=v; else ui.jTabSet=false;
+    const after=()=>{ if(kind){ ui.compose={kind,j,text:composeText(kind,j)}; render(); } setTimeout(()=>($('#compose-text')||$('.atabs'))?.scrollIntoView({behavior:'smooth',block:'center'}),80); };
+    if(route()==='admin'){ ui.compose=null; render(); after(); } else { location.hash='admin'; setTimeout(after,60); } }
   else if(a==='jtab'){ ui.jTab=el.dataset.v; ui.compose=null; render(); }
   else if(a==='av-pick'){ ui.avDraft.s=el.dataset.v; const ta=$('#av-c'); if(ta) ui.avDraft.c=ta.value; renderQuiet(); }
   else if(a==='av-chip'){ const ta=$('#av-c'); const c=(ta?.value||'').trim(); ui.avDraft.c = c? (c.includes(el.dataset.v)? c : c+'. '+el.dataset.v) : el.dataset.v; renderQuiet(); }
