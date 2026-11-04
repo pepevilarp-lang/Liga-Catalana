@@ -1,7 +1,12 @@
 {
   "name": "polo-lliga",
   "private": true,
-  "description": "App del Polo A. Web estática + función de notificaciones en /api/notify",
-  "engines": { "node": ">=18" },
-  "dependencies": { "firebase-admin": "^12.7.0" }
+  "description": "App del Polo: web estática + funciones /api/notify, /api/extract (IA) y /api/send-report (correo)",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "nodemailer": "^6.9.16"
+  }
 }
