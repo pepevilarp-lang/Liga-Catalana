@@ -489,7 +489,7 @@ function vInicio(){
   if(last){ const c=cronica(last.j);
     h+=`<section class="sec"><div class="sec-h"><h2>Última jornada</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${mvpCard(last.j)}</div></div></section>`; }
-  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#liga">Liga completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
+  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">Liga completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
     <div><div class="sec-h"><h2>Momentos</h2></div>${momentsList()}</div></div></section>${Object.values(S.published).some(p=>p.mvp)? `<section class="sec">${mvpRanking(true)}</section>`:''}</div>`;
   return h;
 }
@@ -551,25 +551,38 @@ function rubberRow(r,i,f){
   <div class="sets">${c.sets.length? c.sets.map(s=>s.join('-')).join('  ') : '–'}${r.note?`<small>${esc(r.note)}</small>`:''}<div style="margin-top:4px">${resBadge(c.res)}</div></div></div>`;
 }
 
-function vLiga(){
-  const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos})), nx=nextPoloFix();
-  let h=`<div class="wrap"><div class="pagehead"><h1>La liga</h1><p class="lede">${esc([S.comp.name, S.comp.memorial].filter(Boolean).join(', '))}${S.comp.group? '. '+esc(S.comp.group) : ''}.${(()=>{ const nT=S.teams.length, nJ=NJ(), nums=['','un','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez','once','doce']; if(nT<2||!nJ) return ' Calendario pendiente de cargar.'; const per=S.fixtures.filter(f=>f.j===1).length; return ` ${nums[nT]? nums[nT].replace(/^un$/,'un')+' clubes' : nT+' clubes'}, ${nJ} jornadas${nT%2 && per*2<nT? '; cada jornada descansa uno' : ''}.`.replace(/^ (\w)/,(m,c)=>' '+c.toUpperCase()); })()}</p></div>
-  <section class="sec"><div class="sec-h"><h2>Clasificación</h2></div>${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
-  <section class="sec"><div class="sec-h"><h2>Evolución del Polo</h2></div>${evo.length? lineChart(evo,{invert:true,min:1,max:S.teams.length,unit:'º'}) : '<div class="empty">Sin jornadas disputadas.</div>'}</section>
-  <section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el Polo</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
+function ligaLede(){
+  const nT=S.teams.length, nJ=NJ(), nums=['','un','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez','once','doce'];
+  const base=esc([S.comp.name, S.comp.memorial].filter(Boolean).join(', '))+(S.comp.group? '. '+esc(S.comp.group) : '')+'.';
+  if(nT<2||!nJ) return base+' Calendario pendiente de cargar.';
+  const per=S.fixtures.filter(f=>f.j===1).length, w=nums[nT]||String(nT);
+  return `${base} ${w.charAt(0).toUpperCase()+w.slice(1)} clubes, ${nJ} jornadas${nT%2 && per*2<nT? '; cada jornada descansa uno' : ''}.`;
+}
+function ligaCalendar(){
+  const nx=nextPoloFix(); let h=`<section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el ${esc(teamLabel())}</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
   for(let j=1;j<=NJ();j++){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=fs[0];
     if(!ui.ligaAll){ if(pf){ const p=persp(pf);
         h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
       } else h+=`<li><a class="jrow rest" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span class="vs">Descansa el Polo</span><span></span></a></li>`;
     } else h+=`<li style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="#jornada-${j}" style="text-decoration:none;display:flex;justify-content:space-between"><b>Jornada ${j}</b><span class="muted small">${esc(fdate(d,{weekday:'long',day:'numeric',month:'long'}))}</span></a>
       <table style="margin-top:4px"><tbody>${fs.map(f=>`<tr class="${f===pf?'us':''}"><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}${pf?'':'<tr><td class="muted">Descansa: Polo</td><td></td></tr>'}</tbody></table></li>`; }
-  return h+`</ul><p class="source">Fuente: calendario oficial FCT. Todos los partidos a las 15:00 en las pistas del club local.</p></section></div>`;
+  return h+`</ul><p class="source">Fuente: calendario oficial FCT.</p></section>`;
+}
+function ligaTable(){
+  const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos}));
+  return `<section class="sec"><div class="sec-h"><h2>Clasificación</h2></div>${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
+  <section class="sec"><div class="sec-h"><h2>Evolución del ${esc(teamLabel())}</h2></div>${evo.length? lineChart(evo,{invert:true,min:1,max:S.teams.length,unit:'º'}) : '<div class="empty">Sin jornadas disputadas.</div>'}</section>`;
+}
+// view: 'liga' (todo junto, como antes), 'clasificacion' o 'calendario' (pestañas separadas de la barra)
+function vLiga(view='liga'){
+  const title=view==='clasificacion'?'Clasificación':view==='calendario'?'Calendario':'La liga';
+  return `<div class="wrap"><div class="pagehead"><h1>${title}</h1><p class="lede">${ligaLede()}</p></div>${view!=='calendario'? ligaTable() : ''}${view!=='clasificacion'? ligaCalendar() : ''}</div>`;
 }
 
 function vJornada(j){
   if(!(j>=1&&j<=NJ())) return vNotFound();
   const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO);
-  let h=`<div class="wrap"><div class="pagehead"><div class="row" style="justify-content:space-between"><a class="textlink" href="#liga">Calendario</a><span class="row">${j>1?`<a class="chip" href="#jornada-${j-1}">J${j-1}</a>`:''}${j<NJ()?`<a class="chip" href="#jornada-${j+1}">J${j+1}</a>`:''}</span></div>
+  let h=`<div class="wrap"><div class="pagehead"><div class="row" style="justify-content:space-between"><a class="textlink" href="#calendario">Calendario</a><span class="row">${j>1?`<a class="chip" href="#jornada-${j-1}">J${j-1}</a>`:''}${j<NJ()?`<a class="chip" href="#jornada-${j+1}">J${j+1}</a>`:''}</span></div>
     <h1 style="margin-top:14px">Jornada ${j}</h1><p class="lede">${esc(fdate(fs[0],{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}, ${esc(fs[0].time)} h</p></div>`;
   if(!pf) h+=`<section class="sec"><div class="empty">El Polo descansa en esta jornada.</div></section>`;
   else { const p=persp(pf), c=cronica(j), t=tie(j);
@@ -1942,7 +1955,7 @@ function vDoc(id){
       ${warn.length? `<div class="vbox err"><b>Discrepancias o avisos</b><ul>${[...new Set(warn)].map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
       <div class="tscroll">${body||'<div class="empty">La lectura no ha devuelto datos.</div>'}</div>
       ${done? `<div class="final" style="margin-top:16px"><b>✓ Aplicado${d.applied? ': '+esc(d.applied) : ''}</b><span>Ya está en la app: ${({calendario:'calendario, páginas de cada jornada, Matchday y clasificación',plantilla:'plantilla, perfiles y estadísticas',orden:'convocatoria y orden de juego de la jornada',acta:'resultados, estadísticas, clasificación y MVP',resultados:'resultados, estadísticas, clasificación y MVP',clasificacion:'clasificación oficial'})[d.kind]||'la app'}.</span>
-        <div class="row" style="margin-top:8px">${d.kind==='calendario'?'<a class="btn sm brass" href="#liga">Ver el calendario</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>':d.kind==='plantilla'?'<a class="btn sm brass" href="#equipo">Ver la plantilla</a>':d.kind==='clasificacion'?'<a class="btn sm brass" href="#liga">Ver la clasificación</a>':rv.j?`<a class="btn sm brass" href="#jornada-${+rv.j}">Ver la jornada ${+rv.j}</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>`:''}</div></div>` : ''}
+        <div class="row" style="margin-top:8px">${d.kind==='calendario'?'<a class="btn sm brass" href="#calendario">Ver el calendario</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>':d.kind==='plantilla'?'<a class="btn sm brass" href="#equipo">Ver la plantilla</a>':d.kind==='clasificacion'?'<a class="btn sm brass" href="#clasificacion">Ver la clasificación</a>':rv.j?`<a class="btn sm brass" href="#jornada-${+rv.j}">Ver la jornada ${+rv.j}</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>`:''}</div></div>` : ''}
       <div class="revbar">${done? '' : `<button class="btn brass" data-act="doc-apply" data-id="${esc(id)}">${({calendario:'Validar y añadir al calendario',plantilla:'Validar y actualizar la plantilla',orden:'Validar y poner la convocatoria',acta:'Validar y guardar los resultados',resultados:'Validar y guardar los resultados',clasificacion:'Validar y guardar la clasificación'})[rv.kind]||'Validar y aplicar'}</button>`}<button class="btn ghost sm" data-act="doc-read" data-id="${esc(id)}">Volver a leer</button>${!done?`<button class="btn ghost sm" data-act="doc-discard" data-id="${esc(id)}">Descartar lectura</button>`:''}</div></section>
     <section class="sec">${preview}</section></div></div>`;
 }
@@ -2018,8 +2031,9 @@ function render(){
   else if(!authUser) html=vLogin();
   else if(!me && !adminSkip) html=vClaim();
   else { const r=nav;
-    if(r==='inicio') html=vInicio(); else if(r==='liga') html=vLiga();
-    else if(r.startsWith('jornada-')){ html=vJornada(+r.slice(8)); nav='liga'; }
+    const split=!!document.querySelector('[data-nav="calendario"]');   // barra con Clasificación y Calendario separados
+    if(r==='inicio') html=vInicio(); else if(r==='liga') html=vLiga(split?'calendario':'liga'); else if(r==='clasificacion'||r==='clasificación') html=vLiga('clasificacion'); else if(r==='calendario') html=vLiga('calendario');
+    else if(r.startsWith('jornada-')){ html=vJornada(+r.slice(8)); nav=split?'calendario':'liga'; }
     else if(r==='equipo') html=vEquipo();
     else if(r.startsWith('jugador-')){ html=vJugador(r.slice(8)); nav='equipo'; }
     else if(r.startsWith('disponibilidad-')){ html=vDisponibilidad(+r.slice(15)); nav='yo'; }
@@ -2030,7 +2044,7 @@ function render(){
     else if(r.startsWith('club-equipo-')){ html=vClubTeam(r.slice(12)); nav='club'; }
     else if(r==='docs') html=vDocs(); else if(r.startsWith('doc-')) html=vDoc(r.slice(4));
     else if(r==='stats') html=vStats(); else if(r==='yo'||r==='votar') { html=vYo(); nav='yo'; } else if(r==='admin') html=vAdmin(); else html=vNotFound();
-    html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del ${esc((curTeam()?.name||'equipo').toLowerCase())} del Real Club de Polo de Barcelona.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
+    html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del ${esc(curTeam()?.short||'equipo')} (${esc(curTeam()?.cat||'')}) del Real Club de Polo de Barcelona.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
   app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
   document.querySelectorAll('[data-nav]').forEach(a=>{ if(a.dataset.nav===nav) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   $('.adminlink').classList.toggle('on',canManage);
