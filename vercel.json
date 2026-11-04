@@ -37,11 +37,8 @@
     }
   ],
   "functions": {
-    "api/extract.js": {
+    "api/*.js": {
       "maxDuration": 60
-    },
-    "api/notify.js": {
-      "maxDuration": 30
     }
   }
 }
