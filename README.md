@@ -31,7 +31,7 @@ Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien fa
 - Los rankings por porcentaje ordenan con un intervalo de confianza: con pocos partidos el porcentaje pesa menos, y siempre se muestra cuántos se han jugado.
 - Si se corrige o se borra un resultado, todo se recalcula solo. La app valida los marcadores (sets de tenis válidos, ganador coherente, sin jugadores repetidos) y distingue entre resultado provisional y oficial.
 
-## Cada jornada (Gestión > Jornada)
+## Cada jornada (Capitanes > Matchday)
 1. Disponibilidad: mensaje de WhatsApp + notificación. Los jugadores responden con un toque hasta el plazo.
 2. Convocatoria: 4 individuales y la pareja de dobles (solo juega si queda 2-2). Publicar avisa a los convocados.
 3. Cartel: se compone solo con las fotos. Vertical, cuadrado u horizontal.
@@ -43,4 +43,14 @@ Avisos automáticos: al pedir disponibilidad (a todos), recordatorio (a quien fa
 Al abrir la app se reproduce una vez por sesión (unos 3,5 segundos, con «Saltar»): la pelota cae y bota sobre una pista en 3D, sale disparada hacia la cámara, el fieltro llena la pantalla, aparece el escudo y se abre hacia la app. Con «reducir movimiento» activado o en dispositivos muy limitados se muestra una transición corta con el escudo.
 
 ## Temporadas
-En **Gestión > Ajustes > Temporadas** se crea la siguiente temporada sin perder las anteriores.
+En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteriores.
+
+
+## Documentos y lectura con IA (Fases 2 y 3)
+- Cada equipo tiene su repositorio de documentos por temporada y jornada (Gestión → Documentos). El gestor del club los ve todos en Gestión deportiva → Documentación.
+- Los originales se guardan troceados en Firestore (sin servicio de almacenamiento de pago), hasta 15 MB por archivo, con historial de versiones.
+- La IA solo propone: nada cambia en la app hasta que una persona revisa y pulsa «Validar y aplicar». Queda registrado quién validó y cuándo.
+- Variables de entorno en Vercel:
+  - `GROQ_API_KEY`: la clave de Groq (empieza por gsk_). Solo en Vercel, nunca en GitHub ni en el código.
+  - `FIREBASE_PROJECT_ID`: `lliga-catalana-bf8e3`.
+  - Opcionales: `GROQ_MODEL` (por defecto `qwen/qwen3.8-27b`), `AI_PROVIDER` (groq, openai, xai, gemini, anthropic) con su clave y modelo, `FIREBASE_SERVICE_ACCOUNT` (activa el tope diario `AI_DAILY_LIMIT`, por defecto 150 lecturas).
