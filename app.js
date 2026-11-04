@@ -2113,10 +2113,30 @@ function render(){
   tw.hidden = !(clubTeams().length>1 || canClub());
   let cl=$('.clublink'); if(!cl){ cl=document.createElement('a'); cl.className='clublink'; cl.href='#club'; cl.title='Gestión deportiva'; cl.setAttribute('aria-label','Gestión deportiva'); cl.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>'; $('.topicons').prepend(cl); }
   cl.classList.toggle('on',canClub()); if(nav==='club') cl.setAttribute('aria-current','page'); else cl.removeAttribute('aria-current');
+  clubChrome(nav==='club');
   document.body.classList.toggle('clubmode', nav==='club'); document.body.classList.toggle('noplayer', !me);
   const mb=$('.mebtn'); if(mb) mb.innerHTML = me? avatar(player(me)) : (authUser? `<span class="av">${esc((authUser.email||'?')[0].toUpperCase())}</span>`:'');
   const dot=document.querySelector('.tabbar [data-nav="yo"]'); if(dot){ dot.querySelector('.dot')?.remove(); const nx=nextPoloFix(); if(pendingSurveys().length || pendingMvp().length || (nx&&me&&availOpen(nx)&&!avOf(me,nx.j))) dot.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
   afterRender(app);
+}
+/* Cabecera y barra de abajo propias de Gestión deportiva */
+const CLUB_ICONS={club:'<path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/>', 'club-equipos':'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M17 14.5c2.3 0 4 1.4 4.6 4"/>',
+  'club-docs':'<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h8"/>', 'club-resumen':'<path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/>', 'club-ajustes':'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  equipo:'<path d="M15 18l-6-6 6-6"/>'};
+let chrome0=null;
+function clubChrome(on){
+  const tn=$('.topnav'), tb=$('.tabbar'), bs=$('.brand span'), br=$('.brand'); if(!tn||!tb) return;
+  if(!chrome0) chrome0={tn:tn.innerHTML, tb:tb.innerHTML};
+  if(!on || !canClub()){ if(tn.dataset.club){ tn.innerHTML=chrome0.tn; tb.innerHTML=chrome0.tb; delete tn.dataset.club; tb.style.gridTemplateColumns=''; br.setAttribute('href','#inicio'); } return; }
+  const r=route(), cur= r.startsWith('club-equipo-')? 'club-equipos' : r;
+  const tabs=[['club','Inicio'],['club-equipos','Equipos'],['club-docs','Documentación'],['club-resumen','Resumen'],...(isAdmin?[['club-ajustes','Configuración']]:[])];
+  const back = me? [['inicio','Mi equipo']] : [];
+  tn.innerHTML=tabs.map(([k,l])=>`<a href="#${k}" ${cur===k?'aria-current="page"':''}>${l}</a>`).join('')+back.map(([k,l])=>`<a href="#${k}" class="tn-back">← ${l}</a>`).join('');
+  const mob=[...tabs.map(([k,l])=>[k,l==='Documentación'?'Docs':l==='Configuración'?'Ajustes':l,k]), ...back.map(([k,l])=>[k,l,'equipo'])].slice(0,6);
+  tb.innerHTML=mob.map(([k,l,ic])=>`<a href="#${k}" ${cur===k?'aria-current="page"':''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${CLUB_ICONS[ic]}</svg><span>${l}</span></a>`).join('');
+  tb.style.gridTemplateColumns=`repeat(${mob.length},1fr)`;
+  tn.dataset.club='1'; br.setAttribute('href','#club');
+  if(bs) bs.innerHTML='Gestión deportiva <small>Real Club de Polo</small>';
 }
 function editing(){ const a=document.activeElement; return a && a.closest('#app') && /INPUT|TEXTAREA|SELECT/.test(a.tagName); }
 function softRender(){ if($('.cropper.on')||$('.pmodal.on')){ ui.pendingRender=true; return; } if(editing()||ui.survey&&route().startsWith('encuesta')&&document.activeElement?.tagName==='TEXTAREA'){ ui.pendingRender=true; return; } renderQuiet(); }
