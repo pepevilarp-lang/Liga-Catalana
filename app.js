@@ -136,7 +136,7 @@ const clone = x => x==null? x : JSON.parse(JSON.stringify(x));
 function makeDemo(){
   const KEY='polo-preview-v2'; let mem={}; let u=null; const L=[]; let authCb=()=>{};
   try{ mem=JSON.parse(localStorage.getItem(KEY)||'{}'); u=JSON.parse(localStorage.getItem(KEY+'-u')||'null'); }catch(e){}
-  const persist=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(mem)); }catch(e){} };
+  const persist=()=>{ try{ const o={}; Object.keys(mem).forEach(k=>{ if(!k.includes('/chunks/')) o[k]=mem[k]; }); localStorage.setItem(KEY,JSON.stringify(o)); }catch(e){} };
   const fire=l=>{ if(l.coll){ const out={}, d=l.path.split('/').length+1; Object.keys(mem).forEach(k=>{ if(k.startsWith(l.path+'/') && k.split('/').length===d) out[k.split('/').pop()]=clone(mem[k]); }); l.cb(out); } else l.cb(clone(mem[l.path]??null)); };
   const emit=()=>setTimeout(()=>L.slice().forEach(fire),0);
   const watch=(path,cb,coll)=>{ const l={path,cb,coll}; L.push(l); setTimeout(()=>fire(l),0); return ()=>{ const i=L.indexOf(l); if(i>=0) L.splice(i,1); }; };
@@ -155,6 +155,7 @@ function makeDemo(){
     async relink(){ return null; },
     async isAdmin(){ return true; },
     async getDoc(p){ return clone(mem[p]??null); },
+    async merge(p,obj){ const deep=(a,b)=>{ Object.entries(b).forEach(([k,v])=>{ if(v&&typeof v==='object'&&!Array.isArray(v)){ a[k]=a[k]&&typeof a[k]==='object'?a[k]:{}; deep(a[k],v); } else a[k]=clone(v); }); return a; }; mem[p]=deep(mem[p]||{},obj); persist(); emit(); },
     async diag(){ return [['Modo','Vista previa: no hay base de datos que comprobar',false]]; },
     async idToken(){ return null; }, async addPushToken(){ return null; },
     async reset(){ mem={}; persist(); emit(); }
@@ -195,6 +196,7 @@ function makeFirebase(){
       return d.id; },
     async idToken(){ return auth.currentUser? auth.currentUser.getIdToken() : null; },
     async getDoc(p){ const x=await fs.doc(p).get(); return x.exists? x.data() : null; },
+    merge:(p,obj)=>pathRef(p).set(clone(obj),{merge:true}),
     async addPushToken(pid,token){ return fs.doc('pushTokens/'+pid).set({tokens:firebase.firestore.FieldValue.arrayUnion(token),at:Date.now()},{merge:true}); },
     async isAdmin(email,uid){ try{ const [a,b]=await Promise.all([fs.doc('admins/'+uid).get(), fs.doc('admins/'+email).get()]); return a.exists||b.exists; }catch(e){ return false; } }
   };
@@ -918,9 +920,10 @@ async function feFlush(){ if(!ui.fe||!me||!ui.fe.dirty) return; clearTimeout(ui.
   ui.fe.dirty=false; try{ await trackWrite(B.set('profiles/'+me,o)); profiles[me]=o; feStatus('Guardado ✓','ok'); if(fichaPct(me,o)>=100 && !ui.fe.celebrated){ ui.fe.celebrated=true; confetti(innerWidth/2,innerHeight/3,110); } }catch(e){ ui.fe.dirty=true; feStatus('No se ha guardado. Toca el aviso rojo para ver el motivo','ko'); } }
 function vMiFicha(){
   if(!me) return `<div class="wrap"><div class="pagehead"><h1>Mi ficha</h1></div><div class="notice">Primero elige tu nombre de la lista en la pestaña Yo.</div></div>`;
+  if(!player(me)) S.players.length; const _pp=player(me)||{id:me,name:rosterAll().find(x=>x.id===me)?.name||'Jugador'};
   if(!ui.fe || ui.fe.pid!==me || (!ui.fe.touched && JSON.stringify(ui.fe.base)!==JSON.stringify(profiles[me]||{})))
     ui.fe={pid:me, base:clone(profiles[me]||{}), draft:{...(profiles[me]||{})}, phone:phones[me]||'', dirty:false, touched:false};
-  const p=player(me), d=ui.fe.draft, ph=photos[me]?.d;
+  const p=_pp, d=ui.fe.draft, ph=photos[me]?.d;
   const field=f=>{ const v=d[f.k]||'';
     if(f.t==='chips') return `<div class="fe-f"><label class="fe-l"><span>${f.i}</span>${f.l}</label><div class="fe-chips" data-group="${f.k}">${f.o.map(o=>`<button type="button" class="fchip press" data-act="fe-chip" data-k="${f.k}" data-v="${esc(o)}" aria-pressed="${v===o}">${esc(o)}</button>`).join('')}</div></div>`;
     return `<div class="fe-f"><label class="fe-l" for="fe-${f.k}"><span>${f.i}</span>${f.l}</label><input id="fe-${f.k}" data-fe="${f.k}" type="${f.t==='year'?'number':'text'}" ${f.t==='year'?'min="1950" max="2026" inputmode="numeric"':'maxlength="80"'} value="${esc(v)}" placeholder="${esc(f.ph||'')}" ${f.o?.length?`list="dl-${f.k}"`:''}>
@@ -974,7 +977,7 @@ function connCard(){
 }
 function vYo(){
   if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1></div><div class="notice">Tu usuario de administrador no está ligado a ningún jugador. <button class="textlink" data-act="unskip">Elegir mi nombre</button></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
-  const p=player(me), pr=profiles[me]||{}, tasks=[];
+  const p=player(me)||{id:me, name:rosterAll().find(x=>x.id===me)?.name||'Jugador', order:'', cat:''}, pr=profiles[me]||{}, tasks=[];
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ const v=avOf(me,f.j); tasks.push(`<a class="task ${v?'done':''}" href="#disponibilidad-${f.j}"><span class="ti">${v?'✓':'?'}</span><span><b>Disponibilidad, jornada ${f.j}</b><small>${v? 'Has dicho: '+AV_LABEL[v.s]+'. Puedes cambiarla hasta el '+esc(fmtDT(deadline(f.j))) : 'Contra '+esc(clubName(persp(f).rival))+'. Responde antes del '+esc(fmtDT(deadline(f.j)))}</small></span></a>`); });
   pendingMvp().forEach(j=>tasks.push(`<a class="task hot" href="#mvp-${j}"><span class="ti">🏆</span><span><b>Vota al MVP, jornada ${j}</b><small>Un voto, hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</small></span></a>`));
   pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>Encuesta de la jornada ${j}</b><small>Has jugado contra ${esc(clubName(persp(poloFix(j)).rival))}. 2 minutos.</small></span></a>`));
@@ -1022,8 +1025,8 @@ function vLogin(){
 function vClaim(){
   const taken=new Set(Object.keys(claims).filter(pid=>claims[pid]?.email!==authUser.email));
   return `<div class="wrap" style="padding-top:30px;padding-bottom:40px"><p class="muted small">Has entrado como ${esc(authUser.email)}. <button class="textlink" data-act="signout">Cambiar de cuenta</button></p>
-    <h1 class="q" style="font-size:clamp(2.2rem,8vw,3.2rem);margin-top:10px">¿Quién eres?</h1><p class="muted">Elige tu nombre de la lista del equipo. Quedará ligado a este Gmail.</p>
-    <div class="claimgrid stagger">${S.players.filter(p=>p.active!==false).sort((a,b)=>a.order-b.order).map(p=>`<button data-act="claim" data-id="${esc(p.id)}" ${taken.has(p.id)?'disabled':''}>${avatar(p)}<span>${esc(p.name)}${taken.has(p.id)?'<br><span class="muted small" style="font-weight:400">ya elegido</span>':''}</span></button>`).join('')}</div>
+    <h1 class="q" style="font-size:clamp(2.2rem,8vw,3.2rem);margin-top:10px">¿Quién eres?</h1><p class="muted">Elige tu nombre de la lista del club. Quedará ligado a este Gmail.</p>
+    <div class="claimgrid stagger">${rosterAll().sort((a,b)=>(a.teams[0]||'').localeCompare(b.teams[0]||'')||(a.order||0)-(b.order||0)).map(p=>`<button data-act="claim" data-id="${esc(p.id)}" ${taken.has(p.id)?'disabled':''}>${avatar(p)}<span>${esc(p.name)}<small class="muted" style="display:block;font-weight:400">${esc(p.teams.map(t=>clubTeams().find(x=>x.id===t)?.short||t).join(', '))}</small>${taken.has(p.id)?'<br><span class="muted small" style="font-weight:400">ya elegido</span>':''}</span></button>`).join('')}</div>
     ${isAdmin?`<p style="margin-top:20px"><button class="textlink" data-act="skip">Soy administrador y no juego</button></p>`:''}
     <p class="source">¿Tu nombre aparece como elegido y no has sido tú? Avisa al capitán para que lo libere.</p></div>`;
 }
@@ -1031,7 +1034,7 @@ function vClaim(){
 /* ---------------- Administración ---------------- */
 function vAdmin(){
   if(!canManage) return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1></div><div class="notice">${me? 'La gestión está limitada a los capitanes marcados. Un administrador puede abrirla a todo el equipo en Temporadas y ajustes.' : 'Elige tu nombre en Yo para poder gestionar.'}</div></div>`;
-  const tabs=[['jornada','Matchday'],['calendario','Liga y calendario'],['preguntas','Encuesta'],...(canManage?[['plantilla','Plantilla y fotos'],['temporadas','Temporadas y ajustes']]:[])];
+  const tabs=[['jornada','Matchday'],['docs-go','Documentos'],['calendario','Liga y calendario'],['preguntas','Encuesta'],...(canManage?[['plantilla','Plantilla y fotos'],['temporadas','Temporadas y ajustes']]:[])];
   if(!tabs.some(x=>x[0]===ui.adminTab)) ui.adminTab='jornada'; const t=ui.adminTab;
   return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1><p class="lede">Todo se edita aquí y se actualiza solo en el resto de la app.${viewSeason!==currentSeason()?` <b>Estás editando la temporada ${esc(viewSeason)}.</b>`:''}</p></div>
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
@@ -1087,7 +1090,7 @@ function aPrep(j){
     <div class="row" style="margin-top:14px"><button class="btn" data-act="prep-save" data-j="${j}">Guardar cambios</button>${t.calOk? '<span class="okmark">✓ Calendario confirmado</span>' : `<button class="btn brass" data-act="cal-ok" data-j="${j}">Confirmar calendario</button>`}</div>
     <p class="muted small">Al cambiar fecha u hora se actualizan solos el calendario, la portada, la página de la jornada, el plazo de disponibilidad y los mensajes. El resto de enfrentamientos de la liga se editan en «Liga y calendario».</p></div>
     <div><div class="sec-h"><h2>Orden de juego</h2></div>${lineupList(j).length? lineupStrip(j) : '<div class="empty">Aún sin convocatoria.</div>'}
-      <div class="row" style="margin-top:12px"><a class="btn ghost sm" href="#jornada-${j}">Ver la página de la jornada</a></div></div></div></section>`;
+      <div class="row" style="margin-top:12px"><a class="btn ghost sm" href="#jornada-${j}">Ver la página de la jornada</a><button class="btn ghost sm" data-act="docs-j" data-j="${j}">Documentos de la jornada (${(ensureDocsSub(), Object.values(docs).filter(d=>d.j===j).length)})</button></div></div></div></section>`;
 }
 function aPost(j){
   const f=poloFix(j); if(!isPlayed(f)) return `<section class="sec"><div class="empty">El postpartido se activa al guardar los resultados: se abren la encuesta para los que jugaron y la votación del MVP.</div></section>`;
@@ -1676,7 +1679,15 @@ async function playIntro(){
 }
 
 /* ===================== GESTIÓN DEPORTIVA DEL CLUB ===================== */
-let isManager=false, clubData={}, clubSubs=[], clubKey='';
+let isManager=false, clubData={}, clubSubs=[], clubKey='', roster=null;
+// Lista de nombres de todos los equipos (solo nombre e id), para que cualquier jugador pueda elegir su nombre al entrar
+function rosterAll(){ const out=new Map(); const add=(tid,list)=>(list||[]).forEach(p=>{ if(!out.has(p.id)) out.set(p.id,{...p,teams:[tid]}); else if(!out.get(p.id).teams.includes(tid)) out.get(p.id).teams.push(tid); });
+  Object.entries(roster?.teams||{}).forEach(([t,l])=>add(t,l));
+  if(!roster?.teams?.['polo-a']) add('polo-a', seed().players.map(p=>({id:p.id,name:p.name,order:p.order})));
+  if(S.players.length && !roster?.teams?.[teamId]) add(teamId, S.players.map(p=>({id:p.id,name:p.name,order:p.order})));
+  return [...out.values()]; }
+function syncRoster(){ if(B.mode!=='firebase'&&B.mode!=='demo') return; const list=S.players.filter(p=>p.active!==false).map(p=>({id:p.id,name:p.name,order:p.order||0}));
+  roster={...(roster||{}), teams:{...(roster?.teams||{}), [teamId]:list}}; B.merge('public/roster',{teams:{[teamId]:list}}).catch(()=>{}); }
 const canClub = () => isAdmin || isManager;
 function checkManager(m){ const em=(authUser?.email||'').toLowerCase(); isManager = !!(em && (m?.managerEmails||[]).includes(em)); }
 function ensureClubSubs(){ const key=clubTeams().map(t=>t.id).join(',')+'|'+viewSeason; if(key===clubKey) return; clubKey=key;
@@ -1692,7 +1703,7 @@ function tieState(d,f){ return withS(d,()=>{ const p=persp(f), tr=tieFromRubbers
   let st = p.played? (p.ps>p.rs?'win':'loss') : future? 'next' : 'pending';
   return {p, rival:clubName(p.rival), st, confirm: p.played && f.status!=='official', singles, dbl, partial: !p.played && tr.decided>0}; }); }
 const ST_LABEL={win:'Victoria',loss:'Derrota',pending:'Pendiente de resultado',next:'Programada'};
-function clubNav(cur){ const tabs=[['club','Dashboard'],['club-equipos','Equipos'],['club-resumen','Resumen del fin de semana'],...(isAdmin?[['club-ajustes','Configuración']]:[])];
+function clubNav(cur){ const tabs=[['club','Dashboard'],['club-equipos','Equipos'],['club-docs','Documentación'],['club-resumen','Resumen del fin de semana'],...(isAdmin?[['club-ajustes','Configuración']]:[])];
   return `<div class="chips clubnav">${tabs.map(([k,l])=>`<a class="chip" href="#${k}" aria-pressed="${cur===k}">${l}</a>`).join('')}</div>`; }
 function clubWeekRows(){
   const sat=ui.clubSat||ymd(weekendSat()), rg=weekendRange(sat), out=[], idle=[];
@@ -1742,7 +1753,7 @@ function vClubEquipos(){
 function vClubTeam(tid){
   if(!canClub()) return vClub(); ensureClubSubs(); const t=clubTeams().find(x=>x.id===tid); if(!t) return vNotFound(); const d=clubData[tid];
   const head=`<div class="wrap club"><div class="pagehead"><a class="textlink" href="#club">← Gestión deportiva</a><h1 style="margin-top:10px">${esc(t.name)}</h1><p class="lede">${esc(t.cat||'')}${d?.comp?.group? ', '+esc(d.comp.group):''}. Temporada ${esc(viewSeason)}.</p>
-    <div class="row" style="margin-top:12px"><button class="btn brass" data-act="team-open" data-t="${esc(tid)}">Abrir la app del equipo</button></div></div>`;
+    <div class="row" style="margin-top:12px"><button class="btn brass" data-act="team-open" data-t="${esc(tid)}">Abrir la app del equipo</button><button class="btn ghost" data-act="team-docs" data-t="${esc(tid)}">Documentación</button></div></div>`;
   if(!d) return head+`<section class="sec"><div class="empty">Este equipo aún no tiene calendario ni plantilla cargados. Ábrelo y cárgalos desde Gestión, o envía los documentos de la FCT.</div></section></div>`;
   return withS(d,()=>{ const st=standings(), mine=st.find(r=>r.id===POLO)||{}, ts=teamStats(), caps=(d.captains||[]).map(pname);
     const fx=d.fixtures.filter(f=>f.home===POLO||f.away===POLO).sort((a,b)=>a.j-b.j);
@@ -1755,6 +1766,7 @@ function vClubTeam(tid){
     <section class="sec"><div class="split"><div><div class="sec-h"><h2>Plantilla</h2></div><p class="muted small" style="margin-top:-6px">Capitán: ${caps.length? esc(caps.join(', ')) : 'sin asignar'}</p>
       ${d.players.length? `<div class="tscroll"><table><thead><tr><th>Jugador</th><th>Cat.</th><th>Individuales</th><th>Dobles</th></tr></thead><tbody>${d.players.filter(p=>p.active!==false).sort((a,b)=>a.order-b.order).map(p=>{ const a=playerStats(p.id), b=playerStats(p.id,null,'D'); return `<tr><td>${esc(p.name)}</td><td>${esc(p.cat||'')}</td><td>${a.w}-${a.l}</td><td>${b.w}-${b.l}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Sin plantilla.</div>'}</div>
       <div><div class="sec-h"><h2>Pendiente de validar</h2></div>${pend.length? `<ul class="insights">${pend.map(f=>{ const s=tieState(d,f); return `<li>Jornada ${f.j} contra ${esc(s.rival)}<small>${s.confirm? 'Resultado provisional, falta confirmarlo como oficial' : s.st==='pending'? 'Sin resultado' : 'Marcador sin los partidos individuales'}</small></li>`; }).join('')}</ul>` : '<div class="empty">Nada pendiente.</div>'}
+      <div class="sec-h" style="margin-top:20px"><h2>Documentación</h2><a href="#club-docs" data-act="club-f-team" data-t="${esc(tid)}">Ver documentos</a></div>${(()=>{ ensureClubDocs(); const ds=Object.values(clubDocs[tid]||{}); return ds.length? `<p class="small">${ds.length} ${ds.length===1?'documento':'documentos'}${ds.filter(x=>x.status==='revision').length? ', '+ds.filter(x=>x.status==='revision').length+' por revisar':''}.</p>` : '<p class="muted small">Sin documentos.</p>'; })()}
       <div class="sec-h" style="margin-top:20px"><h2>Últimas actualizaciones</h2></div>${(d.audit||[]).length? `<ul class="insights">${d.audit.slice(0,8).map(a=>`<li>${esc(a.what.join(', '))}<small>${esc(a.by)}, ${relTime(a.at)}</small></li>`).join('')}</ul>` : '<div class="empty">Sin cambios registrados todavía.</div>'}</div></div></section></div>`; });
 }
 function vClubResumen(){
@@ -1789,9 +1801,211 @@ function vClubAjustes(){
 async function saveMeta(patch,msg){ const m={current:currentSeason(), seasons:meta?.seasons||[viewSeason], ...(meta||{}), ...patch}; meta=m; renderQuiet(); await safe(()=>B.set('meta/app',m),msg); }
 function teamMenuHTML(){ const ts=clubTeams(); return `${ts.map(t=>`<button data-act="team-pick" data-t="${esc(t.id)}" aria-pressed="${t.id===teamId}"><b>${esc(t.short)}</b><small>${esc(t.name)}</small></button>`).join('')}${canClub()? `<a href="#club" data-act="team-menu-close"><b>Gestión deportiva</b><small>Todos los equipos del club</small></a>` : ''}`; }
 
+/* ===================== DOCUMENTOS DEL EQUIPO (Fase 2) ===================== */
+const DOC_KINDS={plantilla:'Listado de jugadores',calendario:'Calendario de la competición',orden:'Orden de juego',acta:'Acta de partidos',resultados:'Resultados',clasificacion:'Clasificación',competicion:'Documentación de la competición',foto:'Fotografía',otro:'Otro'};
+const AI_KINDS=['plantilla','calendario','orden','acta','resultados','clasificacion'];
+const DOC_ST={subido:'Pendiente',procesando:'Procesando',revision:'En revisión',validado:'Validado',completado:'Completado',error:'Error'};
+const CHUNK=906000, MAX_DOC=15*1024*1024;
+let docs={}, docsSub=null, docsKey='';
+const normTxt = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+function guessKind(name, mime){ const n=normTxt(name);
+  if(/image\//.test(mime||'')) return /acta|resultat|result/.test(n)? 'acta' : 'foto';
+  if(/plantilla|jugador|llistat de jug|listado de jug|equip/.test(n)) return 'plantilla';
+  if(/orden|ordre|alineac/.test(n)) return 'orden';
+  if(/acta|resultat|result/.test(n)) return 'acta';
+  if(/clasific|classific/.test(n)) return 'clasificacion';
+  if(/partits|partidos|calendari|calendar|listado partidos|grupo|grup/.test(n)) return 'calendario';
+  return 'otro'; }
+function ensureDocsSub(){ if(docsKey===SEASON_PATH) return; docsKey=SEASON_PATH; try{ docsSub&&docsSub(); }catch(e){} docs={};
+  docsSub=B.watchColl(SEASON_PATH+'/docs', m=>{ docs=m; softRender(); }); }
+function docGroups(){ const g={}; Object.entries(docs).forEach(([id,d])=>{ const k=d.group||id; (g[k] ||= []).push({id,...d}); }); Object.values(g).forEach(a=>a.sort((x,y)=>(y.version||1)-(x.version||1))); return g; }
+const fmtSize = b => b>1048576? (b/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(b/1024))+' KB';
+const docIcon = d => /pdf/.test(d.mime)? '📄' : /sheet|excel|csv/.test(d.mime)||/\.(xlsx?|csv)$/i.test(d.name)? '📊' : /word/.test(d.mime)||/\.docx?$/i.test(d.name)? '📝' : /image/.test(d.mime)? '🖼️' : '📎';
+function vDocs(){
+  if(!canManage && !isManager) return `<div class="wrap"><div class="pagehead"><h1>Documentos</h1></div><div class="notice">Elige tu nombre en Yo para ver la documentación del equipo.</div></div>`;
+  ensureDocsSub(); const groups=Object.values(docGroups()), js=[...new Set(S.fixtures.filter(f=>f.home===POLO||f.away===POLO).map(f=>f.j))].sort((a,b)=>a-b);
+  const filt=ui.docKind||''; const shown=groups.filter(g=>!filt||g[0].kind===filt);
+  const byJ={}; shown.forEach(g=>{ const k=g[0].j? 'j'+g[0].j : 'g'; (byJ[k] ||= []).push(g); });
+  const order=['g',...js.map(j=>'j'+j), ...Object.keys(byJ).filter(k=>k!=='g'&&!js.includes(+k.slice(1)))].filter((k,i,a)=>a.indexOf(k)===i && byJ[k]);
+  const row=g=>{ const d=g[0]; return `<li class="docrow"><span class="di">${docIcon(d)}</span><div class="dmain"><b>${esc(d.name)}</b><small>${esc(DOC_KINDS[d.kind]||d.kind)}, ${fmtSize(d.size||0)}, ${esc(d.byName||'')}, ${relTime(d.at)}${(d.version||1)>1? ', versión '+d.version : ''}</small>
+      ${g.length>1? `<details class="dver"><summary>${g.length} versiones</summary>${g.map(v=>`<div><button class="textlink" data-act="doc-dl" data-id="${esc(v.id)}">v${v.version||1}</button> <span class="muted small">${relTime(v.at)}, ${esc(v.byName||'')}</span></div>`).join('')}</details>` : ''}</div>
+      <span class="dst ${d.status}">${DOC_ST[d.status]||d.status}</span>
+      <span class="dact"><button class="btn sm ghost" data-act="doc-dl" data-id="${esc(d.id)}">Descargar</button>${AI_KINDS.includes(d.kind)? `<a class="btn sm ${d.status==='revision'?'brass':'ghost'}" href="#doc-${esc(d.id)}">${d.status==='revision'?'Revisar':d.status==='completado'?'Ver lectura':'Leer con IA'}</a>` : ''}<button class="iconbtn" data-act="doc-del" data-id="${esc(d.id)}" aria-label="Borrar">✕</button></span></li>`; };
+  return `<div class="wrap"><div class="pagehead"><p class="qsec">${esc(curTeam().name)}, temporada ${esc(viewSeason)}</p><h1>Documentos</h1><p class="lede">Listados, órdenes de juego, actas, clasificaciones y fotos de cada jornada. Los originales se guardan y se pueden descargar siempre.</p></div>
+  <section class="sec"><div class="dropzone" id="dropzone"><p><b>Arrastra aquí los archivos</b> o <label class="textlink" style="cursor:pointer">elígelos<input type="file" id="doc-files" multiple hidden accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp,.heic,.txt"></label></p>
+    <p class="muted small">PDF, Excel, Word, JPG o PNG, hasta 15 MB por archivo.</p>
+    <div class="row" style="justify-content:center;margin-top:8px"><label class="small">Jornada <select id="doc-j" style="width:auto"><option value="">General de la temporada</option>${js.map(j=>`<option value="${j}" ${ui.docJ==j?'selected':''}>Jornada ${j}</option>`).join('')}</select></label>
+      <label class="small">Tipo <select id="doc-k" style="width:auto"><option value="">Detectar por el nombre</option>${Object.entries(DOC_KINDS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></label></div>
+    <div id="doc-prog"></div></div></section>
+  <section class="sec"><div class="chips"><button class="chip" data-act="doc-filter" data-v="" aria-pressed="${!filt}">Todos</button>${Object.entries(DOC_KINDS).map(([k,l])=>`<button class="chip" data-act="doc-filter" data-v="${k}" aria-pressed="${filt===k}">${l}</button>`).join('')}</div></section>
+  ${order.length? order.map(k=>`<section class="sec"><div class="sec-h"><h2>${k==='g'?'General de la temporada':'Jornada '+k.slice(1)}</h2></div><ul class="doclist">${byJ[k].map(row).join('')}</ul></section>`).join('') : '<section class="sec"><div class="empty">Aún no hay documentos.</div></section>'}</div>`;
+}
+const fileToDataURL = f => new Promise((ok,ko)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=()=>ko(r.error); r.readAsDataURL(f); });
+async function uploadDocs(files){
+  const jSel=$('#doc-j')?.value||'', kSel=$('#doc-k')?.value||'', prog=$('#doc-prog');
+  for(const f of files){
+    if(f.size>MAX_DOC){ toast(f.name+': supera 15 MB'); continue; }
+    const kind=kSel||guessKind(f.name,f.type), j=jSel? +jSel : null, base=normTxt(f.name.replace(/\.[^.]+$/,''));
+    const group=kind+'|'+(j||'g')+'|'+base, prev=Object.values(docs).filter(d=>d.group===group), version=prev.length? Math.max(...prev.map(d=>d.version||1))+1 : 1;
+    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    if(prog) prog.innerHTML=`<p class="small">Subiendo ${esc(f.name)}…</p>`;
+    try{ const data=(await fileToDataURL(f)).split(',')[1]||''; const n=Math.ceil(data.length/CHUNK)||1;
+      for(let i=0;i<n;i++){ await trackWrite(B.set(`${SEASON_PATH}/docs/${id}/chunks/${i}`,{d:data.slice(i*CHUNK,(i+1)*CHUNK)})); if(prog) prog.innerHTML=`<p class="small">Subiendo ${esc(f.name)}: ${Math.round((i+1)*100/n)}%</p>`; }
+      await trackWrite(B.set(`${SEASON_PATH}/docs/${id}`,{name:f.name, mime:f.type||'application/octet-stream', size:f.size, kind, j, group, version, chunks:n, status:'subido', at:Date.now(), by:authUser?.email||'', byName:(me&&player(me)?.name)||authUser?.name||authUser?.email||''}));
+      toast(f.name+' subido'+(version>1?' (versión '+version+')':''));
+    }catch(e){ toast('No se ha podido subir '+f.name); }
+  }
+  if(prog) prog.innerHTML='';
+}
+async function docBlob(id){ const d=docs[id]; const parts=[]; for(let i=0;i<(d.chunks||1);i++){ const c=await B.getDoc(`${SEASON_PATH}/docs/${id}/chunks/${i}`); parts.push(c?.d||''); }
+  const bin=atob(parts.join('')), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:d.mime||'application/octet-stream'}); }
+async function docDownload(id){ try{ const b=await docBlob(id), url=URL.createObjectURL(b), a=document.createElement('a'); a.href=url; a.download=docs[id].name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); }catch(e){ toast('No se ha podido descargar'); } }
+async function docDelete(id){ const d=docs[id]; if(!d||!confirm('¿Borrar '+d.name+'? Se borra el original.')) return; await safe(async()=>{ for(let i=0;i<(d.chunks||1);i++) await B.del(`${SEASON_PATH}/docs/${id}/chunks/${i}`); await B.del(`${SEASON_PATH}/docs/${id}`); },'Documento borrado'); }
+
+/* ===================== LECTURA CON IA (Fase 3) ===================== */
+const LIBS={pdf:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', pdfw:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js', xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', mammoth:'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'};
+const loadScript = src => new Promise((ok,ko)=>{ if(document.querySelector(`script[src="${src}"]`)) return ok(); const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error('No se ha podido cargar '+src)); document.head.appendChild(s); });
+async function imgToJpeg(src,max=1600){ const im=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=src; }); const k=Math.min(1,max/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); c.getContext('2d').drawImage(im,0,0,c.width,c.height); return c.toDataURL('image/jpeg',.85); }
+async function prepareDoc(id){   // texto e imágenes: solo lo necesario para la lectura
+  const d=docs[id], blob=await docBlob(id), name=d.name.toLowerCase(), out={text:'',images:[]};
+  if(/pdf/.test(d.mime)||name.endsWith('.pdf')){ await loadScript(LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc=LIBS.pdfw;
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise; const pages=Math.min(pdf.numPages,15);
+    for(let i=1;i<=pages;i++){ const pg=await pdf.getPage(i); const tc=await pg.getTextContent(); out.text+=tc.items.map(x=>x.str+(x.hasEOL?'\n':' ')).join('')+'\n'; }
+    if(out.text.replace(/\s/g,'').length<400){ if(out.text.replace(/\s/g,'').length<40) out.text=''; for(let i=1;i<=Math.min(pdf.numPages,3);i++){ const pg=await pdf.getPage(i), vp=pg.getViewport({scale:1}), sc=1600/Math.max(vp.width,vp.height), v2=pg.getViewport({scale:sc}), c=document.createElement('canvas'); c.width=v2.width; c.height=v2.height; await pg.render({canvasContext:c.getContext('2d'),viewport:v2}).promise; out.images.push(c.toDataURL('image/jpeg',.85)); } } }
+  else if(/sheet|excel|csv/.test(d.mime)||/\.(xlsx?|csv)$/.test(name)){ await loadScript(LIBS.xlsx); const wb=XLSX.read(new Uint8Array(await blob.arrayBuffer()),{type:'array'}); out.text=wb.SheetNames.map(n=>'### '+n+'\n'+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n'); }
+  else if(name.endsWith('.docx')){ await loadScript(LIBS.mammoth); out.text=(await mammoth.extractRawText({arrayBuffer:await blob.arrayBuffer()})).value; }
+  else if(name.endsWith('.doc')) throw new Error('Los .doc antiguos no se pueden leer: guárdalo como .docx o PDF');
+  else if(/image/.test(d.mime)){ out.images.push(await imgToJpeg(URL.createObjectURL(blob))); }
+  else if(/text/.test(d.mime)) out.text=await blob.text();
+  out.text=out.text.slice(0,60000); return out; }
+async function docRead(id){
+  const d=docs[id]; if(!d) return; if(B.mode!=='firebase') return toast('La lectura con IA funciona en la app publicada, no en la vista previa');
+  const ref=`${SEASON_PATH}/docs/${id}`; await B.update(ref,{status:'procesando', procAt:Date.now()}).catch(()=>{});
+  try{ const prep=await prepareDoc(id), tok=await B.idToken();
+    const ctx={team:curTeam().name, players:S.players.map(p=>p.full||p.name), clubs:S.teams.map(t=>t.name), jornada:d.j||null};
+    const r=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({kind:d.kind,text:prep.text,images:prep.images,context:ctx})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error||('Error '+r.status));
+    await trackWrite(B.update(ref,{status:'revision', extraction:{data:j.data, provider:j.provider, model:j.model, usage:j.usage||null, at:Date.now(), images:j.imagesUsed||0}, error:DEL}));
+    toast('Lectura lista: revísala'); location.hash='doc-'+id;
+  }catch(e){ await B.update(ref,{status:'error', error:String(e.message||e).slice(0,300)}).catch(()=>{}); toast('No se ha podido leer: '+(e.message||e)); }
+}
+/* ---------- emparejar nombres del documento con la app ---------- */
+const STOP=new Set(['club','de','del','la','el','tenis','tennis','rc','rst','ct','ce','rct','real','sant','sport','esportiu','s','i','y','a','b']);
+function matchTeam(name){ const n=normTxt(name); if(/\bpolo\b/.test(n)) return POLO; const toks=n.split(' ').filter(t=>t&&!STOP.has(t)); let best=null,bs=0;
+  S.teams.forEach(t=>{ const tt=new Set(normTxt(t.name+' '+t.short).split(' ').filter(x=>x&&!STOP.has(x))); const sc=toks.filter(x=>tt.has(x)).length; if(sc>bs){ bs=sc; best=t.id; } }); return bs? best : null; }
+function matchPlayer(name){ const toks=normTxt(name).split(' ').filter(Boolean); let best=null,bs=0;
+  S.players.forEach(p=>{ const pt=new Set(normTxt((p.full||'')+' '+p.name).split(' ')); const sc=toks.filter(x=>pt.has(x)).length; if(sc>bs){ bs=sc; best=p.id; } }); return bs>=2 || (bs===1&&toks.length===1)? best : null; }
+// «VILLASECA FONT, JOAN» → «Joan Villaseca Font»; respeta partículas (de, del, i, y)
+const titleCase = s => String(s||'').toLowerCase().split(/\s+/).filter(Boolean).map((w,i)=> i && /^(de|del|la|las|los|i|y|d'|van|von)$/.test(w)? w : w.replace(/(^|[-'])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase())).join(' ');
+const personName = raw => { const t=String(raw||'').trim(); if(t.includes(',')){ const [sur,given]=t.split(',').map(x=>x.trim()); return titleCase(given+' '+sur); } return /[a-z]/.test(t)? t : titleCase(t); };
+const shortName = full => { const t=personName(full).split(/\s+/); return t.length>=2? t[0]+' '+t[1] : t[0]||''; };
+const confBadge = c => c==null? '' : `<span class="conf ${c>=.85?'hi':c>=.6?'mid':'lo'}">${c>=.85?'Alta':c>=.6?'Media':'Baja'}</span>`;
+function initReview(id){ const d=docs[id], x=clone(d.extraction?.data||{}); const rv={id,kind:d.kind,x,j:x.jornada||x.after_jornada||d.j||null,force:false};
+  if(d.kind==='plantilla') rv.rows=(x.players||[]).map(p=>{ const m=matchPlayer(p.name); return {...p, act: m? 'link':'new', pid:m}; });
+  if(d.kind==='calendario') rv.rows=(x.fixtures||[]).map(f=>({...f, h:matchTeam(f.home), a:matchTeam(f.away), use:true}));
+  if(d.kind==='orden'){ rv.rows=[...(x.singles||[]).map(s=>({type:'S',n:s.order,names:[s.player],pids:[matchPlayer(s.player)],confidence:s.confidence})), ...(x.doubles||[]).slice(0,1).map(s=>({type:'D',n:5,names:s.players||[],pids:(s.players||[]).map(matchPlayer),confidence:s.confidence}))]; }
+  if(d.kind==='acta'||d.kind==='resultados'){ let si=0; rv.rows=(x.matches||[]).map(m=>{ const isD=m.type==='D'; const n=isD?5:(m.order||++si); return {type:isD?'D':'S',n,names:m.polo_players||[],pids:(m.polo_players||[]).map(matchPlayer),score:m.score||'',winner:m.winner,confidence:m.confidence}; }); }
+  if(d.kind==='clasificacion') rv.rows=(x.rows||[]).map(r=>({...r, t:matchTeam(r.team)}));
+  ui.rev=rv; }
+function vDoc(id){
+  ensureDocsSub(); const d=docs[id]; if(!d) return `<div class="wrap"><div class="pagehead"><a class="textlink" href="#docs">← Documentos</a><h1>Documento</h1></div><div class="empty">Cargando…</div></div>`;
+  const head=`<div class="wrap"><div class="pagehead"><a class="textlink" href="#docs">← Documentos</a><h1 style="margin-top:10px">${esc(d.name)}</h1><p class="lede">${esc(DOC_KINDS[d.kind]||d.kind)}${d.j?', jornada '+d.j:''}. Estado: <b>${DOC_ST[d.status]||d.status}</b>.${d.validatedBy? ' Validado por '+esc(d.validatedBy)+' '+relTime(d.validatedAt)+'.' : ''}</p></div>`;
+  const preview=`<div class="docprev" id="docprev"><button class="btn ghost sm" data-act="doc-preview" data-id="${esc(id)}">Ver el documento original</button></div>`;
+  if(!d.extraction){ return head+`<section class="sec"><div class="panel"><b>Lectura automática</b><p class="muted small" style="margin:4px 0 12px">La IA leerá el documento y propondrá los datos. No se guarda nada hasta que lo revises y lo valides. ${d.status==='error'? '<br><b style="color:var(--loss)">Último intento: '+esc(d.error||'error')+'</b>' : ''}</p>
+      ${(()=>{ const busy=d.status==='procesando' && Date.now()-(d.procAt||0)<120000; return `<button class="btn brass" data-act="doc-read" data-id="${esc(id)}" ${busy?'disabled':''}>${busy?'Leyendo…':d.status==='procesando'?'Volver a leer':'Leer con IA'}</button>`; })()}</div></section><section class="sec">${preview}</section></div>`; }
+  if(!ui.rev || ui.rev.id!==id) initReview(id); const rv=ui.rev, x=rv.x, unclear=(x.unclear||[]).filter(Boolean);
+  const pOpts=sel=>`<option value="">Sin asignar</option>`+S.players.map(p=>`<option value="${esc(p.id)}" ${sel===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  const tOpts=sel=>`<option value="">Club nuevo</option>`+S.teams.map(t=>`<option value="${esc(t.id)}" ${sel===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
+  let body='', warn=[];
+  if(rv.kind==='plantilla') body=`<table><thead><tr><th class="l">En el documento</th><th>Conf.</th><th class="l">En la app</th><th>Cat.</th><th>Pts</th></tr></thead><tbody>${rv.rows.map((r,i)=>`<tr><td class="l">${esc(r.name||'?')}</td><td>${confBadge(r.confidence)}</td><td class="l"><select data-rev="act" data-i="${i}" style="width:auto"><option value="new" ${r.act==='new'?'selected':''}>Jugador nuevo: ${esc(shortName(r.name))}</option><option value="link" ${r.act==='link'?'selected':''}>Es un jugador existente</option><option value="skip" ${r.act==='skip'?'selected':''}>Ignorar</option></select>${r.act==='link'?`<select data-rev="pid" data-i="${i}" style="width:auto">${pOpts(r.pid)}</select>`:''}${r.act==='new'&&matchPlayer(r.name)?'<small class="dup"> posible duplicado</small>':''}</td><td>${esc(r.category||'–')}</td><td>${r.points??'–'}</td></tr>`).join('')}</tbody></table>`;
+  if(rv.kind==='calendario'){ body=`<table><thead><tr><th></th><th>J</th><th>Fecha</th><th class="l">Local</th><th class="l">Visitante</th><th>Marcador</th><th>Conf.</th><th class="l">En la app</th></tr></thead><tbody>${rv.rows.map((r,i)=>{ const ex=S.fixtures.find(f=>f.j===+r.jornada && ((f.home===r.h&&f.away===r.a))); const st=!ex? 'Nuevo' : (ex.date!==r.date||ex.time!==(r.time||ex.time))? 'Cambia fecha u hora' : (r.home_score!=null && isPlayed(ex) && (ex.hs!==r.home_score||ex.as!==r.away_score))? 'Marcador distinto' : 'Igual';
+      if(st==='Marcador distinto') warn.push(`J${r.jornada}: el marcador del documento no coincide con el de la app`);
+      return `<tr><td><input type="checkbox" data-rev="use" data-i="${i}" ${r.use?'checked':''}></td><td>${r.jornada??'?'}</td><td>${esc(r.date||'?')} ${esc(r.time||'')}</td><td class="l">${esc(r.home)}<br><select data-rev="h" data-i="${i}" style="width:auto">${tOpts(r.h)}</select></td><td class="l">${esc(r.away)}<br><select data-rev="a" data-i="${i}" style="width:auto">${tOpts(r.a)}</select></td><td>${r.home_score!=null? r.home_score+'-'+r.away_score : '–'}</td><td>${confBadge(r.confidence)}</td><td class="l small">${st}</td></tr>`; }).join('')}</tbody></table>`;
+    if(!rv.rows.some(r=>r.h===POLO||r.a===POLO)) warn.push('No se ha encontrado al Polo en ningún enfrentamiento: revisa los clubes'); }
+  if(rv.kind==='orden'||rv.kind==='acta'||rv.kind==='resultados'){ const fx=rv.j? poloFix(+rv.j) : null; if(!fx) warn.push('Elige la jornada a la que corresponde');
+    if(fx && isPlayed(fx) && fx.status==='official' && rv.kind!=='orden') warn.push('Esta jornada tiene un resultado confirmado como oficial: solo se sobrescribirá si lo marcas abajo');
+    const t=fx? tie(fx.j) : null;
+    body=`<div class="row" style="margin-bottom:10px"><label class="small">Jornada <select data-rev="j" style="width:auto"><option value="">Elegir</option>${S.fixtures.filter(f=>f.home===POLO||f.away===POLO).map(f=>`<option value="${f.j}" ${+rv.j===f.j?'selected':''}>Jornada ${f.j}, contra ${esc(clubName(persp(f).rival))}</option>`).join('')}</select></label></div>
+      <table><thead><tr><th class="l">Partido</th><th class="l">En el documento</th><th class="l">Jugadores en la app</th>${rv.kind!=='orden'?'<th>Marcador (Polo primero)</th>':''}<th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>{ const cur=t? t.rubbers.find(x=>x.n===r.n) : null; const e=rv.kind!=='orden'? validateRubber({type:r.type,polo:r.pids.filter(Boolean),score:r.score,res:null}) : [];
+        if(cur && rv.kind!=='orden' && cur.score && cur.score!==r.score) warn.push(`${r.type==='D'?'Dobles':'Individual '+r.n}: en la app ya hay «${cur.score}»`);
+        return `<tr><td class="l">${r.type==='D'?'Dobles':'Individual '+r.n}</td><td class="l">${esc((r.names||[]).join(' y ')||'?')}</td><td class="l">${(r.type==='D'?[0,1]:[0]).map(k=>`<select data-rev="rp" data-i="${i}" data-k="${k}" style="width:auto">${pOpts(r.pids[k])}</select>`).join(' ')}</td>${rv.kind!=='orden'?`<td><input type="text" data-rev="score" data-i="${i}" value="${esc(r.score||'')}" style="width:120px">${e.length&&r.score?`<small class="dup">${esc(e[0])}</small>`:''}</td>`:''}<td>${confBadge(r.confidence)}</td></tr>`; }).join('')}</tbody></table>
+      ${rv.kind!=='orden'&&fx&&fx.status==='official'? `<label class="small" style="display:block;margin-top:10px"><input type="checkbox" data-rev="force" ${rv.force?'checked':''}> Sí, quiero sustituir el resultado oficial de esta jornada</label>`:''}`; }
+  if(rv.kind==='clasificacion'){ body=`<div class="row" style="margin-bottom:10px"><label class="small">Tras la jornada <input type="number" data-rev="j" value="${esc(rv.j||'')}" style="width:80px"></label></div><table><thead><tr><th>Pos.</th><th class="l">En el documento</th><th class="l">Club en la app</th><th>Pts</th><th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>`<tr><td>${r.pos}</td><td class="l">${esc(r.team)}</td><td class="l"><select data-rev="t" data-i="${i}" style="width:auto">${tOpts(r.t)}</select></td><td>${r.points??'–'}</td><td>${confBadge(r.confidence)}</td></tr>`).join('')}</tbody></table>`;
+    if(rv.rows.some(r=>!r.t)) warn.push('Hay clubes sin emparejar: elige cuál es cada uno'); }
+  const done=d.status==='completado';
+  return head+`<div class="docrev"><section class="sec"><div class="sec-h"><h2>Datos leídos</h2><span class="muted small">${esc(d.extraction.provider||'')} ${esc(d.extraction.model||'')}${d.extraction.usage?.total_tokens? ', '+d.extraction.usage.total_tokens+' tokens':''}</span></div>
+      <p class="muted small" style="margin-top:-6px">La IA propone; tú decides. Revisa cada fila, corrige lo que haga falta y valida. Nada cambia en la app hasta que pulses «Validar y aplicar».</p>
+      ${unclear.length? `<div class="vbox warn"><b>No se ha podido leer con seguridad</b><ul>${unclear.map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
+      ${warn.length? `<div class="vbox err"><b>Discrepancias o avisos</b><ul>${[...new Set(warn)].map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
+      <div class="tscroll">${body||'<div class="empty">La lectura no ha devuelto datos.</div>'}</div>
+      <div class="row" style="margin-top:16px">${done? '<span class="okmark">✓ Aplicado</span>' : `<button class="btn brass" data-act="doc-apply" data-id="${esc(id)}">Validar y aplicar</button>`}<button class="btn ghost sm" data-act="doc-read" data-id="${esc(id)}">Volver a leer</button>${!done?`<button class="btn ghost sm" data-act="doc-discard" data-id="${esc(id)}">Descartar lectura</button>`:''}</div></section>
+    <section class="sec">${preview}</section></div></div>`;
+}
+async function docPreview(id){ const box=$('#docprev'); if(!box) return; box.innerHTML='<p class="muted small">Cargando…</p>';
+  try{ const b=await docBlob(id), url=URL.createObjectURL(b), d=docs[id];
+    box.innerHTML= /image/.test(d.mime)? `<img src="${url}" alt="" style="max-width:100%;border-radius:12px">` : /pdf/.test(d.mime)? `<iframe src="${url}" title="Documento original" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:12px"></iframe>` : `<p class="small">Este formato no se puede ver aquí. <button class="textlink" data-act="doc-dl" data-id="${esc(id)}">Descárgalo</button>.</p>`;
+  }catch(e){ box.innerHTML='<p class="muted small">No se ha podido cargar el original.</p>'; } }
+function applyReview(){
+  const rv=ui.rev, d=docs[rv.id]; if(!rv||!d) return; const kind=rv.kind; let summary='';
+  if(kind==='plantilla'){ let nNew=0,nUpd=0; rv.rows.forEach(r=>{ if(r.act==='skip') return;
+      if(r.act==='link'&&r.pid){ const p=player(r.pid); if(p){ if(r.category) p.cat=r.category; if(r.points!=null) p.pts=r.points; if(r.order!=null) p.order=r.order; nUpd++; } }
+      else if(r.act==='new'&&r.name){ const nm=shortName(r.name); let id=slug(nm); if(player(id)){ const ex=player(id); if(normTxt(ex.full)===normTxt(personName(r.name))) return; id+='-2'; }
+        S.players.push({id,name:nm,full:personName(r.name),cat:r.category||'',pts:r.points??0,order:r.order??(Math.max(0,...S.players.map(p=>p.order||0))+1),captain:false,active:true}); nNew++; } });
+    if(rv.x.captain){ const c=matchPlayer(rv.x.captain); if(c && !(S.captains||[]).length && isAdmin) S.captains=[c]; }
+    summary=`${nNew} jugadores nuevos, ${nUpd} actualizados`; }
+  if(kind==='calendario'){ let nNew=0,nUpd=0; const mk=(raw)=>{ let id=slug(raw); while(S.teams.find(t=>t.id===id)) id+='-2'; S.teams.push({id,name:raw,short:raw.replace(/,.*$/,'').trim()||raw,abbr:normTxt(raw).split(' ').filter(t=>!STOP.has(t)).map(w=>w[0]).join('').slice(0,4).toUpperCase()||'?'}); return id; };
+    rv.rows.filter(r=>r.use&&r.jornada).forEach(r=>{ const h=r.h||mk(r.home), a=r.a||mk(r.away); r.h=h; r.a=a;
+      let f=S.fixtures.find(x=>x.j===+r.jornada&&x.home===h&&x.away===a);
+      if(!f){ f={j:+r.jornada,date:r.date||'',time:r.time||'15:00',home:h,away:a,hs:null,as:null}; S.fixtures.push(f); nNew++; }
+      else { if(r.date) f.date=r.date; if(r.time) f.time=r.time; nUpd++; }
+      if(r.home_score!=null && r.away_score!=null && (r.home_score+r.away_score)>0 && (!isPlayed(f) || f.status!=='official' || rv.force)){ f.hs=+r.home_score; f.as=+r.away_score; f.status='official'; } });
+    if(rv.x.group && !S.comp.group) S.comp.group=rv.x.group; if(rv.x.competition && (!S.comp.name||S.comp.name==='Lliga Catalana per Equips')) S.comp.name=rv.x.competition;
+    S.fixtures.sort((a,b)=>a.j-b.j); summary=`${nNew} enfrentamientos nuevos, ${nUpd} actualizados`; }
+  if(kind==='orden'||kind==='acta'||kind==='resultados'){ const j=+rv.j, f=poloFix(j); if(!f) return toast('Elige la jornada');
+    if(kind!=='orden' && f.status==='official' && isPlayed(f) && !rv.force) return toast('Marca la casilla para sustituir el resultado oficial');
+    const t=ensureTie(j);
+    for(const r of rv.rows){ const ru=t.rubbers.find(x=>x.n===r.n); if(!ru) continue; const pids=r.pids.filter(Boolean); if(pids.length) ru.polo=pids;
+      if(kind!=='orden' && r.score){ const e=validateRubber({type:ru.type,polo:ru.polo,score:r.score,res:null}); if(e.length) return toast(`${ru.type==='D'?'Dobles':'Individual '+ru.n}: ${e[0]}`); ru.score=r.score; ru.res=null; } }
+    const set=new Set([...(t.convocados||[]), ...t.rubbers.flatMap(x=>x.polo||[])]); t.convocados=[...set]; const assigned=new Set(t.rubbers.flatMap(x=>x.polo||[])); t.subs=t.convocados.filter(x=>!assigned.has(x));
+    if(kind!=='orden'){ const c=tieFromRubbers(j); if(c.complete){ const home=f.home===POLO; f.hs=home?c.w:c.l; f.as=home?c.l:c.w; f.src='rubbers'; f.status='provisional'; }
+      if(!S.mvp[jid(j)] && isPlayed(f)) S.mvp[jid(j)]={open:true,openedAt:Date.now(),deadline:Date.now()+(+S.rules.mvpHours||48)*3600e3}; }
+    summary=kind==='orden'? `orden de juego de la jornada ${j}` : `resultados de la jornada ${j}`; }
+  if(kind==='clasificacion'){ const order=rv.rows.sort((a,b)=>a.pos-b.pos).map(r=>r.t).filter(Boolean); if(order.length!==new Set(order).size) return toast('Hay clubes repetidos'); S.official={asOf:+rv.j||0,order}; summary='clasificación oficial'; }
+  S.audit=[{at:Date.now(), by:(me&&player(me)?.name)||authUser?.name||authUser?.email||'?', what:['Documento validado: '+d.name+' ('+summary+')']}, ...(S.audit||[])].slice(0,60);
+  saveState('Aplicado: '+summary);
+  B.update(`${SEASON_PATH}/docs/${rv.id}`,{status:'completado', validatedBy:(me&&player(me)?.name)||authUser?.email||'', validatedAt:Date.now(), applied:summary}).catch(()=>{});
+}
+
+/* ---------- Documentación de todos los equipos (gestor del club) ---------- */
+let clubDocs={}, clubDocSubs=[], clubDocKey='';
+function ensureClubDocs(){ const key=clubTeams().map(t=>t.id).join(',')+'|'+viewSeason; if(key===clubDocKey) return; clubDocKey=key;
+  clubDocSubs.forEach(u=>{ try{u()}catch(e){} }); clubDocSubs=[]; clubDocs={};
+  clubTeams().forEach(t=>clubDocSubs.push(B.watchColl('seasons/'+docIdFor(t.id,viewSeason)+'/docs', m=>{ clubDocs[t.id]=m; softRender(); }))); }
+async function clubDocDownload(tid,id){ const d=clubDocs[tid]?.[id]; if(!d) return; const base='seasons/'+docIdFor(tid,viewSeason)+'/docs/'+id;
+  try{ const parts=[]; for(let i=0;i<(d.chunks||1);i++){ const c=await B.getDoc(base+'/chunks/'+i); parts.push(c?.d||''); }
+    const bin=atob(parts.join('')), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([u8],{type:d.mime||'application/octet-stream'})), a=document.createElement('a'); a.href=url; a.download=d.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch(e){ toast('No se ha podido descargar'); } }
+function vClubDocs(){
+  if(!canClub()) return vClub(); ensureClubSubs(); ensureClubDocs();
+  const teams=clubTeams().filter(t=>!ui.clubTeam||ui.clubTeam===t.id);
+  const all=teams.flatMap(t=>Object.entries(clubDocs[t.id]||{}).map(([id,d])=>({t,id,...d})));
+  const pend=all.filter(d=>d.status==='revision').length, err=all.filter(d=>d.status==='error').length;
+  return `<div class="wrap club"><div class="pagehead"><h1>Documentación</h1><p class="lede">Real Club de Polo, temporada ${esc(viewSeason)}: documentos de cada equipo por jornada. Los originales se conservan y se pueden descargar.</p></div>${clubNav('club-docs')}
+    <section class="sec"><div class="row"><select data-act="club-f" data-k="clubTeam" style="max-width:240px"><option value="">Todos los equipos</option>${clubTeams().map(t=>`<option value="${esc(t.id)}" ${ui.clubTeam===t.id?'selected':''}>${esc(t.short)}</option>`).join('')}</select></div>
+      <div class="mdkpis" style="margin-top:12px"><div><b>${all.length}</b><span>documentos</span></div><div class="${pend?'warn':''}"><b>${pend}</b><span>lecturas por revisar</span></div><div><b>${all.filter(d=>d.status==='completado').length}</b><span>incorporados</span></div><div class="${err?'warn':''}"><b>${err}</b><span>con error</span></div></div></section>
+    ${teams.map(t=>{ const ds=Object.entries(clubDocs[t.id]||{}).map(([id,d])=>({id,...d})); const latest={}; ds.forEach(d=>{ const g=d.group||d.id; if(!latest[g]||(d.version||1)>(latest[g].version||1)) latest[g]=d; });
+      const list=Object.values(latest).sort((a,b)=>(a.j||0)-(b.j||0)||(b.at||0)-(a.at||0)); const byJ={}; list.forEach(d=>(byJ[d.j?'Jornada '+d.j:'General de la temporada'] ||= []).push(d));
+      return `<section class="sec"><div class="sec-h"><h2>${esc(t.name)}</h2><button class="textlink" data-act="team-docs" data-t="${esc(t.id)}">Subir documentos</button></div>
+        ${list.length? Object.entries(byJ).map(([g,arr])=>`<p class="qsec" style="margin:12px 0 6px">${esc(g)}</p><ul class="doclist">${arr.map(d=>`<li class="docrow"><span class="di">${docIcon(d)}</span><div class="dmain"><b>${esc(d.name)}</b><small>${esc(DOC_KINDS[d.kind]||d.kind)}, ${fmtSize(d.size||0)}, ${esc(d.byName||'')}, ${relTime(d.at)}${(d.version||1)>1?', versión '+d.version:''}${d.validatedBy?'. Validado por '+esc(d.validatedBy):''}</small></div>
+          <span class="dst ${d.status}">${DOC_ST[d.status]||d.status}</span><span class="dact"><button class="btn sm ghost" data-act="club-doc-dl" data-t="${esc(t.id)}" data-id="${esc(d.id)}">Descargar</button>${AI_KINDS.includes(d.kind)? `<button class="btn sm ${d.status==='revision'?'brass':'ghost'}" data-act="club-doc-open" data-t="${esc(t.id)}" data-id="${esc(d.id)}">${d.status==='revision'?'Revisar':d.status==='completado'?'Ver lectura':'Abrir'}</button>`:''}</span></li>`).join('')}</ul>`).join('') : '<div class="empty">Sin documentos todavía.</div>'}</section>`; }).join('')}</div>`;
+}
+
 /* ===================== ROUTER Y RENDER ===================== */
 const route = () => (location.hash||'#inicio').slice(1)||'inicio';
 function render(){
+  if(me && ui.sLoaded===SEASON_PATH && !ui.teamAuto && !S.players.some(p=>p.id===me)){ const hit=rosterAll().find(p=>p.id===me), other=hit?.teams.find(t=>t!==teamId); if(other){ ui.teamAuto=true; setTimeout(()=>switchTeam(other),0); } }
   updRoles(); if(authReady && authUser && !me && isManager && !adminSkip){ adminSkip=true; if(!route().startsWith('club')) history.replaceState(null,'','#club'); }
   const app=$('#app'), gate=!authReady || !authUser || (!me && !adminSkip);
   document.body.classList.toggle('gate', gate);
@@ -1808,8 +2022,9 @@ function render(){
     else if(r.startsWith('encuesta-')){ html=vEncuesta(+r.slice(9)); nav='yo'; }
     else if(r.startsWith('mvp-')){ html=vMvp(+r.slice(4)); nav='yo'; }
     else if(r==='mi-ficha'){ html=vMiFicha(); nav='yo'; }
-    else if(r==='club'){ html=vClub(); nav='club'; } else if(r==='club-equipos'){ html=vClubEquipos(); nav='club'; } else if(r==='club-resumen'){ html=vClubResumen(); nav='club'; } else if(r==='club-ajustes'){ html=vClubAjustes(); nav='club'; }
+    else if(r==='club'){ html=vClub(); nav='club'; } else if(r==='club-equipos'){ html=vClubEquipos(); nav='club'; } else if(r==='club-resumen'){ html=vClubResumen(); nav='club'; } else if(r==='club-ajustes'){ html=vClubAjustes(); nav='club'; } else if(r==='club-docs'){ html=vClubDocs(); nav='club'; }
     else if(r.startsWith('club-equipo-')){ html=vClubTeam(r.slice(12)); nav='club'; }
+    else if(r==='docs') html=vDocs(); else if(r.startsWith('doc-')) html=vDoc(r.slice(4));
     else if(r==='stats') html=vStats(); else if(r==='yo'||r==='votar') { html=vYo(); nav='yo'; } else if(r==='admin') html=vAdmin(); else html=vNotFound();
     html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del ${esc((curTeam()?.name||'equipo').toLowerCase())} del Real Club de Polo de Barcelona.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
   app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
@@ -1869,7 +2084,7 @@ function saveState(msg='Guardado'){ S.updatedAt=Date.now(); S.captains=S.captain
   let keys=[];
   chain=chain.catch(()=>{}).then(()=>{ if(!base){ keys=['temporada completa (creación)']; return B.set(SEASON_PATH,body); }
       const ch=diffState(base,body); if(!Object.keys(ch).length) return null; keys=Object.keys(ch); ch.updatedAt=body.updatedAt; return B.update(SEASON_PATH,ch); })
-    .then(()=>{ serverS=body; silentSnapshot(body); })
+    .then(()=>{ const pl=JSON.stringify((base||{}).players)!==JSON.stringify(body.players); serverS=body; silentSnapshot(body); if(pl || !roster?.teams?.[teamId]) syncRoster(); })
     .catch(e=>{ if(/not-found/.test(e?.code||'') && base) return B.set(SEASON_PATH,body).then(()=>{ serverS=body; }); e.what=keys.join(', '); throw e; });
   trackWrite(chain,msg).catch(()=>{ if(serverS){ S=normalize(clone(serverS)); renderQuiet(); } });   // si falla, no se muestra como guardado
   renderQuiet(); }
@@ -1898,7 +2113,7 @@ document.addEventListener('click', async e=>{
   else if(a==='stats-go'){ ui.statsTab=el.dataset.v; }
   else if(a==='stat-kind'){ ui.statKind=el.dataset.v; renderQuiet(); }
   else if(a==='cmp'){ ui.cmpA=el.dataset.id; ui.statsTab='jugadores'; }
-  else if(a==='admin-tab'){ ui.adminTab=el.dataset.v; render(); }
+  else if(a==='admin-tab' && el.dataset.v!=='docs-go'){ ui.adminTab=el.dataset.v; render(); }
   else if(a==='avail'){ if(!me) return; const k=jid(+el.dataset.j); const cur=avail[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:el.dataset.v},at:Date.now()};
     avail[me]=next; renderQuiet(); if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
     await safe(()=>B.set(SEASON_PATH+'/avail/'+me,next), el.dataset.v==='yes'?'Apuntado: juegas':'Anotado: no puedes'); }
@@ -1936,11 +2151,25 @@ document.addEventListener('click', async e=>{
   else if(a==='team-open'){ switchTeam(el.dataset.t); location.hash='inicio'; }
   else if(a==='club-wk'){ const dd=+el.dataset.d; const base=ui.clubSat||ymd(weekendSat()); const x=new Date(base+'T12:00:00'); if(dd) x.setDate(x.getDate()+dd); ui.clubSat= dd? ymd(x) : ymd(weekendSat()); renderQuiet(); }
   else if(a==='club-print'){ window.print(); }
+  else if(a==='club-doc-dl'){ clubDocDownload(el.dataset.t, el.dataset.id); }
+  else if(a==='club-doc-open'){ switchTeam(el.dataset.t); location.hash='doc-'+el.dataset.id; }
+  else if(a==='docs-j'){ ui.docJ=+el.dataset.j; location.hash='docs'; }
+  else if(a==='club-f-team'){ ui.clubTeam=el.dataset.t; }
+  else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash='docs'; }
   else if(a==='mgr-add'){ const name=$('#mgr-name').value.trim(), email=$('#mgr-email').value.trim().toLowerCase(); if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Escribe un correo válido');
     const managers=[...(meta?.managers||[]).filter(x=>x.email!==email),{name,email}]; await saveMeta({managers, managerEmails:managers.map(x=>x.email)},'Gestor añadido: '+(name||email)); }
   else if(a==='mgr-del'){ const managers=(meta?.managers||[]).filter((_,i)=>i!==+el.dataset.i); await saveMeta({managers, managerEmails:managers.map(x=>x.email)},'Gestor quitado'); }
   else if(a==='cteams-save'){ const teams=clubTeams().map(t=>{ const row=document.querySelector(`#ctlist [data-id="${t.id}"]`); const g=n=>row?.querySelector(`[name=${n}]`)?.value.trim(); return {...t, name:g('name')||t.name, short:g('short')||t.short, cat:g('cat')||''}; }); await saveMeta({teams},'Equipos guardados'); }
   else if(a==='cteam-add'){ const name=$('#ct-name').value.trim(), short=$('#ct-short').value.trim()||name; if(!name) return toast('Escribe el nombre del equipo'); let id=slug(short); while(clubTeams().some(t=>t.id===id)) id+='-2'; await saveMeta({teams:[...clubTeams(),{id,name,short,cat:''}]},'Equipo añadido: '+short); clubKey=''; }
+  else if(a==='admin-tab' && el.dataset.v==='docs-go'){ location.hash='docs'; return; }
+  else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash='docs'; }
+  else if(a==='doc-filter'){ ui.docKind=el.dataset.v||''; renderQuiet(); }
+  else if(a==='doc-dl'){ docDownload(el.dataset.id); }
+  else if(a==='doc-del'){ docDelete(el.dataset.id); }
+  else if(a==='doc-read'){ ui.rev=null; el.disabled=true; el.textContent='Leyendo…'; docRead(el.dataset.id); }
+  else if(a==='doc-preview'){ docPreview(el.dataset.id); }
+  else if(a==='doc-discard'){ ui.rev=null; await safe(()=>B.update(`${SEASON_PATH}/docs/${el.dataset.id}`,{status:'subido', extraction:DEL}),'Lectura descartada'); }
+  else if(a==='doc-apply'){ applyReview(); }
   else if(a==='poster-scroll'){ $('#poster-canvas')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   else if(a==='cal-ok'){ const t=ensureTie(+el.dataset.j); t.calOk=true; saveState('Calendario confirmado'); }
   else if(a==='prep-save'){ const j=+el.dataset.j, f=poloFix(j), rv=$('#pp-rival').value, home=$('#pp-home').value==='1', d=$('#pp-date').value, tm=$('#pp-time').value;
@@ -2056,6 +2285,12 @@ document.addEventListener('click', async e=>{
   else if(a==='demo-reset'){ if(confirm('¿Borrar todos los datos de la vista previa?')){ await B.reset(); location.reload(); } }
 });
 document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
+  if(el.id==='doc-files' && el.files?.length){ uploadDocs([...el.files]); el.value=''; return; }
+  if(el.dataset?.rev && ui.rev){ const k=el.dataset.rev, i=+el.dataset.i, r=ui.rev.rows?.[i];
+    if(k==='act'){ r.act=el.value; if(r.act==='link'&&!r.pid) r.pid=matchPlayer(r.name); } else if(k==='pid') r.pid=el.value||null; else if(k==='use') r.use=el.checked;
+    else if(k==='h') r.h=el.value||null; else if(k==='a') r.a=el.value||null; else if(k==='t') r.t=el.value||null; else if(k==='rp') r.pids[+el.dataset.k]=el.value||null;
+    else if(k==='score') r.score=el.value.trim(); else if(k==='j') ui.rev.j=el.value? +el.value : null; else if(k==='force') ui.rev.force=el.checked;
+    renderQuiet(); return; }
   if(a==='club-date'){ if(el.value){ ui.clubSat=ymd(weekendSat(new Date(el.value+'T12:00:00'))); renderQuiet(); } }
   else if(a==='club-f'){ ui[el.dataset.k]=el.value||null; renderQuiet(); }
   else if(a==='admin-j'){ ui.adminJ=+el.value; ui.compose=null; ui.jTabSet=false; render(); }
@@ -2068,6 +2303,9 @@ document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
 document.addEventListener('input', e=>{ const el=e.target;
   if(el.dataset?.fe && ui.fe){ ui.fe.draft[el.dataset.fe]=el.value; clearTimeout(ui.fe.pt); ui.fe.pt=setTimeout(feRefresh,180); feQueue(); }
   if(el.hasAttribute?.('data-fe-phone') && ui.fe && me){ ui.fe.phone=el.value; clearTimeout(ui.fe.ft); feStatus('Guardando…','saving'); ui.fe.ft=setTimeout(async()=>{ const v=ui.fe.phone.trim(); phones[me]=v; try{ await trackWrite(v? B.set('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me)); feStatus('Guardado ✓','ok'); }catch(err){ feStatus('No se ha guardado','ko'); } },900); } if(el.dataset?.act==='ans-text'&&ui.survey) ui.survey.a[el.dataset.q]=el.value; if(el.dataset?.act==='av-text'&&ui.avDraft) ui.avDraft.c=el.value; if(el.id==='compose-text'&&ui.compose) ui.compose.text=el.value; });
+document.addEventListener('dragover', e=>{ const z=e.target.closest?.('#dropzone'); if(z){ e.preventDefault(); z.classList.add('over'); } });
+document.addEventListener('dragleave', e=>{ const z=e.target.closest?.('#dropzone'); if(z) z.classList.remove('over'); });
+document.addEventListener('drop', e=>{ const z=e.target.closest?.('#dropzone'); if(z){ e.preventDefault(); z.classList.remove('over'); const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) uploadDocs(fs); } });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeSheet(); stageClose(); closePosterModal(); closeCropper(); } });
 function readQuestions(){ document.querySelectorAll('#qlist .qedit').forEach(row=>{ const q=S.survey.questions[+row.dataset.i]; if(!q) return; q.text=row.querySelector('[name=text]').value.trim(); q.scope=row.querySelector('[name=scope]').value; q.type=row.querySelector('[name=type]').value; if(q.scope==='peer') q.type='player'; }); S.survey.questions=S.survey.questions.filter(q=>q.text); }
 
@@ -2092,7 +2330,7 @@ function subscribeData(){ // se rehace al identificarse o al cambiar de temporad
   dataSubs.push(B.watchDoc('meta/app', d=>{ meta=d; checkManager(d); if(!ui.seasonPicked && d?.current && d.current!==viewSeason){ switchSeason(d.current,true); return; } softRender(); }));
   dataSubs.push(B.watchColl('photos', m=>{ photos=m; softRender(); }));
   dataSubs.push(B.watchColl('profiles', m=>{ profiles=m; softRender(); }));
-  dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (teamId!=='polo-a'? emptyTeamSeed(teamId) : viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
+  dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ ui.sLoaded=SEASON_PATH; serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (teamId!=='polo-a'? emptyTeamSeed(teamId) : viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
     updRoles(); subscribePriv(); syncMvpSubs(); softRender(); }));
   dataSubs.push(B.watchColl(SEASON_PATH+'/avail', m=>{ avail=m; softRender(); }));
   if(me){ dataSubs.push(B.watchDoc(SEASON_PATH+'/availNotes/'+me, d=>{ if(!canPrivate){ notes={[me]:d||{}}; softRender(); } }));
@@ -2112,8 +2350,8 @@ function syncMvpSubs(force){
 function emptyTeamSeed(tid){ const t=clubTeams().find(x=>x.id===tid)||{short:'Polo',cat:''};
   return normalize({seasonId:viewSeason, teamId:tid, comp:{name:'Lliga Catalana per Equips', group:t.cat||'', memorial:''}, teams:[{id:POLO,name:'RC de Polo '+String(t.short||'').replace(/^Polo\s*/,''),short:t.short||'Polo',abbr:'RCP'}],
     players:[], fixtures:[], ties:{}, published:{}, official:{asOf:0,order:[]}, captains:[], mvp:{}}); }
-function switchTeam(tid){ if(tid===teamId) return; teamId=tid; try{ localStorage.setItem('polo-team',tid); }catch(e){} S=emptyTeamSeed(tid); serverS=null; ui.fe=null; switchSeason(viewSeason, !ui.seasonPicked); }
-function switchSeason(id,auto){ privKey=''; if(!auto) ui.seasonPicked=true; viewSeason=id; SEASON_PATH='seasons/'+docIdFor(teamId,id); avail={}; picks={}; ballots={}; notes={}; myBallot=null; privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[]; ui.adminJ=null; ui.calJ=null; subscribeData(); watchMine(); render(); }
+function switchTeam(tid){ ui.teamAuto=true; if(tid===teamId) return; teamId=tid; try{ localStorage.setItem('polo-team',tid); }catch(e){} S=emptyTeamSeed(tid); serverS=null; ui.fe=null; switchSeason(viewSeason, !ui.seasonPicked); }
+function switchSeason(id,auto){ privKey=''; docsKey=''; ui.rev=null; if(!auto) ui.seasonPicked=true; viewSeason=id; SEASON_PATH='seasons/'+docIdFor(teamId,id); avail={}; picks={}; ballots={}; notes={}; myBallot=null; privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[]; ui.adminJ=null; ui.calJ=null; subscribeData(); watchMine(); render(); }
 B.onAuth(async u=>{
   unsubAll(); dataSubs.forEach(x=>{ try{x()}catch(e){} }); dataSubs=[];
   authUser=u; me=null; isAdmin=false; adminSkip=false; claims={}; avail={}; picks={}; ballots={}; myBallot=null; S=seed();
@@ -2122,6 +2360,7 @@ B.onAuth(async u=>{
   try{ const m0=await B.getDoc('meta/app'); if(m0){ meta=m0; } checkManager(m0); }catch(e){}
   try{ await B.relink(); }catch(e){}
   subs.push(B.watchColl('claims', m=>{ claims=m; softRender(); }));
+  subs.push(B.watchDoc('public/roster', d=>{ roster=d; softRender(); }));
   let first=true;
   subs.push(B.watchDoc('users/'+u.uid, d=>{ const nm=d?.pid||null;
     if(nm!==me || first){ first=false; me=nm; subscribeData(); watchMine(); authReady=true; render(); } else softRender(); }));
