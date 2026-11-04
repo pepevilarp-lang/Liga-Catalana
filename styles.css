@@ -998,3 +998,12 @@ body.clubmode.noplayer .tabbar{display:none}
 .topnav .tn-back{opacity:.75;margin-left:8px}
 body.clubmode .teamsw{display:none}
 @media (max-width:820px){ body.clubmode .brand small{display:none} body.clubmode .brand span{font-size:1.05rem} }
+
+/* Capitanes: aviso en el Inicio y acceso a Gestión con nombre */
+.callout.capcall{border:1.5px solid var(--gold)}
+.callout b .captag,.captag{display:inline-block;margin-right:6px;padding:1px 8px;border-radius:999px;background:var(--gold);color:#13261F;font-size:.72rem;font-weight:700;vertical-align:1px}
+.callout.capcall a{color:inherit;text-decoration:underline;opacity:.8;white-space:nowrap}
+.adminlink{align-items:center;gap:6px;position:relative}
+.adminlink .al-txt{font-size:.9rem;font-weight:500}
+.adminlink.due::after{content:"";position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;background:var(--loss);box-shadow:0 0 0 2px var(--green,#0f3a2c)}
+@media (max-width:820px){ .adminlink .al-txt{display:none} }
