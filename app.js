@@ -1727,6 +1727,32 @@ function clubWeekRows(){
     fx.forEach(f=>{ const s=tieState(d,f); if(ui.clubRes && ui.clubRes!==(s.confirm?'confirm':s.st)) return; out.push({t,d,f,s}); }); });
   return {rg, sat, rows:out, idle};
 }
+/* Lista de lo que necesita atención en todos los equipos (Inicio de Gestión deportiva) */
+function clubTodo(){
+  ensureClubDocs(); const today=ymd(new Date()), soon=ymd(new Date(Date.now()+4*864e5)), out=[];
+  const add=(lvl,t,txt,sub,href,act,id)=>out.push({lvl,t,txt,sub,href,act,id});
+  clubTeams().forEach(t=>{ const d=clubData[t.id], link='#club-equipo-'+t.id;
+    if(d===undefined) return;
+    if(!d || !d.fixtures.some(f=>f.home===POLO||f.away===POLO)){ add(2,t,'Falta cargar el calendario','Súbelo desde Documentación con el PDF de partidos del grupo de la FCT',null,'team-docs'); }
+    if(!d || !d.players.length) add(2,t,'Falta cargar la plantilla','Súbela desde Documentación con el listado de equipo de la FCT',null,'team-docs');
+    if(d) withS(d,()=>{ d.fixtures.filter(f=>f.home===POLO||f.away===POLO).sort((a,b)=>a.date.localeCompare(b.date)).forEach(f=>{ const s=tieState(d,f), when=fdate(f,{day:'numeric',month:'short'});
+      if(!isPlayed(f) && f.date<today) add(0,t,`Jornada ${f.j} contra ${s.rival}: sin resultado`,`Se jugó el ${when}`,link);
+      else if(s.confirm) add(1,t,`Jornada ${f.j} contra ${s.rival}: resultado provisional`,`Polo ${s.p.ps}-${s.p.rs}, falta confirmarlo como oficial`,link);
+      else if(!isPlayed(f) && f.date>=today && f.date<=soon && !tie(f.j)?.lineupPub) add(1,t,`Jornada ${f.j} contra ${s.rival}: convocatoria sin publicar`,`Se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'short'})}`,link); }); });
+    Object.entries(clubDocs[t.id]||{}).forEach(([id,doc])=>{
+      if(doc.status==='revision') add(1,t,`Documento por revisar: ${doc.name}`,'La IA ya lo ha leído; falta revisarlo y validarlo',null,'club-doc-open',id);
+      else if(doc.status==='error') add(0,t,`Documento con error: ${doc.name}`,doc.error||'No se ha podido leer',null,'club-doc-open',id); });
+  });
+  return out.sort((a,b)=>a.lvl-b.lvl);
+}
+function clubTodoHTML(){
+  const L=clubTodo(), LV=['Urgente','Pendiente','Puesta en marcha'], max=6, show=ui.todoAll? L : L.slice(0,max);
+  if(!L.length) return `<section class="sec"><div class="todo ok"><b>Todo al día</b><span class="muted small">No hay resultados, documentos ni convocatorias pendientes en ningún equipo.</span></div></section>`;
+  return `<section class="sec"><div class="sec-h"><h2>Para atender <span class="todo-n">${L.length}</span></h2></div><ul class="todo">${show.map(x=>{
+    const inner=`<span class="todo-tag l${x.lvl}">${LV[x.lvl]}</span><span class="todo-main"><b>${esc(x.t.short)} · ${esc(x.txt)}</b><small>${esc(x.sub||'')}</small></span><span class="todo-go">›</span>`;
+    return `<li>${x.href? `<a href="${esc(x.href)}">${inner}</a>` : `<button type="button" data-act="${x.act}" data-t="${esc(x.t.id)}"${x.id?` data-id="${esc(x.id)}"`:''}>${inner}</button>`}</li>`; }).join('')}</ul>
+    ${L.length>max? `<button class="textlink" data-act="todo-all" style="margin-top:8px">${ui.todoAll? 'Ver menos' : 'Ver las '+L.length}</button>` : ''}</section>`;
+}
 function vClub(){
   if(!canClub()) return `<div class="wrap"><div class="pagehead"><h1>Gestión deportiva</h1></div><div class="notice">Esta zona es para el gestor deportivo del club y los administradores.</div></div>`;
   ensureClubSubs(); const W=clubWeekRows(), rows=W.rows, all=clubTeams();
@@ -1737,6 +1763,7 @@ function vClub(){
   const next=all.map(t=>{ const d=clubData[t.id]; if(!d) return null; const f=d.fixtures.filter(x=>(x.home===POLO||x.away===POLO)&&!isPlayed(x)&&x.date>=ymd(new Date())).sort((a,b)=>a.date.localeCompare(b.date))[0]; return f? {t,d,f} : null; }).filter(Boolean);
   return `<div class="wrap club"><div class="pagehead"><p class="qsec">Real Club de Polo de Barcelona</p><h1>Gestión deportiva</h1><p class="lede">Todos los equipos del club en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
   ${clubNav('club')}
+  ${clubTodoHTML()}
   <section class="sec"><div class="wknav"><button class="btn ghost sm" data-act="club-wk" data-d="-7" aria-label="Fin de semana anterior">‹</button><div><span class="muted small">Fin de semana</span><b>${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}</b></div><button class="btn ghost sm" data-act="club-wk" data-d="7" aria-label="Fin de semana siguiente">›</button>
     <input type="date" data-act="club-date" value="${W.sat}" aria-label="Elegir fecha" style="max-width:170px"><button class="btn ghost sm" data-act="club-wk" data-d="0">Último</button></div>
     <div class="row" style="margin-top:10px"><select data-act="club-f" data-k="clubTeam" style="max-width:220px"><option value="">Todos los equipos</option>${all.map(t=>`<option value="${esc(t.id)}" ${ui.clubTeam===t.id?'selected':''}>${esc(t.short)}</option>`).join('')}</select>
@@ -2254,6 +2281,7 @@ document.addEventListener('click', async e=>{
   else if(a==='mail-send'){ mailSend(); }
   else if(a==='mail-open'){ mailOpen(); }
   else if(a==='club-doc-dl'){ clubDocDownload(el.dataset.t, el.dataset.id); }
+  else if(a==='todo-all'){ ui.todoAll=!ui.todoAll; renderQuiet(); }
   else if(a==='club-doc-open'){ switchTeam(el.dataset.t); location.hash='doc-'+el.dataset.id; }
   else if(a==='docs-j'){ ui.docJ=+el.dataset.j; location.hash='docs'; }
   else if(a==='club-f-team'){ ui.clubTeam=el.dataset.t; }
