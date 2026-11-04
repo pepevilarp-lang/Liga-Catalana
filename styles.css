@@ -989,3 +989,12 @@ body.clubmode.noplayer main{padding-bottom:20px}
 .mailto{display:flex;flex-direction:column;gap:6px;margin:10px 0}
 .mailto label{display:flex;gap:8px;align-items:center;font-size:.92rem}
 #mail-extra{width:100%;margin-top:6px}
+
+/* Gestión deportiva con cabecera propia: las pestañas pasan a la barra de arriba (o a la de abajo en el móvil) */
+body.clubmode .clubnav{display:none}
+body.clubmode.noplayer .tabbar{display:none}
+@media (max-width:820px){ body.clubmode.noplayer .tabbar{display:grid} body.clubmode.noplayer main{padding-bottom:84px} }
+.topnav a{white-space:nowrap}
+.topnav .tn-back{opacity:.75;margin-left:8px}
+body.clubmode .teamsw{display:none}
+@media (max-width:820px){ body.clubmode .brand small{display:none} body.clubmode .brand span{font-size:1.05rem} }
