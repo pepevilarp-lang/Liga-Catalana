@@ -1960,7 +1960,7 @@ async function docRead(id){
     const j=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(j.error||('Error '+r.status));
     await trackWrite(B.update(ref,{status:'revision', extraction:{data:j.data, provider:j.provider, model:j.model, usage:j.usage||null, at:Date.now(), images:j.imagesUsed||0}, error:DEL}));
-    toast('Lectura lista: revísala'); location.hash='doc-'+id;
+    toast('Lectura lista: revísala'); location.hash=(route().startsWith('club')?'club-doc-':'doc-')+id;
   }catch(e){ await B.update(ref,{status:'error', error:String(e.message||e).slice(0,300)}).catch(()=>{}); toast('No se ha podido leer: '+(e.message||e)); }
 }
 /* ---------- emparejar nombres del documento con la app ---------- */
@@ -2064,6 +2064,13 @@ async function clubDocDownload(tid,id){ const d=clubDocs[tid]?.[id]; if(!d) retu
     const bin=atob(parts.join('')), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
     const url=URL.createObjectURL(new Blob([u8],{type:d.mime||'application/octet-stream'})), a=document.createElement('a'); a.href=url; a.download=d.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
   }catch(e){ toast('No se ha podido descargar'); } }
+/* Documentos de un equipo vistos desde Gestión deportiva: misma página, sin salir del modo club */
+function clubDocWrap(h, list){
+  h=h.replace(/href="#doc-/g,'href="#club-doc-').replace(/href="#docs"/g,'href="#club-subir"').replace(/>← Documentos</g,'>← Documentos de '+esc(curTeam().short)+'<');
+  if(!list) return h;
+  const pick=`<a class="textlink" href="#club-docs">← Documentación del club</a><div class="row" style="margin:12px 0 4px"><label class="small">Equipo <select data-act="club-subir-team" style="width:auto">${clubTeams().map(t=>`<option value="${esc(t.id)}" ${t.id===teamId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></label></div>`;
+  return h.replace('<div class="pagehead">','<div class="pagehead">'+pick);
+}
 function vClubDocs(){
   if(!canClub()) return vClub(); ensureClubSubs(); ensureClubDocs();
   const teams=clubTeams().filter(t=>!ui.clubTeam||ui.clubTeam===t.id);
@@ -2100,6 +2107,7 @@ function render(){
     else if(r.startsWith('encuesta-')){ html=vEncuesta(+r.slice(9)); nav='yo'; }
     else if(r.startsWith('mvp-')){ html=vMvp(+r.slice(4)); nav='yo'; }
     else if(r==='mi-ficha'){ html=vMiFicha(); nav='yo'; }
+    else if(r==='club-subir'){ html=canClub()? clubDocWrap(vDocs(),true) : vClub(); nav='club'; } else if(r.startsWith('club-doc-')){ html=canClub()? clubDocWrap(vDoc(r.slice(9))) : vClub(); nav='club'; }
     else if(r==='club'){ html=vClub(); nav='club'; } else if(r==='club-equipos'){ html=vClubEquipos(); nav='club'; } else if(r==='club-resumen'){ html=vClubResumen(); nav='club'; } else if(r==='club-ajustes'){ html=vClubAjustes(); nav='club'; } else if(r==='club-docs'){ html=vClubDocs(); nav='club'; }
     else if(r.startsWith('club-equipo-')){ html=vClubTeam(r.slice(12)); nav='club'; }
     else if(r==='docs') html=vDocs(); else if(r.startsWith('doc-')) html=vDoc(r.slice(4));
@@ -2128,7 +2136,7 @@ function clubChrome(on){
   const tn=$('.topnav'), tb=$('.tabbar'), bs=$('.brand span'), br=$('.brand'); if(!tn||!tb) return;
   if(!chrome0) chrome0={tn:tn.innerHTML, tb:tb.innerHTML};
   if(!on || !canClub()){ if(tn.dataset.club){ tn.innerHTML=chrome0.tn; tb.innerHTML=chrome0.tb; delete tn.dataset.club; tb.style.gridTemplateColumns=''; br.setAttribute('href','#inicio'); } return; }
-  const r=route(), cur= r.startsWith('club-equipo-')? 'club-equipos' : r;
+  const r=route(), cur= r.startsWith('club-equipo-')? 'club-equipos' : (r==='club-subir'||r.startsWith('club-doc-'))? 'club-docs' : r;
   const tabs=[['club','Inicio'],['club-equipos','Equipos'],['club-docs','Documentación'],['club-resumen','Resumen'],...(isAdmin?[['club-ajustes','Configuración']]:[])];
   const back = me? [['inicio','Mi equipo']] : [];
   tn.innerHTML=tabs.map(([k,l])=>`<a href="#${k}" ${cur===k?'aria-current="page"':''}>${l}</a>`).join('')+back.map(([k,l])=>`<a href="#${k}" class="tn-back">← ${l}</a>`).join('');
@@ -2254,17 +2262,17 @@ document.addEventListener('click', async e=>{
   else if(a==='mail-send'){ mailSend(); }
   else if(a==='mail-open'){ mailOpen(); }
   else if(a==='club-doc-dl'){ clubDocDownload(el.dataset.t, el.dataset.id); }
-  else if(a==='club-doc-open'){ switchTeam(el.dataset.t); location.hash='doc-'+el.dataset.id; }
+  else if(a==='club-doc-open'){ switchTeam(el.dataset.t); location.hash='club-doc-'+el.dataset.id; }
   else if(a==='docs-j'){ ui.docJ=+el.dataset.j; location.hash='docs'; }
   else if(a==='club-f-team'){ ui.clubTeam=el.dataset.t; }
-  else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash='docs'; }
+  else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash= route().startsWith('club')? 'club-subir' : 'docs'; }
   else if(a==='mgr-add'){ const name=$('#mgr-name').value.trim(), email=$('#mgr-email').value.trim().toLowerCase(); if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Escribe un correo válido');
     const managers=[...(meta?.managers||[]).filter(x=>x.email!==email),{name,email}]; await saveMeta({managers, managerEmails:managers.map(x=>x.email)},'Gestor añadido: '+(name||email)); }
   else if(a==='mgr-del'){ const managers=(meta?.managers||[]).filter((_,i)=>i!==+el.dataset.i); await saveMeta({managers, managerEmails:managers.map(x=>x.email)},'Gestor quitado'); }
   else if(a==='cteams-save'){ const teams=clubTeams().map(t=>{ const row=document.querySelector(`#ctlist [data-id="${t.id}"]`); const g=n=>row?.querySelector(`[name=${n}]`)?.value.trim(); return {...t, name:g('name')||t.name, short:g('short')||t.short, cat:g('cat')||''}; }); await saveMeta({teams},'Equipos guardados'); }
   else if(a==='cteam-add'){ const name=$('#ct-name').value.trim(), short=$('#ct-short').value.trim()||name; if(!name) return toast('Escribe el nombre del equipo'); let id=slug(short); while(clubTeams().some(t=>t.id===id)) id+='-2'; await saveMeta({teams:[...clubTeams(),{id,name,short,cat:''}]},'Equipo añadido: '+short); clubKey=''; }
   else if(a==='admin-tab' && el.dataset.v==='docs-go'){ location.hash='docs'; return; }
-  else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash='docs'; }
+  else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash= route().startsWith('club')? 'club-subir' : 'docs'; }
   else if(a==='doc-filter'){ ui.docKind=el.dataset.v||''; renderQuiet(); }
   else if(a==='doc-dl'){ docDownload(el.dataset.id); }
   else if(a==='doc-del'){ docDelete(el.dataset.id); }
@@ -2395,6 +2403,7 @@ document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
     renderQuiet(); return; }
   if(a==='club-date'){ if(el.value){ ui.clubSat=ymd(weekendSat(new Date(el.value+'T12:00:00'))); renderQuiet(); } }
   else if(a==='club-f'){ ui[el.dataset.k]=el.value||null; renderQuiet(); }
+  else if(a==='club-subir-team'){ switchTeam(el.value); }
   else if(a==='doc-kind'){ ui.rev=null; safe(()=>B.update(`${SEASON_PATH}/docs/${el.dataset.id}`,{kind:el.value, extraction:DEL, status:'subido'}),'Tipo cambiado: pulsa «Leer con IA»'); }
   else if(a==='admin-j'){ ui.adminJ=+el.value; ui.compose=null; ui.jTabSet=false; render(); }
   else if(a==='cal-j'){ ui.calJ=+el.value; render(); }
