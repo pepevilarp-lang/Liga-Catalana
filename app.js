@@ -553,7 +553,7 @@ function rubberRow(r,i,f){
 
 function vLiga(){
   const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos})), nx=nextPoloFix();
-  let h=`<div class="wrap"><div class="pagehead"><h1>La liga</h1><p class="lede">${esc(S.comp.name)}, ${esc(S.comp.memorial)}. ${esc(S.comp.group)}. Siete clubes, catorce jornadas a doble vuelta; cada jornada descansa uno.</p></div>
+  let h=`<div class="wrap"><div class="pagehead"><h1>La liga</h1><p class="lede">${esc([S.comp.name, S.comp.memorial].filter(Boolean).join(', '))}${S.comp.group? '. '+esc(S.comp.group) : ''}.${(()=>{ const nT=S.teams.length, nJ=NJ(), nums=['','un','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez','once','doce']; if(nT<2||!nJ) return ' Calendario pendiente de cargar.'; const per=S.fixtures.filter(f=>f.j===1).length; return ` ${nums[nT]? nums[nT].replace(/^un$/,'un')+' clubes' : nT+' clubes'}, ${nJ} jornadas${nT%2 && per*2<nT? '; cada jornada descansa uno' : ''}.`.replace(/^ (\w)/,(m,c)=>' '+c.toUpperCase()); })()}</p></div>
   <section class="sec"><div class="sec-h"><h2>Clasificación</h2></div>${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
   <section class="sec"><div class="sec-h"><h2>Evolución del Polo</h2></div>${evo.length? lineChart(evo,{invert:true,min:1,max:S.teams.length,unit:'º'}) : '<div class="empty">Sin jornadas disputadas.</div>'}</section>
   <section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el Polo</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
@@ -1810,11 +1810,11 @@ let docs={}, docsSub=null, docsKey='';
 const normTxt = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 function guessKind(name, mime){ const n=normTxt(name);
   if(/image\//.test(mime||'')) return /acta|resultat|result/.test(n)? 'acta' : 'foto';
-  if(/plantilla|jugador|llistat de jug|listado de jug|equip/.test(n)) return 'plantilla';
-  if(/orden|ordre|alineac/.test(n)) return 'orden';
-  if(/acta|resultat|result/.test(n)) return 'acta';
+  if(/acta|resultat|result|marcador/.test(n)) return 'acta';
   if(/clasific|classific/.test(n)) return 'clasificacion';
-  if(/partits|partidos|calendari|calendar|listado partidos|grupo|grup/.test(n)) return 'calendario';
+  if(/orden|ordre|alineac/.test(n)) return 'orden';
+  if(/partits|partidos|calendari|calendar|jornad|grupo|grup|lliga|liga/.test(n)) return 'calendario';
+  if(/plantilla|jugador|llistat de jug|listado de jug|llicenc|licenc/.test(n)) return 'plantilla';
   return 'otro'; }
 function ensureDocsSub(){ if(docsKey===SEASON_PATH) return; docsKey=SEASON_PATH; try{ docsSub&&docsSub(); }catch(e){} docs={};
   docsSub=B.watchColl(SEASON_PATH+'/docs', m=>{ docs=m; softRender(); }); }
@@ -1903,14 +1903,16 @@ const shortName = full => { const t=personName(full).split(/\s+/); return t.leng
 const confBadge = c => c==null? '' : `<span class="conf ${c>=.85?'hi':c>=.6?'mid':'lo'}">${c>=.85?'Alta':c>=.6?'Media':'Baja'}</span>`;
 function initReview(id){ const d=docs[id], x=clone(d.extraction?.data||{}); const rv={id,kind:d.kind,x,j:x.jornada||x.after_jornada||d.j||null,force:false};
   if(d.kind==='plantilla') rv.rows=(x.players||[]).map(p=>{ const m=matchPlayer(p.name); return {...p, act: m? 'link':'new', pid:m}; });
-  if(d.kind==='calendario') rv.rows=(x.fixtures||[]).map(f=>({...f, h:matchTeam(f.home), a:matchTeam(f.away), use:true}));
+  if(d.kind==='calendario') rv.rows=(x.fixtures||[]).map(f=>({...f, h:matchTeam(f.home), a:matchTeam(f.away), use: f.jornada!=null && !!f.date}));
   if(d.kind==='orden'){ rv.rows=[...(x.singles||[]).map(s=>({type:'S',n:s.order,names:[s.player],pids:[matchPlayer(s.player)],confidence:s.confidence})), ...(x.doubles||[]).slice(0,1).map(s=>({type:'D',n:5,names:s.players||[],pids:(s.players||[]).map(matchPlayer),confidence:s.confidence}))]; }
   if(d.kind==='acta'||d.kind==='resultados'){ let si=0; rv.rows=(x.matches||[]).map(m=>{ const isD=m.type==='D'; const n=isD?5:(m.order||++si); return {type:isD?'D':'S',n,names:m.polo_players||[],pids:(m.polo_players||[]).map(matchPlayer),score:m.score||'',winner:m.winner,confidence:m.confidence}; }); }
   if(d.kind==='clasificacion') rv.rows=(x.rows||[]).map(r=>({...r, t:matchTeam(r.team)}));
   ui.rev=rv; }
 function vDoc(id){
   ensureDocsSub(); const d=docs[id]; if(!d) return `<div class="wrap"><div class="pagehead"><a class="textlink" href="#docs">← Documentos</a><h1>Documento</h1></div><div class="empty">Cargando…</div></div>`;
-  const head=`<div class="wrap"><div class="pagehead"><a class="textlink" href="#docs">← Documentos</a><h1 style="margin-top:10px">${esc(d.name)}</h1><p class="lede">${esc(DOC_KINDS[d.kind]||d.kind)}${d.j?', jornada '+d.j:''}. Estado: <b>${DOC_ST[d.status]||d.status}</b>.${d.validatedBy? ' Validado por '+esc(d.validatedBy)+' '+relTime(d.validatedAt)+'.' : ''}</p></div>`;
+  const head=`<div class="wrap"><div class="pagehead"><a class="textlink" href="#docs">← Documentos</a><h1 style="margin-top:10px">${esc(d.name)}</h1><p class="lede">${d.j?'Jornada '+d.j+'. ':''}Estado: <b>${DOC_ST[d.status]||d.status}</b>.${d.validatedBy? ' Validado por '+esc(d.validatedBy)+' '+relTime(d.validatedAt)+'.' : ''}</p>
+    <div class="row" style="margin-top:10px;gap:12px"><label class="small">Tipo de documento <select data-act="doc-kind" data-id="${esc(id)}" style="width:auto">${Object.entries(DOC_KINDS).map(([k,l])=>`<option value="${k}" ${d.kind===k?'selected':''}>${l}</option>`).join('')}</select></label>
+      <span class="ccb confirm">Se aplicará a: ${esc(curTeam().name)}, temporada ${esc(viewSeason)}</span></div></div>`;
   const preview=`<div class="docprev" id="docprev"><button class="btn ghost sm" data-act="doc-preview" data-id="${esc(id)}">Ver el documento original</button></div>`;
   if(!d.extraction){ return head+`<section class="sec"><div class="panel"><b>Lectura automática</b><p class="muted small" style="margin:4px 0 12px">La IA leerá el documento y propondrá los datos. No se guarda nada hasta que lo revises y lo valides. ${d.status==='error'? '<br><b style="color:var(--loss)">Último intento: '+esc(d.error||'error')+'</b>' : ''}</p>
       ${(()=>{ const busy=d.status==='procesando' && Date.now()-(d.procAt||0)<120000; return `<button class="btn brass" data-act="doc-read" data-id="${esc(id)}" ${busy?'disabled':''}>${busy?'Leyendo…':d.status==='procesando'?'Volver a leer':'Leer con IA'}</button>`; })()}</div></section><section class="sec">${preview}</section></div>`; }
@@ -1939,7 +1941,9 @@ function vDoc(id){
       ${unclear.length? `<div class="vbox warn"><b>No se ha podido leer con seguridad</b><ul>${unclear.map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
       ${warn.length? `<div class="vbox err"><b>Discrepancias o avisos</b><ul>${[...new Set(warn)].map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
       <div class="tscroll">${body||'<div class="empty">La lectura no ha devuelto datos.</div>'}</div>
-      <div class="row" style="margin-top:16px">${done? '<span class="okmark">✓ Aplicado</span>' : `<button class="btn brass" data-act="doc-apply" data-id="${esc(id)}">Validar y aplicar</button>`}<button class="btn ghost sm" data-act="doc-read" data-id="${esc(id)}">Volver a leer</button>${!done?`<button class="btn ghost sm" data-act="doc-discard" data-id="${esc(id)}">Descartar lectura</button>`:''}</div></section>
+      ${done? `<div class="final" style="margin-top:16px"><b>✓ Aplicado${d.applied? ': '+esc(d.applied) : ''}</b><span>Ya está en la app: ${({calendario:'calendario, páginas de cada jornada, Matchday y clasificación',plantilla:'plantilla, perfiles y estadísticas',orden:'convocatoria y orden de juego de la jornada',acta:'resultados, estadísticas, clasificación y MVP',resultados:'resultados, estadísticas, clasificación y MVP',clasificacion:'clasificación oficial'})[d.kind]||'la app'}.</span>
+        <div class="row" style="margin-top:8px">${d.kind==='calendario'?'<a class="btn sm brass" href="#liga">Ver el calendario</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>':d.kind==='plantilla'?'<a class="btn sm brass" href="#equipo">Ver la plantilla</a>':d.kind==='clasificacion'?'<a class="btn sm brass" href="#liga">Ver la clasificación</a>':rv.j?`<a class="btn sm brass" href="#jornada-${+rv.j}">Ver la jornada ${+rv.j}</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>`:''}</div></div>` : ''}
+      <div class="revbar">${done? '' : `<button class="btn brass" data-act="doc-apply" data-id="${esc(id)}">${({calendario:'Validar y añadir al calendario',plantilla:'Validar y actualizar la plantilla',orden:'Validar y poner la convocatoria',acta:'Validar y guardar los resultados',resultados:'Validar y guardar los resultados',clasificacion:'Validar y guardar la clasificación'})[rv.kind]||'Validar y aplicar'}</button>`}<button class="btn ghost sm" data-act="doc-read" data-id="${esc(id)}">Volver a leer</button>${!done?`<button class="btn ghost sm" data-act="doc-discard" data-id="${esc(id)}">Descartar lectura</button>`:''}</div></section>
     <section class="sec">${preview}</section></div></div>`;
 }
 async function docPreview(id){ const box=$('#docprev'); if(!box) return; box.innerHTML='<p class="muted small">Cargando…</p>';
@@ -1954,13 +1958,13 @@ function applyReview(){
         S.players.push({id,name:nm,full:personName(r.name),cat:r.category||'',pts:r.points??0,order:r.order??(Math.max(0,...S.players.map(p=>p.order||0))+1),captain:false,active:true}); nNew++; } });
     if(rv.x.captain){ const c=matchPlayer(rv.x.captain); if(c && !(S.captains||[]).length && isAdmin) S.captains=[c]; }
     summary=`${nNew} jugadores nuevos, ${nUpd} actualizados`; }
-  if(kind==='calendario'){ let nNew=0,nUpd=0; const mk=(raw)=>{ let id=slug(raw); while(S.teams.find(t=>t.id===id)) id+='-2'; S.teams.push({id,name:raw,short:raw.replace(/,.*$/,'').trim()||raw,abbr:normTxt(raw).split(' ').filter(t=>!STOP.has(t)).map(w=>w[0]).join('').slice(0,4).toUpperCase()||'?'}); return id; };
+  if(kind==='calendario'){ let nNew=0,nUpd=0; const made={}; const mk=(raw)=>{ const key=normTxt(raw); if(made[key]) return made[key]; const hit=matchTeam(raw); if(hit){ made[key]=hit; return hit; } let id=slug(raw); while(S.teams.find(t=>t.id===id)) id+='-2'; S.teams.push({id,name:raw,short:raw.replace(/,.*$/,'').trim()||raw,abbr:normTxt(raw).split(' ').filter(t=>!STOP.has(t)).map(w=>w[0]).join('').slice(0,4).toUpperCase()||'?'}); made[key]=id; return id; };
     rv.rows.filter(r=>r.use&&r.jornada).forEach(r=>{ const h=r.h||mk(r.home), a=r.a||mk(r.away); r.h=h; r.a=a;
       let f=S.fixtures.find(x=>x.j===+r.jornada&&x.home===h&&x.away===a);
-      if(!f){ f={j:+r.jornada,date:r.date||'',time:r.time||'15:00',home:h,away:a,hs:null,as:null}; S.fixtures.push(f); nNew++; }
+      if(!f){ if(!r.date) return; f={j:+r.jornada,date:r.date,time:r.time||'15:00',home:h,away:a,hs:null,as:null}; S.fixtures.push(f); nNew++; }
       else { if(r.date) f.date=r.date; if(r.time) f.time=r.time; nUpd++; }
       if(r.home_score!=null && r.away_score!=null && (r.home_score+r.away_score)>0 && (!isPlayed(f) || f.status!=='official' || rv.force)){ f.hs=+r.home_score; f.as=+r.away_score; f.status='official'; } });
-    if(rv.x.group && !S.comp.group) S.comp.group=rv.x.group; if(rv.x.competition && (!S.comp.name||S.comp.name==='Lliga Catalana per Equips')) S.comp.name=rv.x.competition;
+    if(rv.x.group && (!S.comp.group || S.comp.group===curTeam()?.cat)) S.comp.group=rv.x.group; if(rv.x.competition && (!S.comp.name||S.comp.name==='Lliga Catalana per Equips')) S.comp.name=rv.x.competition;
     S.fixtures.sort((a,b)=>a.j-b.j); summary=`${nNew} enfrentamientos nuevos, ${nUpd} actualizados`; }
   if(kind==='orden'||kind==='acta'||kind==='resultados'){ const j=+rv.j, f=poloFix(j); if(!f) return toast('Elige la jornada');
     if(kind!=='orden' && f.status==='official' && isPlayed(f) && !rv.force) return toast('Marca la casilla para sustituir el resultado oficial');
@@ -2293,6 +2297,7 @@ document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
     renderQuiet(); return; }
   if(a==='club-date'){ if(el.value){ ui.clubSat=ymd(weekendSat(new Date(el.value+'T12:00:00'))); renderQuiet(); } }
   else if(a==='club-f'){ ui[el.dataset.k]=el.value||null; renderQuiet(); }
+  else if(a==='doc-kind'){ ui.rev=null; safe(()=>B.update(`${SEASON_PATH}/docs/${el.dataset.id}`,{kind:el.value, extraction:DEL, status:'subido'}),'Tipo cambiado: pulsa «Leer con IA»'); }
   else if(a==='admin-j'){ ui.adminJ=+el.value; ui.compose=null; ui.jTabSet=false; render(); }
   else if(a==='cal-j'){ ui.calJ=+el.value; render(); }
   else if(a==='poster-hide'){ const j=adminJ(), t=ensureTie(j), h=new Set(t.poster?.hidden||[]); el.checked? h.delete(el.dataset.pid) : h.add(el.dataset.pid); t.poster={...(t.poster||{}),hidden:[...h]}; saveState('Cartel actualizado'); }
