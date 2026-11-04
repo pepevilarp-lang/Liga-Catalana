@@ -1,6 +1,8 @@
 // Lee un documento (texto ya extraído en el navegador y/o hasta 3 imágenes) y devuelve datos estructurados.
 // La IA solo propone: nada se guarda hasta que una persona lo valida en la app.
-const { extractJSON, provider } = require('./_ai');
+// Si _ai.js no está al lado (api/_ai.js) o tiene un error, lo decimos con claridad en vez de caer con un 500 mudo.
+let ai = null, aiErr = null;
+try { ai = require('./_ai'); } catch (e) { aiErr = e; }
 
 let admin = null;
 function getAdmin() {
@@ -59,6 +61,8 @@ function scrub(x) { if (Array.isArray(x)) return x.map(scrub); if (x && typeof x
 function clampConf(x) { if (Array.isArray(x)) x.forEach(clampConf); else if (x && typeof x === 'object') { if ('confidence' in x) { const c = +x.confidence; x.confidence = isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.5; } Object.values(x).forEach(clampConf); } return x; }
 
 module.exports = async (req, res) => {
+  if (!ai) return res.status(500).json({ error: 'No se puede cargar api/_ai.js: ' + (aiErr && aiErr.message || 'falta el archivo') + '. Comprueba que existe api/_ai.js (con la barra baja) junto a extract.js.' });
+  const { extractJSON, provider } = ai;
   if (req.method === 'GET') {   // estado de la configuración (sin datos sensibles)
     let p = null, err = null; try { p = provider(); } catch (e) { err = e.message; }
     return res.status(200).json({ configured: !!p && !!(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_PROJECT_ID), provider: p?.name || null, model: p?.model || null, error: err || (!(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_PROJECT_ID) ? 'Falta FIREBASE_PROJECT_ID en Vercel' : null) });
