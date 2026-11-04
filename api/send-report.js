@@ -1,0 +1,72 @@
+// Envía el resumen del fin de semana por correo. Solo pueden usarlo gestores del club y administradores,
+// y solo a destinatarios autorizados (los gestores configurados en la app, o uno mismo).
+// Configuración en Vercel (una de las dos):
+//   Gmail:  SMTP_USER (la dirección de Gmail) y SMTP_PASS (contraseña de aplicación de 16 letras)
+//           opcional: SMTP_HOST (por defecto smtp.gmail.com), SMTP_PORT (465), MAIL_FROM_NAME
+//   Resend: RESEND_API_KEY y MAIL_FROM (dirección de un dominio verificado en Resend)
+// Además: FIREBASE_PROJECT_ID (el mismo que usa la lectura con IA).
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function via() {
+  if (process.env.RESEND_API_KEY && process.env.MAIL_FROM) return { name: 'resend', from: process.env.MAIL_FROM };
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) return { name: 'smtp', from: process.env.SMTP_USER };
+  return null;
+}
+const fsBase = () => `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(process.env.FIREBASE_PROJECT_ID || '')}/databases/(default)/documents/`;
+function tokenEmail(token) {
+  try { const p = JSON.parse(Buffer.from(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')); return String(p.email || '').toLowerCase(); }
+  catch (e) { return ''; }
+}
+async function authorize(token) {
+  if (!process.env.FIREBASE_PROJECT_ID) throw Object.assign(new Error('Falta FIREBASE_PROJECT_ID en Vercel'), { status: 501 });
+  if (!token) throw Object.assign(new Error('Falta la sesión'), { status: 401 });
+  const h = { headers: { Authorization: 'Bearer ' + token } };
+  // Firestore solo responde si el token es válido para este proyecto; las reglas deciden qué puede leer
+  const r = await fetch(fsBase() + 'meta/app', h);
+  if (r.status === 401) throw Object.assign(new Error('Sesión no válida: vuelve a entrar'), { status: 401 });
+  if (r.status !== 200 && r.status !== 404) throw Object.assign(new Error('Solo gestores del club'), { status: 403 });
+  const meta = r.status === 200 ? await r.json() : {};
+  const managers = ((((meta.fields || {}).managerEmails || {}).arrayValue || {}).values || []).map(v => String(v.stringValue || '').toLowerCase());
+  const email = tokenEmail(token);
+  if (!email) throw Object.assign(new Error('Sesión sin correo'), { status: 401 });
+  let admin = false;
+  const a = await fetch(fsBase() + 'admins/' + encodeURIComponent(email), h);
+  if (a.status === 200) admin = true;
+  if (!admin && !managers.includes(email)) throw Object.assign(new Error('Solo gestores del club y administradores'), { status: 403 });
+  return { email, allowed: new Set([...managers, email]) };
+}
+async function sendResend(v, mail) {
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.RESEND_API_KEY },
+    body: JSON.stringify({ from: v.from, to: mail.to, reply_to: mail.replyTo, subject: mail.subject, html: mail.html, text: mail.text }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.id) throw Object.assign(new Error('El servicio de correo no confirmó el envío: ' + (j.message || r.status)), { status: 502 });
+  return j.id;
+}
+async function sendSmtp(v, mail) {
+  const nodemailer = require('nodemailer');
+  const t = nodemailer.createTransport({ host: process.env.SMTP_HOST || 'smtp.gmail.com', port: +process.env.SMTP_PORT || 465, secure: (+process.env.SMTP_PORT || 465) === 465,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } });
+  const info = await t.sendMail({ from: `"${process.env.MAIL_FROM_NAME || 'Real Club de Polo, gestión deportiva'}" <${v.from}>`, to: mail.to.join(', '), replyTo: mail.replyTo, subject: mail.subject, html: mail.html, text: mail.text });
+  const ok = (info.accepted || []).map(x => String(x).toLowerCase());
+  if (!mail.to.every(x => ok.includes(x))) throw Object.assign(new Error('El servidor de correo no aceptó a: ' + mail.to.filter(x => !ok.includes(x)).join(', ')), { status: 502 });
+  return info.messageId || '';
+}
+module.exports = async (req, res) => {
+  const v = via();
+  if (req.method === 'GET') return res.status(200).json({ configured: !!v && !!process.env.FIREBASE_PROJECT_ID, via: v ? v.name : null, from: v ? v.from : null });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
+  try {
+    if (!v) throw Object.assign(new Error('El envío de correo no está configurado en Vercel'), { status: 501 });
+    const { email, allowed } = await authorize(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const to = [...new Set((Array.isArray(body.to) ? body.to : []).map(x => String(x).trim().toLowerCase()))].filter(x => EMAIL.test(x));
+    if (!to.length) throw Object.assign(new Error('Sin destinatarios'), { status: 400 });
+    const bad = to.filter(x => !allowed.has(x));
+    if (bad.length) throw Object.assign(new Error('Destinatario no autorizado: ' + bad.join(', ') + '. Añádelo como gestor en Configuración.'), { status: 403 });
+    if (to.length > 10) throw Object.assign(new Error('Máximo 10 destinatarios'), { status: 400 });
+    const mail = { to, replyTo: email, subject: String(body.subject || 'Resumen del fin de semana').slice(0, 200), html: String(body.html || '').slice(0, 400000), text: String(body.text || '').slice(0, 100000) };
+    const id = v.name === 'resend' ? await sendResend(v, mail) : await sendSmtp(v, mail);
+    return res.status(200).json({ ok: true, provider: v.name, id, to });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.message || 'error' });
+  }
+};
