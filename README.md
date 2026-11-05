@@ -54,3 +54,19 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
   - `GROQ_API_KEY`: la clave de Groq (empieza por gsk_). Solo en Vercel, nunca en GitHub ni en el código.
   - `FIREBASE_PROJECT_ID`: `lliga-catalana-bf8e3`.
   - Opcionales: `GROQ_MODEL` (por defecto `qwen/qwen3.8-27b`), `AI_PROVIDER` (groq, openai, xai, gemini, anthropic) con su clave y modelo, `FIREBASE_SERVICE_ACCOUNT` (activa el tope diario `AI_DAILY_LIMIT`, por defecto 150 lecturas).
+
+## Envío del resumen por correo
+- Gestión deportiva → Resumen del fin de semana → «Enviar por correo». Se elige a qué gestores se envía (o a uno mismo) y se puede añadir un mensaje.
+- «Abrir en mi correo» funciona sin configurar nada: abre tu Mail o Gmail con todo escrito y lo envías tú.
+- «Enviar desde la app» necesita en Vercel UNA de estas opciones:
+  - Gmail del equipo: `SMTP_USER` (la dirección) y `SMTP_PASS` (contraseña de aplicación de Google, 16 letras). Requiere la verificación en dos pasos activada en esa cuenta.
+  - Resend con dominio propio: `RESEND_API_KEY` y `MAIL_FROM`.
+- Solo se puede enviar a gestores configurados en la app o a uno mismo. Cada envío queda registrado (fecha, destinatarios, estado) y nunca se da por enviado si el servicio no lo confirma.
+
+## Gestió esportiva, capitanes y equipos (noviembre 2026)
+- Gestió esportiva (icono del edificio): menú propio Inici, Equips, Documentació, Resum y Configuració.
+- Documentació: se elige el equipo en el desplegable y desde ahí se sube, se lee con IA, se revisa y se valida. El tipo de un documento se cambia desde la propia fila, sin borrarlo; queda registrado quién y cuándo, y no se vuelve a leer solo.
+- Equips: vista de tarjetas o de tabla (se recuerda la última), con ordenación y filtros por categoría y género.
+- Capitanes y administradores ven en Inicio el siguiente paso real de la jornada, con botón directo, y un punto rojo en «Gestió» cuando hay algo pendiente.
+- Permisos por equipo: cada temporada de equipo guarda la lista de sus jugadores (memberIds). Un jugador solo puede editar su equipo; los gestores del club y los administradores, todos.
+- Equipo Absoluto Femenino A creado sin datos: se cargan su calendario y plantilla desde Documentació.
