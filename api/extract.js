@@ -106,8 +106,32 @@ const SCHEMAS = {
 Un marcador 0/0 significa que aún no se ha jugado: pon null en ambos.`,
   orden: `Es un orden de juego de una eliminatoria. Estructura:
 {"jornada":number|null,"date":"AAAA-MM-DD"|null,"rival":string|null,"singles":[{"order":number,"player":"jugador del Polo","rival_player":string|null,"confidence":number}],"doubles":[{"players":["jugador del Polo","jugador del Polo"],"rival_players":[string],"confidence":number}],"unclear":[string]}`,
-  acta: `Es un acta o hoja de resultados de una eliminatoria. Expresa los marcadores DESDE EL PUNTO DE VISTA DEL POLO (primero los juegos del Polo). Estructura:
-{"jornada":number|null,"date":"AAAA-MM-DD"|null,"home":string|null,"away":string|null,"matches":[{"type":"S"|"D","order":number|null,"polo_players":[string],"rival_players":[string],"score":"6-4 3-6 6-3"|null,"winner":"polo"|"rival"|null,"confidence":number}],"total":{"polo":number|null,"rival":number|null},"unclear":[string]}`,
+  acta: `Es el "ACTA DE RESULTATS TÈCNICS" de la Federació Catalana de Tennis, normalmente RELLENADA A MANO (foto o escaneo).
+CÓMO ES EL IMPRESO:
+- Arriba: "ACTA" (número), "PROVA" (competición) y "CATEGORIA".
+- Dos columnas iguales, una por equipo, cada una encabezada por "EQUIP DEL ____" (club escrito a mano).
+- Bloque "INDIVIDUALS": filas numeradas 1 a 5 con "núm. llicència" y "nom i cognoms" del jugador de ese equipo.
+- Bloque "DOBLES": parejas 1 y 2, cada una con dos jugadores (marcados 1 y 2).
+- Debajo de cada fila hay una LÍNEA DE PUNTOS. El impreso dice "Anoteu els resultats de cada partit a la línia de punts al peu del nom del guanyador": EL MARCADOR SE ESCRIBE DEBAJO DEL GANADOR, normalmente desde su punto de vista (6-3 6-4). Si el marcador está en la columna del Polo, ganó el Polo; si está en la columna del rival, ganó el rival.
+- "CAPITÀ" de cada equipo y, abajo, "PUNTUACIÓ": "L'equip del Club ___ guanya el del ___ per __ a __", lugar y fecha.
+NUESTRO EQUIPO es el Real Club de Polo de Barcelona ("Polo", "RC Polo", "R.C. Polo", "Reial Club de Polo"...). Identifica primero cuál de las dos columnas es la del Polo.
+En la columna del rival a veces solo se escribe el nombre del club: NO hace falta leer nombres de jugadores rivales.
+Estructura:
+{"acta_numero":string|null,"prova":string|null,"categoria":string|null,"columna_polo":"izquierda"|"derecha"|null,"rival":"club rival tal cual"|null,
+ "date":"AAAA-MM-DD"|null,"lugar":string|null,"jornada":number|null,
+ "matches":[{"type":"S"|"D","order":number,"polo_players":["nombre tal cual en la columna del Polo"],"rival_text":"lo escrito en el lado rival"|null,
+   "score_written":"marcador tal cual"|null,"score_side":"polo"|"rival"|null,"winner":"polo"|"rival"|null,
+   "score":"marcador DESDE EL PUNTO DE VISTA DEL POLO (primero los juegos del Polo)"|null,"retired_or_wo":string|null,"confidence":number}],
+ "puntuacion":{"ganador":"polo"|"rival"|null,"polo":number|null,"rival":number|null,"texto":string|null},
+ "capitan_polo":string|null,"unclear":[string]}
+REGLAS DEL ACTA:
+- "order" es el número de fila (1 a 5) en individuales y el número de pareja (1 o 2) en dobles.
+- Incluye solo las filas con algo escrito (nombre o marcador). No inventes filas ni jugadores.
+- "winner" sale del lado donde está escrito el marcador ("score_side"). Si no se distingue, winner=null y explícalo en "unclear".
+- "score": si ganó el Polo copia los sets tal cual; si ganó el rival, invierte cada set (6-3 pasa a 3-6).
+- Tie-break escrito como 7-6(4), 7/6 o 7-6 (7-4): usa 7-6. Super tie-break del tercer set como 10-8 o [10-8]: úsalo como tercer set.
+- "W.O.", "WO" (incomparecencia) o "ret.", "abandona" (abandono): ponlo en "retired_or_wo"; el ganador sigue saliendo del lado donde se anota.
+- Si una cifra es dudosa (por ejemplo, 6 u 8), escribe tu mejor lectura, baja "confidence" y añádelo a "unclear".`,
   clasificacion: `Es una clasificación de un grupo. Estructura:
 {"after_jornada":number|null,"rows":[{"pos":number,"team":"club tal cual","points":number|null,"played":number|null,"confidence":number}],"unclear":[string]}`
 };
