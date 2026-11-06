@@ -516,7 +516,7 @@ function pendingAction(){
   return ok? {j, idx, na:nextAction(j)} : null;
 }
 function captainNote(){ const p=pendingAction(); if(!p) return '';
-  return `<section class="sec"><div class="nextcard capnote" data-home-j="${p.j}"><div><span class="nk">Gestió, jornada ${p.j}: siguiente paso</span><b>${esc(p.na.t)}</b><p>${esc(p.na.d)}</p></div><div class="row">${p.na.b}</div></div></section>`; }
+  return `<section class="sec"><div class="nextcard capnote" data-home-j="${p.j}"><div><span class="nk">Gestión, jornada ${p.j}: siguiente paso</span><b>${esc(p.na.t)}</b><p>${esc(p.na.d)}</p></div><div class="row">${p.na.b}</div></div></section>`; }
 function callouts(nx){
   let h=''; const ps=pendingSurveys();
   pendingMvp().forEach(j=>{ h+=`<div class="callout"><div><b>🏆 Vota al MVP de la jornada ${j}</b><span>Un voto por jugador. Abierta hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</span></div><div class="row"><a class="btn light" href="#mvp-${j}">Votar</a></div></div>`; });
@@ -1122,12 +1122,19 @@ function aPrep(j){
     <div><div class="sec-h"><h2>Orden de juego</h2></div>${lineupList(j).length? lineupStrip(j) : '<div class="empty">Aún sin convocatoria.</div>'}
       <div class="row" style="margin-top:12px"><a class="btn ghost sm" href="#jornada-${j}">Ver la página de la jornada</a><button class="btn ghost sm" data-act="docs-j" data-j="${j}">Documentos de la jornada (${(ensureDocsSub(), Object.values(docs).filter(d=>d.j===j).length)})</button></div></div></div></section>`;
 }
+const CAP_FIELDS=[['valoracion','Valoración general','¿Cómo ha ido la eliminatoria en conjunto?'],['desarrollo','Desarrollo de la jornada','Cómo fueron los partidos, momentos clave'],['destacados','Jugadores destacados','Quién y por qué'],['positivos','Aspectos positivos',''],['mejorar','Aspectos a mejorar',''],['incidencias','Incidencias','Lesiones, retrasos, pistas, arbitraje…'],['compromiso','Disponibilidad y compromiso del equipo',''],['observaciones','Observaciones adicionales','']];
+function captainReportForm(j){ const t=tie(j)||{}, r=t.captainReport||{};
+  return `<div class="panel caprep"><b>Informe del capitán</b><p class="muted small" style="margin:4px 0 10px">Lo lee el gestor deportivo y forma parte del informe semanal del club. Escribe solo lo que quieras que conste; la IA puede ordenarlo, pero no añade nada que no hayas escrito.</p>
+    <label class="f">Nota de la jornada (1 a 10)<select data-capr="nota" style="width:auto;margin-left:8px"><option value="">Sin nota</option>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${+r.nota===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    ${CAP_FIELDS.map(([k,l,ph])=>`<label class="f" for="capr-${k}">${l}</label><textarea id="capr-${k}" data-capr="${k}" rows="2" placeholder="${esc(ph)}">${esc(r[k]||'')}</textarea>`).join('')}
+    <div class="row" style="margin-top:10px"><button class="btn brass" data-act="capr-save" data-j="${j}">Guardar informe</button>${r.at? `<span class="muted small">Guardado por ${esc(r.by||'')} ${relTime(r.at)}</span>` : ''}</div></div>`; }
 function aPost(j){
   const f=poloFix(j); if(!isPlayed(f)) return `<section class="sec"><div class="empty">El postpartido se activa al guardar los resultados: se abren la encuesta para los que jugaron y la votación del MVP.</div></section>`;
   const c=cronica(j);
   return `<section class="sec"><div class="sec-h"><h2>Resumen de la jornada</h2></div><div class="panel"><p class="cronica" style="margin:0">${esc(c?.txt||'')}</p>
       <div class="row" style="margin-top:12px"><button class="btn ghost sm" data-act="compose" data-kind="summary" data-j="${j}">Compartir el resumen por WhatsApp</button><a class="btn ghost sm" href="#jornada-${j}">Ver la jornada</a></div>${composer('summary',j,'Resumen de la jornada')}
       <p class="source">Estadísticas individuales y de dobles, clasificación, rankings y perfiles ya están actualizados con estos resultados.</p></div></section>
+    <div class="sec-h" style="margin-top:20px"><h2>Informe del capitán</h2></div>${captainReportForm(j)}
     <div class="sec-h" style="margin-top:20px"><h2>Votación del MVP</h2></div>${aMvp(j)}
     <div class="sec-h" style="margin-top:20px"><h2>Encuesta postpartido</h2></div>${aEncuesta(j)}`;
 }
@@ -1734,9 +1741,19 @@ function tieState(d,f){ return withS(d,()=>{ const p=persp(f), tr=tieFromRubbers
   let st = p.played? (p.ps>p.rs?'win':'loss') : future? 'next' : 'pending';
   return {p, rival:clubName(p.rival), st, confirm: p.played && f.status!=='official', singles, dbl, partial: !p.played && tr.decided>0}; }); }
 const ST_LABEL={win:'Victoria',loss:'Derrota',pending:'Pendiente de resultado',next:'Programada'};
-const CLUB_TABS=[['club','Inici','M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],['club-equipos','Equips','M8 8a3.5 3.5 0 1 0 0-.01M2.5 20c.8-3.6 3.3-5.5 5.5-5.5s4.7 1.9 5.5 5.5M16 7a3 3 0 1 0 0-.01M15 14c2.6 0 5 1.6 6.5 5'],['club-docs','Documentació','M6 2h9l5 5v15H6zM14 2v6h6'],['club-resumen','Resum','M4 20V10M10 20V4M16 20v-7M22 20H2'],['club-ajustes','Configuració','M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6']];
-function clubNav(cur){ cur=String(cur||'').replace(/^club-doc-.*/,'club-docs').replace(/^club-equipo-.*/,'club-equipos');
-  return `<nav class="clubsub" aria-label="Gestió esportiva"><div class="cs-in">${CLUB_TABS.map(([k,l])=>`<a href="#${k}" ${cur===k?'aria-current="page"':''}>${l}</a>`).join('')}</div></nav>`; }
+const CLUB_TABS=[['club','Inicio','M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],['club-equipos','Equipos','M8 8a3.5 3.5 0 1 0 0-.01M2.5 20c.8-3.6 3.3-5.5 5.5-5.5s4.7 1.9 5.5 5.5M16 7a3 3 0 1 0 0-.01M15 14c2.6 0 5 1.6 6.5 5'],['club-docs','Documentación','M6 2h9l5 5v15H6zM14 2v6h6'],['club-resumen','Resumen','M4 20V10M10 20V4M16 20v-7M22 20H2'],['club-ajustes','Configuración','M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6']];
+const clubRouteKey = r => String(r||'').replace(/^club-doc-.*/,'club-docs').replace(/^club-equipo-.*/,'club-equipos');
+// Dentro de la gestión deportiva, la barra superior (y la inferior en el móvil) muestra SUS apartados, no los del equipo
+function setNavMode(club){
+  const top=$('.topnav'), bar=$('.tabbar'); if(!top||!bar) return;
+  if(!ui.navOrig) ui.navOrig={top:top.innerHTML, bar:bar.innerHTML};
+  if(club && !ui.navClub){ ui.navClub=true;
+    top.innerHTML=CLUB_TABS.map(([k,l])=>`<a href="#${k}" data-club="${k}">${l}</a>`).join('');
+    bar.innerHTML=CLUB_TABS.map(([k,l,d])=>`<a href="#${k}" data-club="${k}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>${l==='Documentación'?'Docs':l==='Configuración'?'Ajustes':l}</a>`).join(''); }
+  else if(!club && ui.navClub){ ui.navClub=false; top.innerHTML=ui.navOrig.top; bar.innerHTML=ui.navOrig.bar; }
+  if(club){ const k=clubRouteKey(route()); document.querySelectorAll('[data-club]').forEach(a=>a.dataset.club===k? a.setAttribute('aria-current','page') : a.removeAttribute('aria-current')); }
+}
+function clubNav(){ return ''; }
 function clubWeekRows(){
   const sat=ui.clubSat||ymd(weekendSat()), rg=weekendRange(sat), out=[], idle=[];
   clubTeams().forEach(t=>{ const d=clubData[t.id]; if(ui.clubTeam && ui.clubTeam!==t.id) return; if(ui.clubCat && t.cat!==ui.clubCat) return;
@@ -1754,7 +1771,7 @@ function vClub(){
   const fmt=d=>d.toLocaleDateString('es-ES',{day:'numeric',month:'long'});
   const cats=[...new Set(all.map(t=>t.cat).filter(Boolean))];
   const next=all.map(t=>{ const d=clubData[t.id]; if(!d) return null; const f=d.fixtures.filter(x=>(x.home===POLO||x.away===POLO)&&!isPlayed(x)&&x.date>=ymd(new Date())).sort((a,b)=>a.date.localeCompare(b.date))[0]; return f? {t,d,f} : null; }).filter(Boolean);
-  return `<div class="wrap club"><div class="pagehead"><p class="qsec">Real Club de Polo de Barcelona</p><h1>Inici</h1><p class="lede">Tots els equips del club a la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
+  return `<div class="wrap club"><div class="pagehead"><p class="qsec">Real Club de Polo de Barcelona</p><h1>Inicio</h1><p class="lede">Todos los equipos del club en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
   
   <section class="sec"><div class="wknav"><button class="btn ghost sm" data-act="club-wk" data-d="-7" aria-label="Fin de semana anterior">‹</button><div><span class="muted small">Fin de semana</span><b>${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}</b></div><button class="btn ghost sm" data-act="club-wk" data-d="7" aria-label="Fin de semana siguiente">›</button>
     <input type="date" data-act="club-date" value="${W.sat}" aria-label="Elegir fecha" style="max-width:170px"><button class="btn ghost sm" data-act="club-wk" data-d="0">Último</button></div>
@@ -1793,23 +1810,23 @@ function vClubEquipos(){
   const sk=ui.eqSort||'name', dir=ui.eqDir||1, val=r=>sk==='n'?r.n: sk==='next'?(r.next||'9999'): sk==='act'?r.act: sk==='cat'?r.cat+r.gender : r.t.name;
   rows.sort((a,b)=>{ const x=val(a), y=val(b); return (x>y?1:x<y?-1:0)*dir; });
   const th=(k,l)=>`<th><button data-act="eq-sort" data-v="${k}">${l}${sk===k?(dir>0?' ↑':' ↓'):''}</button></th>`;
-  const filters=`<div class="row eqtools"><div class="seg" role="group" aria-label="Vista"><button data-act="eq-view" data-v="cards" aria-pressed="${view==='cards'}">Targetes</button><button data-act="eq-view" data-v="table" aria-pressed="${view==='table'}">Taula</button></div>
-    <select data-act="eq-sortsel" aria-label="Ordenar per">${[['name','Ordenar per nom'],['cat','Per categoria'],['n','Per jugadors'],['next','Per propera jornada'],['act','Per activitat']].map(([k,l])=>`<option value="${k}" ${sk===k?'selected':''}>${l}</option>`).join('')}</select>
-    ${cats.length>1?`<select data-act="eq-f" data-k="eqCat" aria-label="Categoria"><option value="">Totes les categories</option>${cats.map(c=>`<option ${ui.eqCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>`:''}
-    ${gens.length>1?`<select data-act="eq-f" data-k="eqGen" aria-label="Gènere"><option value="">Tots els gèneres</option>${gens.map(g=>`<option ${ui.eqGen===g?'selected':''}>${esc(g)}</option>`).join('')}</select>`:''}</div>`;
+  const filters=`<div class="row eqtools"><div class="seg" role="group" aria-label="Vista"><button data-act="eq-view" data-v="cards" aria-pressed="${view==='cards'}">Tarjetas</button><button data-act="eq-view" data-v="table" aria-pressed="${view==='table'}">Tabla</button></div>
+    <select data-act="eq-sortsel" aria-label="Ordenar">${[['name','Ordenar por nombre'],['cat','Por categoría'],['n','Por jugadores'],['next','Por próxima jornada'],['act','Por actividad']].map(([k,l])=>`<option value="${k}" ${sk===k?'selected':''}>${l}</option>`).join('')}</select>
+    ${cats.length>1?`<select data-act="eq-f" data-k="eqCat" aria-label="Categoría"><option value="">Todas las categorías</option>${cats.map(c=>`<option ${ui.eqCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>`:''}
+    ${gens.length>1?`<select data-act="eq-f" data-k="eqGen" aria-label="Género"><option value="">Todos los géneros</option>${gens.map(g=>`<option ${ui.eqGen===g?'selected':''}>${esc(g)}</option>`).join('')}</select>`:''}</div>`;
   const cards=`<div class="ccards stagger">${rows.map(r=>{ const d=clubData[r.t.id]; if(!d) return `<a class="ccard idle" href="#club-equipo-${esc(r.t.id)}"><span class="cc-top"><b>${esc(r.t.name)}</b><small>${esc(teamCat(r.t))}</small></span><span class="cc-meta">Sin calendario ni plantilla cargados todavía</span></a>`;
       const st=withS(d,()=>standings()), me_=st.find(x=>x.id===POLO)||{}, ts=withS(d,()=>teamStats());
       return `<a class="ccard" href="#club-equipo-${esc(r.t.id)}"><span class="cc-top"><b>${esc(r.t.name)}</b><small>${esc(teamCat(r.t))}${d.comp?.group? ', '+esc(d.comp.group):''}</small></span>
         <span class="cc-res">${me_.pj? me_.pos+'º' : '–'}<small> ${me_.pts||0} pts</small></span><span class="cc-meta">${r.n} jugadores. Eliminatorias ${ts.tw}-${ts.tl}, partidos ${ts.rw}-${ts.rl}.</span><span class="cc-badges"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></span></a>`; }).join('')}</div>`;
-  const table=`<table class="eqtable"><thead><tr>${th('name','Equip')}${th('cat','Categoria')}<th>Capità</th>${th('n','Jugadors')}${th('next','Propera jornada')}${th('act','Activitat')}</tr></thead><tbody>
-    ${rows.map(r=>`<tr data-href="#club-equipo-${esc(r.t.id)}"><td data-l="Equip"><a href="#club-equipo-${esc(r.t.id)}"><b>${esc(r.t.name)}</b></a></td><td data-l="Categoria">${esc(teamCat(r.t))||'–'}</td><td data-l="Capità">${esc(r.caps)||'<span class="muted">Sense assignar</span>'}</td><td data-l="Jugadors">${r.n}</td><td data-l="Propera jornada">${esc(r.nextTxt)}</td><td data-l="Activitat"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></td></tr>`).join('')}</tbody></table>`;
-  return `<div class="wrap club"><div class="pagehead"><h1>Equips</h1><p class="lede">Equips del Real Club de Polo a la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
+  const table=`<table class="eqtable"><thead><tr>${th('name','Equipo')}${th('cat','Categoría')}<th>Capitán</th>${th('n','Jugadores')}${th('next','Próxima jornada')}${th('act','Actividad')}</tr></thead><tbody>
+    ${rows.map(r=>`<tr data-href="#club-equipo-${esc(r.t.id)}"><td data-l="Equipo"><a href="#club-equipo-${esc(r.t.id)}"><b>${esc(r.t.name)}</b></a></td><td data-l="Categoría">${esc(teamCat(r.t))||'–'}</td><td data-l="Capitán">${esc(r.caps)||'<span class="muted">Sin asignar</span>'}</td><td data-l="Jugadores">${r.n}</td><td data-l="Próxima jornada">${esc(r.nextTxt)}</td><td data-l="Actividad"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></td></tr>`).join('')}</tbody></table>`;
+  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del Real Club de Polo en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
     <section class="sec">${filters}<div style="margin-top:12px">${view==='table'? table : cards}</div></section></div>`;
 }
 
 function vClubTeam(tid){
   if(!canClub()) return vClub(); ensureClubSubs(); const t=clubTeams().find(x=>x.id===tid); if(!t) return vNotFound(); const d=clubData[tid];
-  const head=`<div class="wrap club"><div class="pagehead"><a class="textlink" href="#club-equipos">← Equips</a><h1 style="margin-top:10px">${esc(t.name)}</h1><p class="lede">${esc(t.cat||'')}${d?.comp?.group? ', '+esc(d.comp.group):''}. Temporada ${esc(viewSeason)}.</p>
+  const head=`<div class="wrap club"><div class="pagehead"><a class="textlink" href="#club-equipos">← Equipos</a><h1 style="margin-top:10px">${esc(t.name)}</h1><p class="lede">${esc(t.cat||'')}${d?.comp?.group? ', '+esc(d.comp.group):''}. Temporada ${esc(viewSeason)}.</p>
     <div class="row" style="margin-top:12px"><button class="btn brass" data-act="team-open" data-t="${esc(tid)}">Abrir la app del equipo</button><button class="btn ghost" data-act="team-docs" data-t="${esc(tid)}">Documentación</button></div></div>`;
   if(!d) return head+`<section class="sec"><div class="empty">Este equipo aún no tiene calendario ni plantilla cargados. Ábrelo y cárgalos desde Gestión, o envía los documentos de la FCT.</div></section></div>`;
   return withS(d,()=>{ const st=standings(), mine=st.find(r=>r.id===POLO)||{}, ts=teamStats(), caps=(d.captains||[]).map(pname);
@@ -1826,6 +1843,164 @@ function vClubTeam(tid){
       <div class="sec-h" style="margin-top:20px"><h2>Documentación</h2><a href="#club-docs" data-act="club-f-team" data-t="${esc(tid)}">Ver documentos</a></div>${(()=>{ ensureClubDocs(); const ds=Object.values(clubDocs[tid]||{}); return ds.length? `<p class="small">${ds.length} ${ds.length===1?'documento':'documentos'}${ds.filter(x=>x.status==='revision').length? ', '+ds.filter(x=>x.status==='revision').length+' por revisar':''}.</p>` : '<p class="muted small">Sin documentos.</p>'; })()}
       <div class="sec-h" style="margin-top:20px"><h2>Últimas actualizaciones</h2></div>${(d.audit||[]).length? `<ul class="insights">${d.audit.slice(0,8).map(a=>`<li>${esc(a.what.join(', '))}<small>${esc(a.by)}, ${relTime(a.at)}</small></li>`).join('')}</ul>` : '<div class="empty">Sin cambios registrados todavía.</div>'}</div></div></section></div>`; });
 }
+/* ===================== INFORME EJECUTIVO SEMANAL (PDF) ===================== */
+const PDFMAKE={js:'https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js', fonts:'https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js'};
+const RC={navy:'#12284C',crimson:'#9E1B32',gold:'#B08D3C',ink:'#1C2430',grey:'#6B7280',line:'#D9DEE6',soft:'#F3F5F8',win:'#1F6B45'};
+const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function weekendLabel(rg){ const a=rg.sat, b=rg.sun; return a.getMonth()===b.getMonth()? `${a.getDate()}–${b.getDate()} ${MESES[b.getMonth()]} ${b.getFullYear()}` : `${a.getDate()} ${MESES[a.getMonth()]}–${b.getDate()} ${MESES[b.getMonth()]} ${b.getFullYear()}`; }
+// ---- datos del fin de semana: solo lo registrado en la app (misma fuente que el Resumen)
+const onceColl = path => new Promise(ok=>{ let u=null, done=false; const fin=m=>{ if(done) return; done=true; try{ u&&u(); }catch(e){} ok(m||{}); }; u=B.watchColl(path, fin); setTimeout(()=>fin({}),6000); });
+function teamWeekFacts(t,d,f,s,av){ return withS(d,()=>{
+  const tt=tie(f.j)||{rubbers:[]}, rub=(tt.rubbers||[]).map((r,i)=>({type:r.type,n:r.n,label:RUBBERS[i]?.label||'',players:(r.polo||[]).map(pname),c:rubberCalc(r),note:r.note||''}));
+  const mk=x=>({n:x.n,label:x.label,jugadores:x.players,marcador:x.c.sets.map(z=>z.join('-')).join(' ')||'',resultado:x.c.res==='W'?'ganado':x.c.res==='L'?'perdido':'sin resultado',nota:x.note});
+  const singles=rub.filter(x=>x.type==='S'&&(x.players.length||x.c.res)).map(mk), doubles=rub.filter(x=>x.type==='D'&&(x.players.length||x.c.res)).map(mk);
+  const st=standings(), mine=st.find(r=>r.id===POLO)||{}, evo=playedJornadas().map(j=>({j,pos:standings(j).find(r=>r.id===POLO)?.pos})).filter(x=>x.pos);
+  // balance de temporada separado
+  let ssw=0,ssl=0,sdw=0,sdl=0; const seq=[];
+  S.fixtures.filter(x=>(x.home===POLO||x.away===POLO)&&isPlayed(x)).sort((a,b)=>a.j-b.j).forEach(x=>{ const p=persp(x); seq.push(p.ps>p.rs?'G':'P'); (tie(x.j)?.rubbers||[]).forEach(r=>{ const c=rubberCalc(r); if(!c.res) return; if(r.type==='S') c.res==='W'?ssw++:ssl++; else c.res==='W'?sdw++:sdl++; }); });
+  let streak=0; for(let i=seq.length-1;i>=0&&seq[i]===seq[seq.length-1];i--) streak++;
+  const wsw=singles.filter(x=>x.resultado==='ganado').length, wsl=singles.filter(x=>x.resultado==='perdido').length, wdw=doubles.filter(x=>x.resultado==='ganado').length, wdl=doubles.filter(x=>x.resultado==='perdido').length;
+  const players=new Set([...singles,...doubles].flatMap(x=>x.jugadores));
+  const cr=tt.captainReport||null, tr=tieFromRubbers(f.j)||{}, k=jid(f.j);
+  return { id:t.id, equipo:t.name, categoria:teamCat(t), capitan:(d.captains||[]).map(pname).join(', '), rival:s.rival, jornada:f.j, fecha:fdate(f,{weekday:'long',day:'numeric',month:'long'}), hora:f.time, casa:s.p.home,
+    resultado: s.p.played? `${s.p.ps}-${s.p.rs}` : null, estado: s.st==='win'?'victoria':s.st==='loss'?'derrota':'pendiente', validado: s.p.played && f.status==='official',
+    convocados:(tt.convocados||[]).map(pname), individuales:singles, dobles:doubles,
+    fin_de_semana:{individuales:`${wsw}-${wsl}`, dobles:`${wdw}-${wdl}`, jugadores_utilizados:players.size},
+    temporada:{individuales:`${ssw}-${ssl}`, dobles:`${sdw}-${sdl}`, eliminatorias:`${seq.filter(x=>x==='G').length}-${seq.filter(x=>x==='P').length}`, racha: seq.length>=3? `${streak} ${seq[seq.length-1]==='G'?'victorias':'derrotas'} seguidas` : null},
+    clasificacion: mine.pj? {posicion:mine.pos, puntos:mine.pts, jugadas:mine.pj, equipos:st.length, tabla:st.slice(0,10).map(r=>({pos:r.pos,club:clubName(r.id),pts:r.pts,pj:r.pj,nuestro:r.id===POLO}))} : null,
+    evolucion: evo.length>=2? evo : [],
+    informe_capitan: cr? Object.fromEntries(Object.entries(cr).filter(([k])=>!['by','at'].includes(k))) : null, informe_por: cr?.by||null,
+    disponibilidad: (()=>{ const keep=avail; avail=av||{}; const a=availFor(f.j); avail=keep; const prob=[];
+      if(a.total && a.yes.length<4) prob.push(`solo ${a.yes.length} ${a.yes.length===1?'jugador disponible':'jugadores disponibles'}`);
+      if(a.none.length && deadlinePassed(f.j)) prob.push(`${a.none.length} sin responder al cerrar el plazo`);
+      if(a.maybe.length) prob.push(`${a.maybe.length} pendientes de confirmar`);
+      return {disponibles:a.yes.length, no_disponibles:a.no.length, pendientes:a.maybe.length, sin_respuesta:a.none.length, plantilla:a.total, convocados:(tt.convocados||[]).length, problemas:prob}; })(),
+    pendientes: { sin_validar: s.p.played && f.status!=='official', partidos_incompletos: !tr.complete && !!(tr.decided||s.p.played), mvp_sin_publicar: s.p.played && !S.published[k]?.mvp, sin_informe_capitan: !cr } }; }); }
+async function reportFacts(sat){
+  const rg=weekendRange(sat), out=[], next=[], ns=new Date(sat+'T12:00:00'); ns.setDate(ns.getDate()+7); const rn=weekendRange(ymd(ns));
+  for(const t of clubTeams()){ const d=clubData[t.id]; if(!d) continue;
+    const fx=d.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&f.date>=rg.from&&f.date<=rg.to).map(f=>({f,s:tieState(d,f)})).filter(x=>x.s.st!=='next');
+    const av= fx.length? await onceColl('seasons/'+docIdFor(t.id,viewSeason)+'/avail') : {};
+    fx.forEach(({f,s})=>out.push(teamWeekFacts(t,d,f,s,av)));
+    d.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&f.date>=rn.from&&f.date<=rn.to).forEach(f=>withS(d,()=>{ const p=persp(f); const ACT=['Confirmar el calendario','Pedir la disponibilidad','Cerrar la disponibilidad','Publicar la convocatoria']; const ph=phases(f.j).slice(0,4).map((x,i)=>x.st!=='done'? ACT[i] : null).filter(Boolean);
+      next.push({equipo:t.name, jornada:f.j, fecha:fdate(f,{weekday:'long',day:'numeric',month:'long'}), hora:f.time, rival:clubName(p.rival), casa:p.home, tareas:ph}); })); }
+  ensureClubDocs(); const docsPend=clubTeams().flatMap(t=>Object.values(clubDocs[t.id]||{}).filter(x=>x.status==='revision'||x.status==='error').map(x=>({equipo:t.name, documento:x.name, estado:DOC_ST[x.status]||x.status})));
+  const sum=k=>out.reduce((a,x)=>{ const [w,l]=x.fin_de_semana[k].split('-').map(Number); return [a[0]+w,a[1]+l]; },[0,0]);
+  const tot={equipos:out.length, victorias:out.filter(x=>x.estado==='victoria').length, derrotas:out.filter(x=>x.estado==='derrota').length, empates:0, pendientes:out.filter(x=>x.estado==='pendiente').length,
+    sin_validar:out.filter(x=>x.pendientes.sin_validar).length, individuales:sum('individuales').join('-'), dobles:sum('dobles').join('-')};
+  return {club:'Real Club de Polo de Barcelona', temporada:viewSeason, fin_de_semana:weekendLabel(rg), sat, totales:tot, equipos:out, proximo_fin_de_semana:{fechas:weekendLabel(rn), eliminatorias:next}, documentacion_pendiente:docsPend};
+}
+// ---- textos de respaldo si la IA no está disponible: solo datos, sin interpretación
+function factualTexts(F){ const T=F.totales;
+  const r={resumen_ejecutivo: !T.equipos? 'No hubo eliminatorias de equipos del club este fin de semana.' : `${T.equipos} ${T.equipos===1?'equipo compitió':'equipos compitieron'} este fin de semana: ${T.victorias} ${T.victorias===1?'victoria':'victorias'}, ${T.derrotas} ${T.derrotas===1?'derrota':'derrotas'} y ${T.pendientes} ${T.pendientes===1?'resultado pendiente':'resultados pendientes'}. Balance de individuales ${T.individuales} y de dobles ${T.dobles}.${T.sin_validar? ` ${T.sin_validar} ${T.sin_validar===1?'resultado está':'resultados están'} pendientes de validación.`:''}`,
+    conclusiones: F.equipos.map(x=>`${x.equipo}: ${x.resultado? (x.estado==='victoria'?'victoria ':'derrota ')+x.resultado : 'resultado pendiente'} contra ${x.rival}${x.validado?'':' (pendiente de validación)'}.`),
+    sintesis_capitan:{}, areas_mejora:[], seguimiento:[]};
+  F.equipos.forEach(x=>{ if(x.pendientes.sin_validar) r.seguimiento.push(`Validar el resultado de ${x.equipo} (jornada ${x.jornada}).`); if(x.pendientes.sin_informe_capitan) r.seguimiento.push(`Pedir el informe postpartido al capitán de ${x.equipo}.`); if(x.pendientes.mvp_sin_publicar) r.seguimiento.push(`Publicar el MVP de ${x.equipo}.`); });
+  return r; }
+// ---- PDF
+async function crestPng(h=300){ const im=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=ASSET.crest||ASSET.crestSm; }); const c=document.createElement('canvas'); const k=h/im.height; c.width=Math.round(im.width*k); c.height=h; c.getContext('2d').drawImage(im,0,0,c.width,c.height); return c.toDataURL('image/png'); }
+function buildReportDoc(F, A, crest, meta_){
+  const T=F.totales, gen=new Date().toLocaleString('es-ES',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const H=(num,title)=>[{text:'SECCIÓN '+num,style:'kicker',margin:[0,0,0,2]},{text:title,style:'h1'},{canvas:[{type:'line',x1:0,y1:0,x2:60,y2:0,lineWidth:2,lineColor:RC.gold}],margin:[0,4,0,14]}];
+  const tbl=(head,rows,widths)=>({table:{headerRows:1,dontBreakRows:true,widths:widths||head.map(()=>'*'),body:[head.map(h=>({text:h,style:'th'})),...rows.map(r=>r.map(c=>typeof c==='object'?c:{text:String(c??'–'),style:'td'}))]},layout:{hLineWidth:(i,n)=>i===0||i===1||i===n.table.body.length?0.8:0.4,vLineWidth:()=>0,hLineColor:i=>i<=1?RC.navy:RC.line,paddingTop:()=>5,paddingBottom:()=>5,paddingLeft:()=>4,paddingRight:()=>4,fillColor:(i)=>i===0?RC.soft:null},margin:[0,0,0,12]});
+  const kv=rows=>({table:{widths:[120,'*'],body:rows.map(([k,v])=>[{text:k,style:'k'},{text:v??'–',style:'v'}])},layout:{hLineWidth:()=>0.4,vLineWidth:()=>0,hLineColor:()=>RC.line,paddingTop:()=>4,paddingBottom:()=>4},margin:[0,0,0,12]});
+  const kpi=(n,l,c)=>({stack:[{text:String(n),fontSize:24,bold:true,color:c||RC.navy},{text:l.toUpperCase(),fontSize:7,color:RC.grey,characterSpacing:.6}],margin:[0,6,0,6]});
+  const resTxt=x=>x.resultado? `${x.estado==='victoria'?'Victoria':'Derrota'} ${x.resultado}` : 'Pendiente';
+  const valTxt=x=>!x.resultado? 'Sin resultado' : x.validado? 'Validado (oficial)' : 'Pendiente de validación';
+  // gráfico discreto: barras horizontales de individuales y dobles ganados/perdidos por equipo
+  const chart=()=>{ if(!F.equipos.length) return {text:''}; const W=470, rowH=26, L=150, scale=(W-L-40)/Math.max(5,...F.equipos.map(x=>{ const [a,b]=x.fin_de_semana.individuales.split('-').map(Number); const [c,d]=x.fin_de_semana.dobles.split('-').map(Number); return a+b+c+d; }));
+    const cv=[], txt=[]; F.equipos.forEach((x,i)=>{ const y=i*rowH; const [sw,sl]=x.fin_de_semana.individuales.split('-').map(Number), [dw,dl]=x.fin_de_semana.dobles.split('-').map(Number); let X=L;
+      [[sw,RC.navy],[sl,RC.crimson],[dw,'#5B7BB0'],[dl,'#D98C9A']].forEach(([n,c])=>{ if(n){ cv.push({type:'rect',x:X,y:y+6,w:n*scale-2,h:12,color:c}); X+=n*scale; } }); });
+    return {stack:[{canvas:cv,absolutePosition:undefined},
+      {columns:[{width:L,stack:F.equipos.map(x=>({text:x.equipo,fontSize:8.5,color:RC.ink,margin:[0,0,0,0],lineHeight:1,height:rowH,marginBottom:rowH-10}))},{text:''}],relativePosition:{x:0,y:-F.equipos.length*rowH+2}},
+      {text:[{text:'Individuales ganados',color:RC.navy,bold:true},'   ',{text:'Individuales perdidos',color:RC.crimson,bold:true},'   ',{text:'Dobles ganados',color:'#5B7BB0',bold:true},'   ',{text:'Dobles perdidos',color:'#D98C9A',bold:true}],fontSize:7.5,margin:[0,6,0,14]}]}; };
+  const c=[];
+  // PORTADA (fondo azul marino en el background)
+  c.push({stack:[{image:crest,width:118,alignment:'center',margin:[0,86,0,34]},
+    {text:'WEEKEND SPORTS REPORT',alignment:'center',color:'#FFFFFF',fontSize:26,bold:true,characterSpacing:4},
+    {canvas:[{type:'line',x1:200,y1:0,x2:299,y2:0,lineWidth:1.5,lineColor:RC.gold}],margin:[0,16,0,16]},
+    {text:'Real Club de Polo de Barcelona',alignment:'center',color:'#FFFFFF',fontSize:15},
+    {text:F.fin_de_semana,alignment:'center',color:RC.gold,fontSize:13,bold:true,margin:[0,22,0,4]},
+    {text:`Temporada ${F.temporada}`,alignment:'center',color:'#C9D2E0',fontSize:10.5},
+    {text:'Lliga Catalana de Tennis per Equips',alignment:'center',color:'#C9D2E0',fontSize:10.5,margin:[0,2,0,0]},
+    {text:'DOCUMENTO INTERNO',alignment:'center',color:'#C9D2E0',fontSize:8,characterSpacing:2,margin:[0,140,0,4]},
+    {text:`Generado el ${gen}`,alignment:'center',color:'#8FA0BA',fontSize:8}],pageBreak:'after'});
+  // 01 RESUMEN EJECUTIVO
+  c.push(...H('01','Resumen ejecutivo'));
+  c.push({columns:[kpi(T.equipos,'Equipos'),kpi(T.victorias,'Victorias',RC.win),kpi(T.derrotas,'Derrotas',RC.crimson),kpi(T.pendientes,'Pendientes'),kpi(T.sin_validar,'Por validar',RC.gold)],margin:[0,0,0,6]});
+  c.push({columns:[kv([['Individuales',T.individuales+' (ganados-perdidos)']]),kv([['Dobles',T.dobles+' (ganados-perdidos)']])],columnGap:20});
+  c.push({text:A.resumen_ejecutivo||'',style:'p'});
+  if(A.conclusiones?.length) c.push({text:'Conclusiones',style:'h3'},{ul:A.conclusiones.map(x=>({text:x,style:'li'})),margin:[0,0,0,12]});
+  if(F.equipos.length) c.push({text:'Partidos por equipo',style:'h3'},chart());
+  c.push({text:A._ia? 'Textos de resumen y conclusiones redactados con IA a partir exclusivamente de los datos registrados.' : 'Textos generados directamente a partir de los datos registrados.',style:'note'});
+  // 02 FICHAS DE EQUIPO
+  F.equipos.forEach((x,i)=>{ c.push({text:'',pageBreak:'before'}); if(i===0) c.push(...H('02','Resultados por equipo'));
+    c.push({table:{widths:['*'],body:[[{stack:[{text:x.equipo,color:'#fff',fontSize:15,bold:true},{text:x.categoria,color:'#C9D2E0',fontSize:9}],fillColor:RC.navy,margin:[10,8,10,8]}]]},layout:'noBorders',margin:[0,0,0,10]});
+    c.push(kv([['Capitán',x.capitan||'Sin asignar'],['Rival',`${x.rival} (${x.casa?'en casa':'fuera'})`],['Fecha y jornada',`Jornada ${x.jornada}, ${x.fecha}, ${x.hora} h`],['Resultado global',resTxt(x)],['Estado del resultado',valTxt(x)]]));
+    const jug=[...new Set([...x.individuales,...x.dobles].flatMap(m=>m.jugadores))];
+    c.push({text:'Jugadores participantes',style:'h3'},{text:jug.length? jug.join(', ') : (x.convocados.length? 'Convocados: '+x.convocados.join(', ') : 'Sin jugadores registrados.'),style:'p'});
+    c.push({text:'Individuales',style:'h3'}, x.individuales.length? tbl(['Orden','Jugador','Marcador','Resultado'],x.individuales.map(m=>[m.n,m.jugadores.join(', ')||'–',m.marcador||'–',m.resultado+(m.nota?` (${m.nota})`:'')]),[40,'*',90,90]) : {text:'Sin partidos individuales registrados.',style:'p'});
+    c.push({text:'Dobles',style:'h3'}, x.dobles.length? tbl(['Pareja','Marcador','Resultado'],x.dobles.map(m=>[m.jugadores.join(' y ')||'–',m.marcador||'–',m.resultado+(m.nota?` (${m.nota})`:'')]),['*',90,90]) : {text:'No se jugó dobles o no está registrado.',style:'p'});
+    if(x.clasificacion){ c.push({unbreakable:true,stack:[{text:'Clasificación actual',style:'h3'},{text:`${x.clasificacion.posicion}º de ${x.clasificacion.equipos}, ${x.clasificacion.puntos} puntos tras ${x.clasificacion.jugadas} ${x.clasificacion.jugadas===1?'jornada':'jornadas'}.`,style:'p'},
+      tbl(['Pos.','Club','PJ','Pts'],x.clasificacion.tabla.map(r=>[{text:r.pos,style:'td',bold:r.nuestro},{text:r.club,style:'td',bold:r.nuestro},{text:r.pj,style:'td'},{text:r.pts,style:'td',bold:r.nuestro}]),[34,'*',34,40])]}); }
+    if(x.evolucion.length) c.push({text:'Evolución en la clasificación',style:'h3'},{text:x.evolucion.map(e=>`J${e.j}: ${e.pos}º`).join('     '),style:'p'});
+  });
+  // 03 INFORME DE LOS CAPITANES
+  c.push({text:'',pageBreak:'before'},...H('03','Informe del capitán'));
+  if(!F.equipos.length) c.push({text:'Sin eliminatorias este fin de semana.',style:'p'});
+  F.equipos.forEach(x=>{ const r=x.informe_capitan; const blk=[{text:x.equipo,style:'h2'}];
+    if(!r) blk.push({text:'El capitán no ha completado el informe postpartido.',style:'p',italics:true,color:RC.crimson});
+    else { if(A.sintesis_capitan?.[x.equipo]) blk.push({text:[{text:'Síntesis. ',bold:true},A.sintesis_capitan[x.equipo]],style:'p'},{text:'Redactada con IA a partir de las respuestas del capitán; no añade valoraciones propias.',style:'note',margin:[0,-6,0,8]});
+      blk.push(kv([['Nota de la jornada',r.nota? r.nota+' / 10':'–'],...CAP_FIELDS.map(([k,l])=>[l, r[k]||'Sin respuesta'])]),{text:`Informe de ${x.informe_por||'el capitán'}.`,style:'note'}); }
+    c.push({stack:blk,unbreakable:!r||Object.keys(r).length<5,margin:[0,0,0,10]}); });
+  // 04 ANÁLISIS Y MEJORAS
+  c.push({text:'',pageBreak:'before'},...H('04','Análisis y mejoras'));
+  c.push({text:'Rendimiento deportivo (datos objetivos)',style:'h3'});
+  c.push(F.equipos.length? tbl(['Equipo','Ind. fin de semana','Dob. fin de semana','Jugadores','Ind. temporada','Dob. temporada','Eliminatorias','Racha'],F.equipos.map(x=>[x.equipo,x.fin_de_semana.individuales,x.fin_de_semana.dobles,x.fin_de_semana.jugadores_utilizados,x.temporada.individuales,x.temporada.dobles,x.temporada.eliminatorias,x.temporada.racha||'Pocos datos']),['*',46,46,40,46,46,48,62]) : {text:'Sin datos.',style:'p'});
+  c.push({text:'Individuales y dobles se cuentan por separado (ganados-perdidos). La racha solo se indica con tres o más eliminatorias jugadas.',style:'note'});
+  const evos=F.equipos.filter(x=>x.evolucion.length);
+  c.push({text:'Evolución de los equipos',style:'h3'},{text: evos.length? '' : 'Aún no hay jornadas suficientes para mostrar una evolución.',style:'p'});
+  if(evos.length) c.push(tbl(['Equipo','Posición por jornada'],evos.map(x=>[x.equipo,x.evolucion.map(e=>`J${e.j}: ${e.pos}º`).join('   ')]),[150,'*']));
+  c.push({text:'Disponibilidad',style:'h3'});
+  c.push(F.equipos.length? tbl(['Equipo','Disponibles','No','Por confirmar','Sin respuesta','Convocados','Observaciones'],F.equipos.map(x=>{ const v=x.disponibilidad; return [x.equipo,v.disponibles,v.no_disponibles,v.pendientes,v.sin_respuesta,v.convocados,v.problemas.length? v.problemas.join('; ') : 'Sin problemas']; }),['*',50,30,48,48,48,120]) : {text:'Sin datos.',style:'p'});
+  const pend=[]; F.equipos.forEach(x=>{ const p=x.pendientes; if(p.sin_validar) pend.push([x.equipo,'Resultado pendiente de validación']); if(p.partidos_incompletos) pend.push([x.equipo,'Faltan partidos por registrar']); if(p.mvp_sin_publicar) pend.push([x.equipo,'MVP sin publicar']); if(p.sin_informe_capitan) pend.push([x.equipo,'Informe del capitán pendiente']); if(x.informe_capitan?.incidencias && !/^(ningun[ao]?|no|nada|sin incidencias|-+)\.?$/i.test(x.informe_capitan.incidencias.trim())) pend.push([x.equipo,'Incidencia comunicada: '+x.informe_capitan.incidencias]); x.disponibilidad.problemas.forEach(pr=>pend.push([x.equipo,'Disponibilidad: '+pr])); });
+  F.documentacion_pendiente.forEach(dd=>pend.push([dd.equipo,`Documento «${dd.documento}»: ${dd.estado}`]));
+  c.push({text:'Aspectos que requieren seguimiento',style:'h3'}, pend.length? tbl(['Equipo','Asunto'],pend,[150,'*']) : {text:'No hay resultados, documentos ni tareas pendientes.',style:'p'});
+  c.push({text:'Recomendaciones',style:'h3'});
+  if(A.areas_mejora?.length) c.push({ul:A.areas_mejora.map(m=>({stack:[{text:(m.equipo? m.equipo+': ' : '')+m.texto,style:'li',bold:true},{text:'Basado en: '+m.fundamento,style:'li',color:RC.grey}],margin:[0,0,0,6]})),margin:[0,0,0,8]});
+  if(A.seguimiento?.length) c.push({ol:A.seguimiento.map(x=>({text:x,style:'li'})),margin:[0,0,0,8]});
+  if(!A.areas_mejora?.length && !A.seguimiento?.length) c.push({text:'No hay base suficiente en los datos ni en los informes de los capitanes para proponer recomendaciones concretas.',style:'p'});
+  c.push({text: A._ia? 'Recomendaciones redactadas con IA a partir exclusivamente de los datos y de lo escrito por los capitanes; cada una indica en qué se basa.' : 'Recomendaciones generadas directamente a partir de los pendientes registrados.',style:'note'});
+  // 06 PRÓXIMO FIN DE SEMANA
+  c.push({text:'',pageBreak:'before'},...H('05','Próximas jornadas'),{text:'Fin de semana del '+F.proximo_fin_de_semana.fechas,style:'p',bold:true});
+  const nx=F.proximo_fin_de_semana.eliminatorias;
+  c.push(nx.length? tbl(['Equipo','Jornada','Fecha y hora','Rival','Tareas pendientes del capitán'],nx.map(x=>[x.equipo,x.jornada,`${x.fecha}, ${x.hora} h`,`${x.rival} (${x.casa?'casa':'fuera'})`,x.tareas.length? x.tareas.join('; ') : 'Al día']),[90,38,90,100,'*']) : {text:'Ningún equipo del club tiene eliminatoria programada el próximo fin de semana.',style:'p'});
+  return { pageSize:'A4', pageMargins:[50,72,50,62], info:{title:'Weekend Sports Report | Real Club de Polo | '+F.fin_de_semana, author:'Real Club de Polo de Barcelona', subject:'Informe deportivo semanal'},
+    background:(page)=> page===1? {canvas:[{type:'rect',x:0,y:0,w:595.28,h:841.89,color:RC.navy},{type:'rect',x:0,y:828,w:595.28,h:13.5,color:RC.crimson}]} : null,
+    header:(page)=> page===1? null : {margin:[50,26,50,0],columns:[{image:crest,width:16},{text:'WEEKEND SPORTS REPORT',fontSize:7.5,bold:true,color:RC.navy,characterSpacing:1.5,margin:[8,4,0,0]},{text:`Real Club de Polo de Barcelona  |  ${F.fin_de_semana}`,fontSize:7.5,color:RC.grey,alignment:'right',margin:[0,4,0,0]}]},
+    footer:(page,pages)=> page===1? null : {margin:[50,20,50,0],columns:[{text:`Documento interno  |  Generado el ${gen}`,fontSize:7,color:RC.grey},{text:`Página ${page} de ${pages}`,fontSize:7,color:RC.grey,alignment:'right'}]},
+    content:c, defaultStyle:{font:'Roboto',fontSize:9.5,color:RC.ink,lineHeight:1.25},
+    styles:{kicker:{fontSize:8,bold:true,color:RC.gold,characterSpacing:1.6},h1:{fontSize:22,bold:true,color:RC.navy},h2:{fontSize:13,bold:true,color:RC.navy,margin:[0,6,0,6]},h3:{fontSize:10.5,bold:true,color:RC.navy,margin:[0,8,0,6]},
+      p:{fontSize:9.5,margin:[0,0,0,10],lineHeight:1.35},li:{fontSize:9.5,lineHeight:1.3},note:{fontSize:7.5,color:RC.grey,italics:true,margin:[0,0,0,10]},
+      th:{fontSize:7.5,bold:true,color:RC.navy,characterSpacing:.3},td:{fontSize:8.8},k:{fontSize:8.5,color:RC.grey},v:{fontSize:9,bold:true,color:RC.ink}} };
+}
+const b64OfBlob = blob => new Promise((ok,ko)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).split(',')[1]); r.onerror=ko; r.readAsDataURL(blob); });
+async function buildWeekendPdf(sat, onStep){
+  const step=t=>{ try{ onStep&&onStep(t); }catch(e){} };
+  step('Recopilando los datos del fin de semana…'); ensureClubSubs(); ensureClubDocs();
+  const F=await reportFacts(sat);
+  step('Redactando las conclusiones…'); let A=null, aiNote='';
+  try{ const tok=await B.idToken(); const r=await fetch('/api/write-report',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({facts:F})});
+    const j=await r.json().catch(()=>({})); if(r.ok && j.ok) A={...j.data,_ia:true}; else aiNote=j.error||('Error '+r.status); }catch(e){ aiNote=e.message; }
+  const fb=factualTexts(F); if(!A) A=fb; else { if(!A.resumen_ejecutivo) A.resumen_ejecutivo=fb.resumen_ejecutivo; if(!A.seguimiento?.length) A.seguimiento=fb.seguimiento; }
+  step('Componiendo el PDF…'); await loadScript(PDFMAKE.js); await loadScript(PDFMAKE.fonts);
+  if(!window.pdfMake?.createPdf) throw new Error('No se ha podido cargar el generador de PDF');
+  const crest=await crestPng(320), doc=buildReportDoc(F,A,crest);
+  const blob=await new Promise((ok,ko)=>{ const to=setTimeout(()=>ko(new Error('El PDF tarda demasiado en generarse')),30000); try{ pdfMake.createPdf(doc).getBlob(b=>{ clearTimeout(to); ok(b); }); }catch(e){ clearTimeout(to); ko(e); } });
+  if(!blob || blob.size<1500) throw new Error('El PDF generado está vacío');
+  const b64=await b64OfBlob(blob);
+  return {blob, b64, file:`Weekend_Sports_Report_RCPB_${sat}.pdf`, ia:!!A._ia, aiNote, teams:F.totales.equipos};
+}
 /* ---------- Envío del resumen por correo ---------- */
 let mailInfo=null, reportLog={}, reportSub=null;
 async function mailStatus(){ if(mailInfo) return mailInfo; try{ const r=await fetch('/api/send-report'); mailInfo=r.ok? await r.json() : {configured:false}; }catch(e){ mailInfo={configured:false}; } softRender(); return mailInfo; }
@@ -1839,11 +2014,11 @@ function reportData(){
   const win=rows.filter(r=>r.s.st==='win').length, loss=rows.filter(r=>r.s.st==='loss').length, next=rows.filter(r=>r.s.st==='next').length, pend=rows.filter(r=>r.s.st==='pending'||r.s.confirm).length;
   return {range:`${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}`, items, win, loss, next, pend};
 }
-function reportEmail(extra){
+function reportEmail(extra, attach){
   const R=reportData(), subject=`Resumen del fin de semana (${R.range}), Real Club de Polo`;
   const text=[`RESUMEN DEL FIN DE SEMANA: ${R.range}`, `Eliminatorias: ${R.items.length}. Victorias: ${R.win}. Derrotas: ${R.loss}. Programadas: ${R.next}. Pendientes: ${R.pend}.`, extra? '\n'+extra : '', '',
     ...R.items.map(x=>`${x.team} contra ${x.rival} (jornada ${x.j}, ${x.date}): ${x.res}. ${x.st}. Individuales ${x.sw}-${x.sl}, dobles ${x.dw}-${x.dl}.`+(x.S_.length? '\n'+x.S_.map(m=>`  ${m.res==='W'?'G':'P'} ${m.who}, individual ${m.n}: ${m.sets}`).join('\n'):'')+(x.D_.length? '\n'+x.D_.map(m=>`  ${m.res==='W'?'G':'P'} Dobles ${m.who}: ${m.sets}`).join('\n'):'')),
-    '', 'Detalle completo en la app: '+location.origin+'/#club-resumen'].join('\n');
+    '', attach? 'Se adjunta el informe completo en PDF: '+attach : '', 'Detalle completo en la app: '+location.origin+'/#club-resumen'].join('\n');
   const td='style="padding:6px 8px;border-bottom:1px solid #e3e6df;font-size:14px"';
   const html=`<div style="font-family:Arial,Helvetica,sans-serif;color:#13261F;max-width:640px">
     <p style="font-size:12px;color:#94722A;text-transform:uppercase;letter-spacing:.06em;margin:0">Real Club de Polo de Barcelona, gestión deportiva</p>
@@ -1853,6 +2028,7 @@ function reportEmail(extra){
     ${R.items.length? `<table style="border-collapse:collapse;width:100%"><tr><th align="left" ${td}>Equipo</th><th align="left" ${td}>Rival</th><th ${td}>Resultado</th><th align="left" ${td}>Estado</th><th ${td}>Ind.</th><th ${td}>Dob.</th></tr>
       ${R.items.map(x=>`<tr><td ${td}>${esc(x.team)}</td><td ${td}>${esc(x.rival)}</td><td align="center" ${td}><b>${esc(x.res)}</b></td><td ${td}>${esc(x.st)}</td><td align="center" ${td}>${x.sw}-${x.sl}</td><td align="center" ${td}>${x.dw}-${x.dl}</td></tr>`).join('')}</table>` : '<p>No hubo eliminatorias este fin de semana.</p>'}
     ${R.items.filter(x=>x.S_.length||x.D_.length).map(x=>`<h3 style="font-size:16px;margin:18px 0 4px">${esc(x.team)}</h3>${x.S_.map(m=>`<div style="font-size:14px;padding:2px 0">${m.res==='W'?'✅':'❌'} ${esc(m.who)}, individual ${m.n}: ${esc(m.sets)}</div>`).join('')}${x.D_.map(m=>`<div style="font-size:14px;padding:2px 0">${m.res==='W'?'✅':'❌'} Dobles, ${esc(m.who)}: ${esc(m.sets)}</div>`).join('')}`).join('')}
+    ${attach? `<p style="margin-top:18px;padding:10px 12px;border:1px solid #d9dee6;border-radius:8px">📎 Se adjunta el informe completo en PDF: <b>${esc(attach)}</b></p>` : ''}
     <p style="margin-top:20px"><a href="${esc(location.origin)}/#club-resumen" style="color:#94722A">Ver el detalle en la app</a></p>
     <p style="font-size:12px;color:#8a978f">Generado con los resultados registrados en la app. Los marcados como pendientes aún no están confirmados.</p></div>`;
   return {subject, text, html};
@@ -1867,20 +2043,35 @@ function mailPanel(){
   return `<section class="sec noprint"><div class="panel"><b>Enviar el resumen por correo</b>
     ${opts.length? `<div class="mailto">${opts.map(o=>`<label><input type="checkbox" data-act="mail-to" value="${esc(o.email)}" ${ui.mailTo.has(o.email)?'checked':''}> ${esc(o.label)}</label>`).join('')}</div>` : '<p class="muted small">Aún no hay gestores con correo. Añádelos en Configuración.</p>'}
     <textarea id="mail-extra" rows="2" placeholder="Mensaje opcional (se añade al principio)">${esc(ui.mailExtra||'')}</textarea>
-    <div class="row" style="margin-top:10px"><button class="btn brass" data-act="mail-send" ${ok&&ui.mailTo.size?'':'disabled'}>${ui.mailSending?'Enviando…':'Enviar desde la app'}</button><button class="btn ghost" data-act="mail-open" ${ui.mailTo.size?'':'disabled'}>Abrir en mi correo</button></div>
+    <div class="row" style="margin-top:10px"><button class="btn brass" data-act="mail-send" ${ok&&ui.mailTo.size&&!ui.mailSending?'':'disabled'}>${ui.mailSending?'Enviando…':'Enviar desde la app'}</button><button class="btn ghost" data-act="mail-open" ${ui.mailTo.size&&!ui.mailSending?'':'disabled'}>Abrir en mi correo</button></div>
+    <p class="muted small" style="margin:6px 0 0">«Enviar desde la app» adjunta automáticamente el informe en PDF (Weekend Sports Report). «Abrir en mi correo» no puede adjuntar archivos.</p>
+    ${ui.mailSending? `<p class="small" style="margin:8px 0 0"><span class="spin"></span> ${esc(ui.mailStep||'')}</p>` : ''}
+    ${ui.mailErr? `<div class="vbox err" style="margin-top:8px">${esc(ui.mailErr)}</div>` : ''}
+    ${ui.lastPdf? `<p class="small" style="margin:8px 0 0">Último PDF enviado: <a href="${ui.lastPdf.url}" download="${esc(ui.lastPdf.file)}">${esc(ui.lastPdf.file)}</a>${ui.lastPdf.ia? '' : ' (conclusiones generadas solo con datos'+(ui.lastPdf.aiNote? ': la IA no respondió' : '')+')'}</p>` : ''}
     <p class="muted small" style="margin:8px 0 0">${ok? `Se enviará desde <b>${esc(mailInfo.from||'el correo configurado')}</b>. Solo se puede enviar a gestores del club o a ti.` : mailInfo? 'El envío automático aún no está configurado (falta el correo de envío en Vercel). Mientras tanto, «Abrir en mi correo» lo deja escrito en tu Mail o Gmail para que lo envíes tú.' : 'Comprobando…'}</p>
-    ${log.length? `<p class="small" style="margin:12px 0 4px"><b>Últimos envíos</b></p><ul class="insights">${log.map(x=>`<li>${x.status==='enviado'?'✓':'✗'} ${esc((x.to||[]).join(', '))}<small>${esc(x.range||'')}, ${relTime(x.at)}, ${esc(x.by||'')}${x.status==='enviado'? '' : ': '+esc(x.error||'error')}</small></li>`).join('')}</ul>` : ''}</div></section>`;
+    ${log.length? `<p class="small" style="margin:12px 0 4px"><b>Últimos envíos</b></p><ul class="insights">${log.map(x=>`<li>${x.status==='enviado'?'✓':'✗'} ${esc((x.to||[]).join(', '))}<small>${esc(x.range||'')}, ${relTime(x.at)}, ${esc(x.by||'')}${x.status==='enviado'? (x.attachment? ', con '+esc(x.attachment) : '') : ': '+esc(x.error||'error')}</small></li>`).join('')}</ul>` : ''}</div></section>`;
 }
 async function mailSend(){
   const to=[...ui.mailTo]; if(!to.length) return toast('Elige al menos un destinatario');
-  const extra=$('#mail-extra')?.value.trim()||''; ui.mailExtra=extra; const m=reportEmail(extra), R=reportData();
-  ui.mailSending=true; renderQuiet(); const base={at:Date.now(), by:authUser?.email||'', to, range:R.range, subject:m.subject};
-  try{ const tok=await B.idToken(); const r=await fetch('/api/send-report',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({to,subject:m.subject,html:m.html,text:m.text})});
+  if(ui.mailSending) return; const extra=$('#mail-extra')?.value.trim()||''; ui.mailExtra=extra; ui.mailErr=null;
+  const sat=ui.clubSat||ymd(weekendSat()), R=reportData();
+  ui.mailSending=true; ui.mailStep='Generando el informe PDF…'; renderQuiet();
+  // 1) PDF: si no se puede generar, NO se envía el correo
+  let pdf=null;
+  try{ pdf=await buildWeekendPdf(sat, t=>{ ui.mailStep=t; renderQuiet(); }); }
+  catch(e){ ui.mailSending=false; ui.mailStep=''; ui.mailErr='No se ha podido generar el informe PDF ('+(e.message||e)+'). No se ha enviado nada. Pulsa «Enviar desde la app» para reintentar.'; renderQuiet(); return; }
+  // 2) correo de siempre, con el PDF adjunto
+  ui.mailStep='Enviando el correo…'; renderQuiet();
+  const m=reportEmail(extra, pdf.file);
+  const base={at:Date.now(), by:authUser?.email||'', to, range:R.range, subject:m.subject, attachment:pdf.file, attachmentSize:pdf.blob.size, aiText:pdf.ia};
+  try{ const tok=await B.idToken(); const r=await fetch('/api/send-report',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},
+      body:JSON.stringify({to,subject:m.subject,html:m.html,text:m.text,attachments:[{filename:pdf.file,content:pdf.b64,contentType:'application/pdf'}]})});
     const j=await r.json().catch(()=>({})); if(!r.ok || !j.ok) throw new Error(j.error||('Error '+r.status));
     await B.set('reports/'+Date.now().toString(36),{...base,status:'enviado',provider:j.provider||'',messageId:j.id||''}).catch(()=>{});
-    toast('Enviado a '+to.join(', '));
-  }catch(e){ await B.set('reports/'+Date.now().toString(36),{...base,status:'error',error:String(e.message||e).slice(0,200)}).catch(()=>{}); toast('No se ha enviado: '+(e.message||e)); }
-  ui.mailSending=false; renderQuiet();
+    if(ui.lastPdf?.url) URL.revokeObjectURL(ui.lastPdf.url); ui.lastPdf={url:URL.createObjectURL(pdf.blob), file:pdf.file, ia:pdf.ia, aiNote:pdf.aiNote};
+    toast('Enviado a '+to.join(', ')+' con el PDF adjunto');
+  }catch(e){ ui.mailErr='No se ha enviado: '+(e.message||e); await B.set('reports/'+Date.now().toString(36),{...base,status:'error',error:String(e.message||e).slice(0,200)}).catch(()=>{}); toast(ui.mailErr); }
+  ui.mailSending=false; ui.mailStep=''; renderQuiet();
 }
 function mailOpen(){ const to=[...ui.mailTo]; const m=reportEmail($('#mail-extra')?.value.trim()||'');
   let body=m.text; if(body.length>1800) body=body.slice(0,1750)+'\n…\nDetalle completo en la app: '+location.origin+'/#club-resumen';
@@ -1894,7 +2085,7 @@ function vClubResumen(){
   const concl = !rows.length? 'No hubo eliminatorias de equipos del club este fin de semana.'
     : `${played.length} ${played.length===1?'equipo compitió':'equipos compitieron'} este fin de semana: ${win} ${win===1?'victoria':'victorias'} y ${loss} ${loss===1?'derrota':'derrotas'}.${pend? ' Quedan '+pend+' '+(pend===1?'resultado':'resultados')+' por cerrar o confirmar.' : ''}`;
   return `<div class="wrap club report"><div class="pagehead noprint"></div>
-    <div class="rep-head"><img src="${ASSET.crestSm}" alt=""><div><p class="qsec">Real Club de Polo de Barcelona, gestión deportiva</p><h1>Resum del cap de setmana</h1><p class="lede">${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}. Temporada ${esc(viewSeason)}.</p></div></div>
+    <div class="rep-head"><img src="${ASSET.crestSm}" alt=""><div><p class="qsec">Real Club de Polo de Barcelona, gestión deportiva</p><h1>Resumen del fin de semana</h1><p class="lede">${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}. Temporada ${esc(viewSeason)}.</p></div></div>
     <div class="row noprint" style="margin:6px 0 16px"><button class="btn ghost sm" data-act="club-wk" data-d="-7">‹ Anterior</button><button class="btn ghost sm" data-act="club-wk" data-d="7">Siguiente ›</button><button class="btn brass" data-act="club-print">Imprimir o guardar en PDF</button><button class="btn" data-act="mail-toggle">Enviar por correo</button></div>${ui.mailOpen? mailPanel() : ''}
     <section class="sec"><h2>1. Resumen</h2><div class="mdkpis"><div><b>${rows.length}</b><span>eliminatorias</span></div><div><b>${win}</b><span>victorias</span></div><div><b>${loss}</b><span>derrotas</span></div><div><b>${rows.filter(r=>r.s.st==='next').length}</b><span>programadas</span></div><div><b>${pend}</b><span>pendientes</span></div></div></section>
     <section class="sec"><h2>2. Resultados por equipo</h2>${rows.length? `<table><thead><tr><th>Equipo</th><th class="l">Rival</th><th>Resultado</th><th class="l">Estado</th><th>Ind.</th><th>Dob.</th></tr></thead><tbody>${rows.map(({t,d,f,s})=>{ const g=withS(d,()=>{ const tt=tie(f.j); let sw=0,sl=0,dw=0,dl=0; (tt?.rubbers||[]).forEach(r=>{ const c=rubberCalc(r); if(!c.res) return; if(r.type==='S') c.res==='W'? sw++ : sl++; else c.res==='W'? dw++ : dl++; }); return {sw,sl,dw,dl}; });
@@ -1906,7 +2097,7 @@ function vClubResumen(){
 }
 function vClubAjustes(){
   if(!canClub()) return vClub();
-  if(!isAdmin) return `<div class="wrap club"><div class="pagehead"><h1>Configuració</h1><p class="lede">Equips i gestors del club. Només un administrador pot canviar-los.</p></div><section class="sec"><ul class="insights">${clubTeams().map(t=>`<li><b>${esc(t.name)}</b><small>${esc([t.cat,t.gender].filter(Boolean).join(', '))}</small></li>`).join('')}</ul></section><section class="sec"><div class="sec-h"><h2>Gestors</h2></div><ul class="insights">${(meta?.managers||[]).map(x=>`<li><b>${esc(x.name||'')}</b> ${esc(x.email)}</li>`).join('')||'<li class="muted">Cap</li>'}</ul></section></div>`;
+  if(!isAdmin) return `<div class="wrap club"><div class="pagehead"><h1>Configuración</h1><p class="lede">Equipos y gestores del club. Solo un administrador puede cambiarlos.</p></div><section class="sec"><ul class="insights">${clubTeams().map(t=>`<li><b>${esc(t.name)}</b><small>${esc([t.cat,t.gender].filter(Boolean).join(', '))}</small></li>`).join('')}</ul></section><section class="sec"><div class="sec-h"><h2>Gestores</h2></div><ul class="insights">${(meta?.managers||[]).map(x=>`<li><b>${esc(x.name||'')}</b> ${esc(x.email)}</li>`).join('')||'<li class="muted">Ninguno</li>'}</ul></section></div>`;
   const m=meta||{}, teams=clubTeams(), mgr=m.managers||[];
   return `<div class="wrap club"><div class="pagehead"><h1>Configuració</h1></div>
     <section class="sec"><div class="sec-h"><h2>Gestores deportivos</h2></div><p class="muted small">Ven todos los equipos del club y pueden corregir datos. Entran con su Google; no necesitan ser jugadores.</p>
@@ -1982,7 +2173,8 @@ async function docDelete(id){ const d=docs[id]; if(!d||!confirm('¿Borrar '+d.na
 
 /* ===================== LECTURA CON IA (Fase 3) ===================== */
 const LIBS={pdf:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', pdfw:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js', xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', mammoth:'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'};
-const loadScript = src => new Promise((ok,ko)=>{ if(document.querySelector(`script[src="${src}"]`)) return ok(); const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error('No se ha podido cargar '+src)); document.head.appendChild(s); });
+// Carga una librería externa; si un intento falla, se borra para que el reintento la vuelva a pedir
+const loadScript = src => new Promise((ok,ko)=>{ const ex=document.querySelector(`script[src="${src}"]`); if(ex && ex.dataset.ok) return ok(); if(ex) ex.remove(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ s.dataset.ok='1'; ok(); }; s.onerror=()=>{ s.remove(); ko(new Error('No se ha podido cargar '+src.split('/').pop())); }; document.head.appendChild(s); });
 async function imgToJpeg(src,max=1600){ const im=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=src; }); const k=Math.min(1,max/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); c.getContext('2d').drawImage(im,0,0,c.width,c.height); return c.toDataURL('image/jpeg',.85); }
 async function prepareDoc(id){   // texto e imágenes: solo lo necesario para la lectura
   const d=docs[id], blob=await docBlob(id), name=d.name.toLowerCase(), out={text:'',images:[]};
@@ -2027,8 +2219,8 @@ function initReview(id){ const d=docs[id], x=clone(d.extraction?.data||{}); cons
   if(d.kind==='clasificacion') rv.rows=(x.rows||[]).map(r=>({...r, t:matchTeam(r.team)}));
   ui.rev=rv; }
 function vDoc(id){
-  ensureDocsSub(); const d=docs[id]; if(!d) return `<div class="wrap"><div class="pagehead"><a class="textlink" href="#${ui.docBack||'docs'}">← ${ui.docBack==='club-docs'?'Documentació':'Documentos'}</a><h1>Documento</h1></div><div class="empty">Cargando…</div></div>`;
-  const head=`<div class="wrap"><div class="pagehead"><a class="textlink" href="#${ui.docBack||'docs'}">← ${ui.docBack==='club-docs'?'Documentació':'Documentos'}</a><h1 style="margin-top:10px">${esc(d.name)}</h1><p class="lede">${d.j?'Jornada '+d.j+'. ':''}Estado: <b>${DOC_ST[d.status]||d.status}</b>.${d.validatedBy? ' Validado por '+esc(d.validatedBy)+' '+relTime(d.validatedAt)+'.' : ''}</p>
+  ensureDocsSub(); const d=docs[id]; if(!d) return `<div class="wrap"><div class="pagehead"><a class="textlink" href="#${ui.docBack||'docs'}">← ${ui.docBack==='club-docs'?'Documentación':'Documentos'}</a><h1>Documento</h1></div><div class="empty">Cargando…</div></div>`;
+  const head=`<div class="wrap"><div class="pagehead"><a class="textlink" href="#${ui.docBack||'docs'}">← ${ui.docBack==='club-docs'?'Documentación':'Documentos'}</a><h1 style="margin-top:10px">${esc(d.name)}</h1><p class="lede">${d.j?'Jornada '+d.j+'. ':''}Estado: <b>${DOC_ST[d.status]||d.status}</b>.${d.validatedBy? ' Validado por '+esc(d.validatedBy)+' '+relTime(d.validatedAt)+'.' : ''}</p>
     <div class="row" style="margin-top:10px;gap:12px"><label class="small">Tipo de documento <select data-act="doc-kind" data-id="${esc(id)}" style="width:auto">${Object.entries(DOC_KINDS).map(([k,l])=>`<option value="${k}" ${d.kind===k?'selected':''}>${l}</option>`).join('')}</select></label>
       <span class="ccb confirm">Se aplicará a: ${esc(curTeam().name)}, temporada ${esc(viewSeason)}</span></div>
     ${(d.kindLog||[]).length? `<p class="muted small" style="margin:6px 0 0">Tipo cambiado de «${esc(DOC_KINDS[d.kindLog.at(-1).from]||d.kindLog.at(-1).from)}» a «${esc(DOC_KINDS[d.kindLog.at(-1).to]||d.kindLog.at(-1).to)}» por ${esc(d.kindLog.at(-1).by)}, ${relTime(d.kindLog.at(-1).at)}.</p>` : ''}
@@ -2114,11 +2306,11 @@ async function clubDocDownload(tid,id){ const d=clubDocs[tid]?.[id]; if(!d) retu
 function vClubDocs(){
   if(!canClub()) return vClub(); ensureClubSubs(); ensureClubDocs(); ui.docBase='club-doc-'; ui.docBack='club-docs';
   const teams=clubTeams(), all=teams.flatMap(t=>Object.values(clubDocs[t.id]||{}));
-  const cnt=tid=>{ const ds=Object.values(clubDocs[tid]||{}); const rv=ds.filter(d=>d.status==='revision').length; return ds.length? ` (${ds.length}${rv? ', '+rv+' per revisar':''})` : ''; };
+  const cnt=tid=>{ const ds=Object.values(clubDocs[tid]||{}); const rv=ds.filter(d=>d.status==='revision').length; return ds.length? ` (${ds.length}${rv? ', '+rv+' por revisar':''})` : ''; };
   const body=vDocs().replace(/^<div class="wrap"><div class="pagehead">[\s\S]*?<\/div>/,'').replace(/<\/div>\s*$/,'');
-  return `<div class="wrap club"><div class="pagehead"><h1>Documentació</h1><p class="lede">Tria un equip i treballa la seva documentació aquí: pujar, llegir amb IA, revisar i validar. Cada document queda vinculat al seu equip, temporada i jornada.</p></div>
-    <section class="sec"><div class="teampick"><label for="cdt">Equip</label><select id="cdt" data-act="club-doc-team">${teams.map(t=>`<option value="${esc(t.id)}" ${t.id===teamId?'selected':''}>${esc(t.name)}${cnt(t.id)}</option>`).join('')}</select></div>
-      <div class="mdkpis" style="margin-top:12px"><div><b>${all.length}</b><span>documents del club</span></div><div class="${all.some(d=>d.status==='revision')?'warn':''}"><b>${all.filter(d=>d.status==='revision').length}</b><span>per revisar</span></div><div><b>${all.filter(d=>d.status==='completado').length}</b><span>incorporats</span></div><div class="${all.some(d=>d.status==='error')?'warn':''}"><b>${all.filter(d=>d.status==='error').length}</b><span>amb error</span></div></div></section>
+  return `<div class="wrap club"><div class="pagehead"><h1>Documentación</h1><p class="lede">Elige un equipo y trabaja su documentación aquí: subir, leer con IA, revisar y validar. Cada documento queda vinculado a su equipo, temporada y jornada.</p></div>
+    <section class="sec"><div class="teampick"><label for="cdt">Equipo</label><select id="cdt" data-act="club-doc-team">${teams.map(t=>`<option value="${esc(t.id)}" ${t.id===teamId?'selected':''}>${esc(t.name)}${cnt(t.id)}</option>`).join('')}</select></div>
+      <div class="mdkpis" style="margin-top:12px"><div><b>${all.length}</b><span>documentos del club</span></div><div class="${all.some(d=>d.status==='revision')?'warn':''}"><b>${all.filter(d=>d.status==='revision').length}</b><span>por revisar</span></div><div><b>${all.filter(d=>d.status==='completado').length}</b><span>incorporados</span></div><div class="${all.some(d=>d.status==='error')?'warn':''}"><b>${all.filter(d=>d.status==='error').length}</b><span>con error</span></div></div></section>
     ${body}</div>`;
 }
 
@@ -2154,15 +2346,15 @@ function render(){
   app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
   document.querySelectorAll('[data-nav]').forEach(a=>{ if(a.dataset.nav===nav) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   const al=$('.adminlink'); al.classList.toggle('on',canManage);
-  if(!al.querySelector('.al-t')){ al.insertAdjacentHTML('beforeend','<span class="al-t">Gestió</span><span class="al-dot" aria-hidden="true"></span>'); al.setAttribute('aria-label','Gestió'); al.title='Gestió'; }
-  let pend=null; try{ pend=canManage? pendingAction() : null; }catch(e){} al.classList.toggle('pending', !!pend); al.setAttribute('aria-label', pend? 'Gestió: hay un paso pendiente' : 'Gestió');
-  const bs=$('.brand span'); if(bs) bs.innerHTML= nav==='club'? `Gestió esportiva <small>Real Club de Polo</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
+  if(!al.querySelector('.al-t')){ al.insertAdjacentHTML('beforeend','<span class="al-t">Gestión</span><span class="al-dot" aria-hidden="true"></span>'); al.setAttribute('aria-label','Gestión'); al.title='Gestión'; }
+  let pend=null; try{ pend=canManage? pendingAction() : null; }catch(e){} al.classList.toggle('pending', !!pend); al.setAttribute('aria-label', pend? 'Gestión: hay un paso pendiente' : 'Gestión');
+  const bs=$('.brand span'); if(bs) bs.innerHTML= nav==='club'? `Gestión deportiva <small>Real Club de Polo</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
   let tw=$('.teamsw'); if(!tw){ tw=document.createElement('button'); tw.className='teamsw'; tw.type='button'; tw.setAttribute('aria-label','Cambiar de equipo'); tw.dataset.act='team-menu'; tw.textContent='▾'; $('.brand').after(tw); }
   tw.hidden = nav==='club' || !(clubTeams().length>1 || canClub());
-  let cl=$('.clublink'); if(!cl){ cl=document.createElement('a'); cl.className='clublink'; cl.href='#club'; cl.title='Gestió esportiva'; cl.setAttribute('aria-label','Gestió esportiva'); cl.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>'; $('.topicons').prepend(cl); }
+  let cl=$('.clublink'); if(!cl){ cl=document.createElement('a'); cl.className='clublink'; cl.href='#club'; cl.title='Gestión deportiva'; cl.setAttribute('aria-label','Gestión deportiva'); cl.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>'; $('.topicons').prepend(cl); }
   cl.classList.toggle('on',canClub()); if(nav==='club') cl.setAttribute('aria-current','page'); else cl.removeAttribute('aria-current');
   document.body.classList.toggle('clubmode', nav==='club');
-  if(nav==='club'){ const a=$('#app'); if(a && !a.querySelector('.clubsub')) a.insertAdjacentHTML('afterbegin', clubNav(route())); } document.body.classList.toggle('noplayer', !me);
+  setNavMode(nav==='club'); document.body.classList.toggle('noplayer', !me);
   const mb=$('.mebtn'); if(mb) mb.innerHTML = me? avatar(player(me)) : (authUser? `<span class="av">${esc((authUser.email||'?')[0].toUpperCase())}</span>`:'');
   const dot=document.querySelector('.tabbar [data-nav="yo"]'); if(dot){ dot.querySelector('.dot')?.remove(); const nx=nextPoloFix(); if(pendingSurveys().length || pendingMvp().length || (nx&&me&&availOpen(nx)&&!avOf(me,nx.j))) dot.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
   afterRender(app);
@@ -2278,6 +2470,8 @@ document.addEventListener('click', async e=>{
   else if(a==='team-open'){ switchTeam(el.dataset.t); location.hash='inicio'; }
   else if(a==='club-wk'){ const dd=+el.dataset.d; const base=ui.clubSat||ymd(weekendSat()); const x=new Date(base+'T12:00:00'); if(dd) x.setDate(x.getDate()+dd); ui.clubSat= dd? ymd(x) : ymd(weekendSat()); renderQuiet(); }
   else if(a==='club-print'){ window.print(); }
+  else if(a==='capr-save'){ const j=+el.dataset.j, t=ensureTie(j), r={}; document.querySelectorAll('[data-capr]').forEach(x=>{ const v=x.value.trim(); if(v) r[x.dataset.capr]= x.dataset.capr==='nota'? +v : v.slice(0,2000); });
+    if(!Object.keys(r).length) return toast('Escribe algo antes de guardar'); t.captainReport={...r, by:(me&&player(me)?.name)||authUser?.email||'', at:Date.now()}; saveState('Informe del capitán guardado'); }
   else if(a==='eq-view'){ ui.eqView=el.dataset.v; try{ localStorage.setItem('polo-eqview',ui.eqView); }catch(e){} renderQuiet(); }
   else if(a==='eq-sort'){ const v=el.dataset.v; ui.eqDir= ui.eqSort===v? -(ui.eqDir||1) : 1; ui.eqSort=v; renderQuiet(); }
   else if(a==='mail-toggle'){ ui.mailOpen=!ui.mailOpen; renderQuiet(); }
