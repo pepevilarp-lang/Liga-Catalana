@@ -36,7 +36,8 @@ async function authorize(token) {
 }
 async function sendResend(v, mail) {
   const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.RESEND_API_KEY },
-    body: JSON.stringify({ from: v.from, to: mail.to, reply_to: mail.replyTo, subject: mail.subject, html: mail.html, text: mail.text }) });
+    body: JSON.stringify({ from: v.from, to: mail.to, reply_to: mail.replyTo, subject: mail.subject, html: mail.html, text: mail.text,
+      attachments: mail.attachments.map(a => ({ filename: a.filename, content: a.content })) }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.id) throw Object.assign(new Error('El servicio de correo no confirmó el envío: ' + (j.message || r.status)), { status: 502 });
   return j.id;
@@ -45,7 +46,8 @@ async function sendSmtp(v, mail) {
   const nodemailer = require('nodemailer');
   const t = nodemailer.createTransport({ host: process.env.SMTP_HOST || 'smtp.gmail.com', port: +process.env.SMTP_PORT || 465, secure: (+process.env.SMTP_PORT || 465) === 465,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } });
-  const info = await t.sendMail({ from: `"${process.env.MAIL_FROM_NAME || 'Real Club de Polo, gestión deportiva'}" <${v.from}>`, to: mail.to.join(', '), replyTo: mail.replyTo, subject: mail.subject, html: mail.html, text: mail.text });
+  const info = await t.sendMail({ from: `"${process.env.MAIL_FROM_NAME || 'Real Club de Polo, gestión deportiva'}" <${v.from}>`, to: mail.to.join(', '), replyTo: mail.replyTo, subject: mail.subject, html: mail.html, text: mail.text,
+    attachments: mail.attachments.map(a => ({ filename: a.filename, content: Buffer.from(a.content, 'base64'), contentType: a.contentType })) });
   const ok = (info.accepted || []).map(x => String(x).toLowerCase());
   if (!mail.to.every(x => ok.includes(x))) throw Object.assign(new Error('El servidor de correo no aceptó a: ' + mail.to.filter(x => !ok.includes(x)).join(', ')), { status: 502 });
   return info.messageId || '';
@@ -63,9 +65,13 @@ module.exports = async (req, res) => {
     const bad = to.filter(x => !allowed.has(x));
     if (bad.length) throw Object.assign(new Error('Destinatario no autorizado: ' + bad.join(', ') + '. Añádelo como gestor en Configuración.'), { status: 403 });
     if (to.length > 10) throw Object.assign(new Error('Máximo 10 destinatarios'), { status: 400 });
-    const mail = { to, replyTo: email, subject: String(body.subject || 'Resumen del fin de semana').slice(0, 200), html: String(body.html || '').slice(0, 400000), text: String(body.text || '').slice(0, 100000) };
+    // Adjuntos: solo PDF, como máximo 2 y unos 3,5 MB en total (límite de Vercel en la petición)
+    const atts = (Array.isArray(body.attachments) ? body.attachments : []).slice(0, 2).map(a => ({ filename: String(a.filename || 'informe.pdf').replace(/[^\w.\-]+/g, '_').slice(0, 120), content: String(a.content || ''), contentType: 'application/pdf' }));
+    if (atts.some(a => !/\.pdf$/i.test(a.filename) || !/^[A-Za-z0-9+/=]+$/.test(a.content) || !a.content.startsWith('JVBER'))) throw Object.assign(new Error('Adjunto no válido: solo se admiten PDF'), { status: 400 });
+    if (atts.reduce((n, a) => n + a.content.length, 0) > 3.6e6) throw Object.assign(new Error('El PDF adjunto es demasiado grande'), { status: 413 });
+    const mail = { attachments: atts, to, replyTo: email, subject: String(body.subject || 'Resumen del fin de semana').slice(0, 200), html: String(body.html || '').slice(0, 400000), text: String(body.text || '').slice(0, 100000) };
     const id = v.name === 'resend' ? await sendResend(v, mail) : await sendSmtp(v, mail);
-    return res.status(200).json({ ok: true, provider: v.name, id, to });
+    return res.status(200).json({ ok: true, provider: v.name, id, to, attachments: atts.map(a => a.filename) });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message || 'error' });
   }
