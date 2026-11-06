@@ -1089,3 +1089,35 @@ body.clubmode .clublink{background:rgba(255,255,255,.12);color:var(--onGreen)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--brass);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (max-width:700px){ .eqtable td,.eqtable td *{white-space:normal} }
+
+/* ===== Subir acta oficial ===== */
+.resmode{display:flex;width:100%;max-width:520px}
+.resmode button{flex:1;padding:11px 10px}
+.actapanel>b{font-size:1.05rem}
+.btn.big{padding:14px 20px;font-size:1rem;min-height:50px}
+.actapick{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+@media (max-width:600px){ .actapick,.actapanel .btn.big{width:100%;justify-content:center} }
+.actasteps{list-style:none;display:flex;flex-wrap:wrap;gap:6px 14px;padding:0;margin:10px 0 12px}
+.actasteps li{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted);font-weight:600}
+.actasteps span{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:.7rem;background:var(--surface2);color:var(--muted)}
+.actasteps .done span{background:var(--win);color:#fff}.actasteps .cur{color:var(--ink)}.actasteps .cur span{background:var(--brass);color:#fff}
+.actaprev img{display:block;max-width:100%;max-height:360px;border-radius:12px;border:1px solid var(--line);box-shadow:0 10px 24px -18px rgba(0,0,0,.5)}
+.actarow{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:var(--surface)}
+.actarow.bad{border-color:var(--loss);box-shadow:inset 3px 0 0 var(--loss)}.actarow.warn{border-color:var(--brass);box-shadow:inset 3px 0 0 var(--brass)}.actarow.extra{opacity:.65}
+.ar-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ar-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}
+.ar-g label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-weight:600;color:var(--muted)}
+.ar-g label i{font-style:normal;font-weight:500;color:var(--brass)}
+.ar-g input,.ar-g select{font-size:1rem}
+@media (max-width:600px){ .ar-g{grid-template-columns:1fr} }
+.conf{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px}
+.conf.hi{background:var(--winSoft);color:var(--win)}.conf.mid{background:rgba(148,114,42,.15);color:var(--brass)}.conf.lo{background:var(--lossSoft);color:var(--loss)}
+.rwarn{color:var(--brass);font-size:.8rem;font-weight:600;margin:4px 0 0}
+.actarow .rerr{margin:4px 0 0}
+.actatot{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:#0A2A20;color:#F1F4EF;margin:6px 0 10px}
+.actatot span{display:block;color:#8FA79B}.actatot b{font-stretch:62%;font-weight:800;font-size:1.6rem}
+.actatot.bad{box-shadow:0 0 0 2px var(--loss)}
+@media (max-width:480px){ .actatot{grid-template-columns:1fr 1fr} .actatot>div:last-child{grid-column:1 / -1} }
+.actasteps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}
+.actasteps li{padding:0;margin:0;border:0;background:none;min-height:0;box-shadow:none}
+@media (min-width:700px){ .actasteps{grid-template-columns:repeat(5,auto);justify-content:start} }
