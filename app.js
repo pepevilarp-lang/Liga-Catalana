@@ -2196,15 +2196,16 @@ async function prepareDoc(id){   // texto e imágenes: solo lo necesario para la
   out.text=out.text.slice(0,60000); return out; }
 async function docRead(id, opt={}){
   const d=docs[id]; if(!d) return; if(B.mode!=='firebase') return toast('La lectura con IA funciona en la app publicada, no en la vista previa');
-  const ref=`${SEASON_PATH}/docs/${id}`; await B.update(ref,{status:'procesando', procAt:Date.now()}).catch(()=>{});
-  try{ const prep=await prepareDoc(id), tok=await B.idToken();
+  const ref=`${SEASON_PATH}/docs/${id}`; (ui.readStage ||= {})[id]='prep'; renderQuiet(); await B.update(ref,{status:'procesando', procAt:Date.now()}).catch(()=>{});
+  try{ const prep=await prepareDoc(id), tok=await B.idToken(); ui.readStage[id]='ai'; renderQuiet();
     const fx=d.j? poloFix(d.j) : null; const ctx={team:curTeam().name, players:S.players.map(p=>p.full||p.name), clubs:S.teams.map(t=>t.name), jornada:d.j||null, ...(fx? {rival:clubName(persp(fx).rival), fecha:fx.date} : {})};
     const r=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({kind:d.kind,text:prep.text,images:prep.images,context:ctx})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(j.error||('Error '+r.status));
+    delete ui.readStage[id]; (ui.readDone ||= {})[id]=Date.now();
     await trackWrite(B.update(ref,{status:'revision', extraction:{kind:d.kind, data:j.data, provider:j.provider, model:j.model, usage:j.usage||null, at:Date.now(), images:j.imagesUsed||0}, error:DEL}));
     toast('Lectura lista: revísala'); if(!opt.stay) location.hash='doc-'+id;
-  }catch(e){ await B.update(ref,{status:'error', error:String(e.message||e).slice(0,300)}).catch(()=>{}); toast('No se ha podido leer: '+(e.message||e)); }
+  }catch(e){ delete (ui.readStage||{})[id]; await B.update(ref,{status:'error', error:String(e.message||e).slice(0,300)}).catch(()=>{}); toast('No se ha podido leer: '+(e.message||e)); renderQuiet(); }
 }
 /* ===================== SUBIR ACTA OFICIAL (Acta de resultats tècnics, FCT) ===================== */
 // Emparejado tolerante para nombres escritos a mano: iniciales, apellidos sueltos y pequeñas faltas
@@ -2256,8 +2257,10 @@ function actaPanel(j){
   const prev=`<div class="actaprev">${ui.docUrls?.[d.id]? (/image/.test(d.mime)? `<a href="${ui.docUrls[d.id]}" target="_blank" rel="noopener"><img src="${ui.docUrls[d.id]}" alt="Acta de la jornada ${j}"></a>` : `<a class="btn ghost" href="${ui.docUrls[d.id]}" target="_blank" rel="noopener">Abrir el acta (PDF)</a>`) : `<button class="btn ghost sm" data-act="acta-preview" data-id="${esc(d.id)}">Ver el acta</button>`}
     <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="doc-dl" data-id="${esc(d.id)}">Descargar</button><span class="muted small">${esc(d.name)}, subida por ${esc(d.byName||d.by||'')} ${relTime(d.at)}</span></div></div>`;
   let body='';
-  if(d.status==='subido' || d.status==='error') body=`${d.status==='error'? `<div class="vbox err">No se ha podido leer: ${esc(d.error||'')}. Puedes reintentar o introducir los resultados a mano.</div>` : ''}<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Leer el acta con IA</button>`;
-  else if(d.status==='procesando'){ const stuck=Date.now()-(d.procAt||0)>120000; body= stuck? `<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Volver a leer</button>` : `<p class="small"><span class="spin"></span> Leyendo el acta… tarda unos segundos.</p>`; }
+  if(isReading(d.id,d)) body=scanView(d.id,d);
+  else if(d.status==='subido' || d.status==='error') body=`${d.status==='error'? `<div class="vbox err">No se ha podido leer: ${esc(d.error||'')}. Puedes reintentar o introducir los resultados a mano.</div>` : ''}<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Leer el acta con IA</button>`;
+  else if(isReading(d.id,d)) body=scanView(d.id,d);
+  else if(d.status==='procesando') body=`<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Volver a leer</button>`;
   else if(d.status==='revision') body=actaReview(j,d);
   else if(d.status==='completado') body=`<div class="final"><b>✓ Resultados confirmados</b><span>Validado por ${esc(d.validatedBy||'')} ${d.validatedAt? relTime(d.validatedAt) : ''}. Ya están en la jornada, las estadísticas y la clasificación.${f?.status!=='official'? ' Queda pendiente de validación oficial.' : ''}</span></div>`;
   return `<section class="sec"><div class="panel actapanel"><b>Acta oficial, jornada ${j}</b>${stepper}${prev}<div style="margin-top:12px">${body}</div>${d.status!=='revision'? `<div style="margin-top:14px">${pick}</div>` : ''}<div id="doc-prog"></div></div></section>`;
@@ -2278,7 +2281,7 @@ function actaReview(j,d){
       ${r.note? `<p class="small" style="margin:4px 0 0">Anotación: <b>${esc(r.note)}</b></p>` : ''}
       ${r.err.map(e=>`<p class="rerr">${esc(e)}</p>`).join('')}${r.warn.map(e=>`<p class="rwarn">${esc(e)}</p>`).join('')}</div>`; }).join('');
   const pp=A.punt||{};
-  return `<div class="actarev"><p class="muted small" style="margin:0 0 10px">Revisa cada partido con el acta delante. Puedes cambiar cualquier dato. El marcador se guarda desde el lado del Polo (si ganó el rival, sus juegos van segundos).</p>
+  return `<div class="actarev ${justRead(d.id)?'fadein':''}">${justRead(d.id)? '<p class="readok">✓ Lectura completada</p>' : ''}<p class="muted small" style="margin:0 0 10px">Revisa cada partido con el acta delante. Puedes cambiar cualquier dato. El marcador se guarda desde el lado del Polo (si ganó el rival, sus juegos van segundos).</p>
     ${rows || '<div class="empty">La IA no ha encontrado partidos en el acta. Prueba con una foto más nítida o introduce los resultados a mano.</div>'}
     <div class="actatot ${chk.issues.some(x=>x.lvl==='err')?'bad':''}"><div><span class="muted small">Suma de los partidos</span><b>Polo ${chk.w}-${chk.l}</b></div><div><span class="muted small">Puntuació del acta</span><b>${pp.polo!=null&&pp.rival!=null? `Polo ${pp.polo}-${pp.rival}` : 'No se lee'}</b></div><div>${pp.polo!=null&&pp.rival!=null? (+pp.polo===chk.w && +pp.rival===chk.l? '<span class="ccb win">Coincide</span>' : '<span class="ccb loss">No coincide</span>') : '<span class="ccb confirm">Sin comprobar</span>'}</div></div>
     ${chk.issues.map(x=>`<div class="vbox ${x.lvl==='err'?'err':'warn'}">${esc(x.t)}${x.lvl==='auth'? `<label class="row" style="margin-top:6px;gap:8px"><input type="checkbox" data-act="acta-override" ${A.override?'checked':''}> Autorizo sustituir el resultado oficial</label>` : ''}</div>`).join('')}
@@ -2307,6 +2310,27 @@ function finishTieSave(j, psIn, rsIn){ const t=ensureTie(j);
     saveState(isPlayed(f)? 'Resultados guardados: estadísticas actualizadas' : 'Jornada '+j+' guardada');
     if(isPlayed(f) && !wasPlayed){ if(!S.mvp[jid(j)]){ S.mvp[jid(j)]={open:true,openedAt:Date.now(),deadline:Date.now()+(+S.rules.mvpHours||48)*3600e3}; saveState('Votación del MVP abierta'); setTimeout(()=>notify('mvp',j),1400); }
       setTimeout(()=>notify('survey',j),400); ui.compose={kind:'survey',j,text:composeText('survey',j)}; renderQuiet(); } }
+/* ---------- Escáner láser mientras la IA lee un documento (sincronizado con el estado real) ---------- */
+// Fases reales: 'prep' = preparando el documento en el dispositivo; 'ai' = esperando la respuesta de la IA
+const isReading = (id,d) => !!(ui.readStage||{})[id] || (d?.status==='procesando' && Date.now()-(d.procAt||0)<120000);
+function ensureThumb(id){ const d=docs[id]; if(!d) return; ui.thumbs ||= {}; ui.thumbLoading ||= {}; if(ui.thumbs[id] || ui.thumbLoading[id]) return; ui.thumbLoading[id]=1;
+  (async()=>{ try{ const blob=await docBlob(id);
+      if(/image/.test(d.mime||'')) ui.thumbs[id]=URL.createObjectURL(blob);
+      else if(/pdf/.test(d.mime||'') || /\.pdf$/i.test(d.name)){ await loadScript(LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc=LIBS.pdfw;
+        const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise, pg=await pdf.getPage(1), v1=pg.getViewport({scale:1}), vp=pg.getViewport({scale:Math.min(2,900/v1.width)});
+        const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; ui.thumbs[id]=c.toDataURL('image/jpeg',.82); }
+      else ui.thumbs[id]='sheet';
+    }catch(e){ ui.thumbs[id]='sheet'; } renderQuiet(); })(); }
+function scanView(id,d){ ensureThumb(id); const th=(ui.thumbs||{})[id], st=(ui.readStage||{})[id];
+  const label = st==='prep'? 'Preparando el documento…' : 'IA analizando documento…';
+  const steps = st? `<div class="scan-steps"><span class="${st==='prep'?'cur':'done'}">${st==='prep'?'':'✓ '}Documento preparado</span><span class="${st==='ai'?'cur':''}">Lectura con IA</span></div>`
+                  : `<p class="muted small" style="margin:2px 0 0">La lectura se inició en otro dispositivo. Esta pantalla se actualiza sola al terminar.</p>`;
+  return `<div class="scanbox" role="status" aria-live="polite">
+    <div class="scan-doc ${th? 'ready' : ''}">${th && th!=='sheet'? `<img src="${th}" alt="Documento en lectura">` : `<div class="scan-sheet" aria-hidden="true"><b></b>${'<i></i>'.repeat(16)}</div>`}
+      <div class="scan-dim"></div><div class="scan-track" aria-hidden="true"><div class="scan-line"></div></div></div>
+    <div class="scan-meta"><span class="scan-dot" aria-hidden="true"></span><b>${label}</b></div>${steps}</div>`; }
+const justRead = id => (ui.readDone||{})[id] && Date.now()-ui.readDone[id]<2500;
+
 /* ---------- emparejar nombres del documento con la app ---------- */
 const STOP=new Set(['club','de','del','la','el','tenis','tennis','rc','rst','ct','ce','rct','real','sant','sport','esportiu','s','i','y','a','b']);
 function matchTeam(name){ const n=normTxt(name); if(/\bpolo\b/.test(n)) return POLO; const toks=n.split(' ').filter(t=>t&&!STOP.has(t)); let best=null,bs=0;
@@ -2332,6 +2356,7 @@ function vDoc(id){
       <span class="ccb confirm">Se aplicará a: ${esc(curTeam().name)}, temporada ${esc(viewSeason)}</span></div>
     ${(d.kindLog||[]).length? `<p class="muted small" style="margin:6px 0 0">Tipo cambiado de «${esc(DOC_KINDS[d.kindLog.at(-1).from]||d.kindLog.at(-1).from)}» a «${esc(DOC_KINDS[d.kindLog.at(-1).to]||d.kindLog.at(-1).to)}» por ${esc(d.kindLog.at(-1).by)}, ${relTime(d.kindLog.at(-1).at)}.</p>` : ''}
     ${d.extraction?.kind && d.extraction.kind!==d.kind? `<div class="vbox warn" style="margin-top:10px">Este documento se leyó como «${esc(DOC_KINDS[d.extraction.kind])}». La revisión de abajo es de esa lectura. Si quieres los datos como «${esc(DOC_KINDS[d.kind])}», pulsa «Volver a leer».</div>` : ''}</div>`;
+  if(isReading(id,d)) return head+`<section class="sec">${scanView(id,d)}</section></div>`;
   const preview=`<div class="docprev" id="docprev"><button class="btn ghost sm" data-act="doc-preview" data-id="${esc(id)}">Ver el documento original</button></div>`;
   if(!d.extraction){ return head+`<section class="sec"><div class="panel"><b>Lectura automática</b><p class="muted small" style="margin:4px 0 12px">La IA leerá el documento y propondrá los datos. No se guarda nada hasta que lo revises y lo valides. ${d.status==='error'? '<br><b style="color:var(--loss)">Último intento: '+esc(d.error||'error')+'</b>' : ''}</p>
       ${(()=>{ const busy=d.status==='procesando' && Date.now()-(d.procAt||0)<120000; return `<button class="btn brass" data-act="doc-read" data-id="${esc(id)}" ${busy?'disabled':''}>${busy?'Leyendo…':d.status==='procesando'?'Volver a leer':'Leer con IA'}</button>`; })()}</div></section><section class="sec">${preview}</section></div>`; }
@@ -2355,7 +2380,7 @@ function vDoc(id){
   if(rv.kind==='clasificacion'){ body=`<div class="row" style="margin-bottom:10px"><label class="small">Tras la jornada <input type="number" data-rev="j" value="${esc(rv.j||'')}" style="width:80px"></label></div><table><thead><tr><th>Pos.</th><th class="l">En el documento</th><th class="l">Club en la app</th><th>Pts</th><th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>`<tr><td>${r.pos}</td><td class="l">${esc(r.team)}</td><td class="l"><select data-rev="t" data-i="${i}" style="width:auto">${tOpts(r.t)}</select></td><td>${r.points??'–'}</td><td>${confBadge(r.confidence)}</td></tr>`).join('')}</tbody></table>`;
     if(rv.rows.some(r=>!r.t)) warn.push('Hay clubes sin emparejar: elige cuál es cada uno'); }
   const done=d.status==='completado';
-  return head+`<div class="docrev"><section class="sec"><div class="sec-h"><h2>Datos leídos</h2><span class="muted small">${esc(d.extraction.provider||'')} ${esc(d.extraction.model||'')}${d.extraction.usage?.total_tokens? ', '+d.extraction.usage.total_tokens+' tokens':''}</span></div>
+  return head+`<div class="docrev ${justRead(id)?'fadein':''}">${justRead(id)? '<p class="readok" style="margin:12px 0 0">✓ Lectura completada</p>' : ''}<section class="sec"><div class="sec-h"><h2>Datos leídos</h2><span class="muted small">${esc(d.extraction.provider||'')} ${esc(d.extraction.model||'')}${d.extraction.usage?.total_tokens? ', '+d.extraction.usage.total_tokens+' tokens':''}</span></div>
       <p class="muted small" style="margin-top:-6px">La IA propone; tú decides. Revisa cada fila, corrige lo que haga falta y valida. Nada cambia en la app hasta que pulses «Validar y aplicar».</p>
       ${unclear.length? `<div class="vbox warn"><b>No se ha podido leer con seguridad</b><ul>${unclear.map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
       ${warn.length? `<div class="vbox err"><b>Discrepancias o avisos</b><ul>${[...new Set(warn)].map(u=>`<li>${esc(u)}</li>`).join('')}</ul></div>`:''}
@@ -2597,7 +2622,7 @@ document.addEventListener('click', async e=>{
   else if(a==='doc-filter'){ ui.docKind=el.dataset.v||''; renderQuiet(); }
   else if(a==='doc-dl'){ docDownload(el.dataset.id); }
   else if(a==='doc-del'){ docDelete(el.dataset.id); }
-  else if(a==='doc-read'){ ui.rev=null; el.disabled=true; el.textContent='Leyendo…'; docRead(el.dataset.id); }
+  else if(a==='doc-read'){ ui.rev=null; el.disabled=true; docRead(el.dataset.id,{stay:true}); }
   else if(a==='doc-preview'){ docPreview(el.dataset.id); }
   else if(a==='doc-discard'){ ui.rev=null; await safe(()=>B.update(`${SEASON_PATH}/docs/${el.dataset.id}`,{status:'subido', extraction:DEL}),'Lectura descartada'); }
   else if(a==='doc-apply'){ applyReview(); }
