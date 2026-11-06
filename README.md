@@ -70,3 +70,9 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
 - Capitanes y administradores ven en Inicio el siguiente paso real de la jornada, con botón directo, y un punto rojo en «Gestió» cuando hay algo pendiente.
 - Permisos por equipo: cada temporada de equipo guarda la lista de sus jugadores (memberIds). Un jugador solo puede editar su equipo; los gestores del club y los administradores, todos.
 - Equipo Absoluto Femenino A creado sin datos: se cargan su calendario y plantilla desde Documentació.
+
+## Informe PDF adjunto al resumen semanal
+- Gestión deportiva → Resumen → «Enviar por correo» → «Enviar desde la app»: genera automáticamente el informe «Weekend Sports Report» (A4, portada, resumen ejecutivo, resultados por equipo, informe del capitán, análisis y mejoras, próximas jornadas) y lo adjunta al correo de siempre como `Weekend_Sports_Report_RCPB_[FECHA].pdf`.
+- Si el PDF no se puede generar, no se envía el correo y se muestra el error para reintentar.
+- Las conclusiones y recomendaciones las redacta la IA (función `api/write-report.js`, mismas variables que la lectura de documentos) solo con datos registrados; si la IA no responde, el informe se genera igual con textos sacados directamente de los datos.
+- El informe del capitán se rellena en Matchday → Postpartido. Si no está, el PDF lo indica.
