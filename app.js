@@ -1226,6 +1226,11 @@ function aCartel(j){
     <p class="muted small">Se compone solo según el número de jugadores. Las fotos salen de sus perfiles.</p></div></div></section>`;
 }
 function aResultados(j){
+  const ad=actaDocFor(j), mode=(ui.resMode||{})[j] || (ad && ['subido','procesando','revision','error'].includes(ad.status)? 'acta' : 'manual');
+  const sw=`<section class="sec" style="padding-bottom:0"><div class="seg resmode" role="group" aria-label="Cómo añadir los resultados"><button data-act="res-mode" data-j="${j}" data-v="manual" aria-pressed="${mode==='manual'}">Introducir manualmente</button><button data-act="res-mode" data-j="${j}" data-v="acta" aria-pressed="${mode==='acta'}">Subir acta oficial</button></div></section>`;
+  return sw + (mode==='acta'? actaPanel(j) : aResultadosManual(j));
+}
+function aResultadosManual(j){
   const f=poloFix(j), t=tie(j)||blankTie(), p=persp(f), conv=new Set(t.convocados||[]);
   const order=[...S.players.filter(x=>conv.has(x.id)), ...S.players.filter(x=>!conv.has(x.id)&&x.active!==false)].map(x=>x.id);
   const popts=sel=>`<option value="">Elegir</option>`+order.map(id=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(pname(id))}</option>`).join('');
@@ -2111,7 +2116,7 @@ async function saveMeta(patch,msg){ const m={current:currentSeason(), seasons:me
 function teamMenuHTML(){ const ts=clubTeams(); return `${ts.map(t=>`<button data-act="team-pick" data-t="${esc(t.id)}" aria-pressed="${t.id===teamId}"><b>${esc(t.short)}</b><small>${esc(t.name)}</small></button>`).join('')}${canClub()? `<a href="#club" data-act="team-menu-close"><b>Gestión deportiva</b><small>Todos los equipos del club</small></a>` : ''}`; }
 
 /* ===================== DOCUMENTOS DEL EQUIPO (Fase 2) ===================== */
-const DOC_KINDS={plantilla:'Listado de jugadores',calendario:'Calendario de la competición',orden:'Orden de juego',acta:'Acta de partidos',resultados:'Resultados',clasificacion:'Clasificación',competicion:'Documentación de la competición',foto:'Fotografía',otro:'Otro'};
+const DOC_KINDS={plantilla:'Listado de jugadores',calendario:'Calendario de la competición',orden:'Orden de juego',acta:'Acta oficial',resultados:'Resultados',clasificacion:'Clasificación',competicion:'Documentación de la competición',foto:'Fotografía',otro:'Otro'};
 const AI_KINDS=['plantilla','calendario','orden','acta','resultados','clasificacion'];
 const DOC_ST={subido:'Pendiente',procesando:'Procesando',revision:'En revisión',validado:'Validado',completado:'Completado',error:'Error'};
 const CHUNK=906000, MAX_DOC=15*1024*1024;
@@ -2150,13 +2155,13 @@ function vDocs(){
   ${order.length? order.map(k=>`<section class="sec"><div class="sec-h"><h2>${k==='g'?'General de la temporada':'Jornada '+k.slice(1)}</h2></div><ul class="doclist">${byJ[k].map(row).join('')}</ul></section>`).join('') : '<section class="sec"><div class="empty">Aún no hay documentos.</div></section>'}</div>`;
 }
 const fileToDataURL = f => new Promise((ok,ko)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=()=>ko(r.error); r.readAsDataURL(f); });
-async function uploadDocs(files){
-  const jSel=$('#doc-j')?.value||'', kSel=$('#doc-k')?.value||'', prog=$('#doc-prog');
+async function uploadDocs(files, opt={}){
+  const jSel= opt.j!=null? String(opt.j) : ($('#doc-j')?.value||''), kSel=opt.kind||$('#doc-k')?.value||'', prog=$('#doc-prog'), ids=[];
   for(const f of files){
     if(f.size>MAX_DOC){ toast(f.name+': supera 15 MB'); continue; }
     const kind=kSel||guessKind(f.name,f.type), j=jSel? +jSel : null, base=normTxt(f.name.replace(/\.[^.]+$/,''));
     const group=kind+'|'+(j||'g')+'|'+base, prev=Object.values(docs).filter(d=>d.group===group), version=prev.length? Math.max(...prev.map(d=>d.version||1))+1 : 1;
-    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7); ids.push(id);
     if(prog) prog.innerHTML=`<p class="small">Subiendo ${esc(f.name)}…</p>`;
     try{ const data=(await fileToDataURL(f)).split(',')[1]||''; const n=Math.ceil(data.length/CHUNK)||1;
       for(let i=0;i<n;i++){ await trackWrite(B.set(`${SEASON_PATH}/docs/${id}/chunks/${i}`,{d:data.slice(i*CHUNK,(i+1)*CHUNK)})); if(prog) prog.innerHTML=`<p class="small">Subiendo ${esc(f.name)}: ${Math.round((i+1)*100/n)}%</p>`; }
@@ -2165,6 +2170,7 @@ async function uploadDocs(files){
     }catch(e){ toast('No se ha podido subir '+f.name); }
   }
   if(prog) prog.innerHTML='';
+  return ids;
 }
 async function docBlob(id){ const d=docs[id]; const parts=[]; for(let i=0;i<(d.chunks||1);i++){ const c=await B.getDoc(`${SEASON_PATH}/docs/${id}/chunks/${i}`); parts.push(c?.d||''); }
   const bin=atob(parts.join('')), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:d.mime||'application/octet-stream'}); }
@@ -2181,25 +2187,126 @@ async function prepareDoc(id){   // texto e imágenes: solo lo necesario para la
   if(/pdf/.test(d.mime)||name.endsWith('.pdf')){ await loadScript(LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc=LIBS.pdfw;
     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise; const pages=Math.min(pdf.numPages,15);
     for(let i=1;i<=pages;i++){ const pg=await pdf.getPage(i); const tc=await pg.getTextContent(); out.text+=tc.items.map(x=>x.str+(x.hasEOL?'\n':' ')).join('')+'\n'; }
-    if(out.text.replace(/\s/g,'').length<400){ if(out.text.replace(/\s/g,'').length<40) out.text=''; for(let i=1;i<=Math.min(pdf.numPages,3);i++){ const pg=await pdf.getPage(i), vp=pg.getViewport({scale:1}), sc=1600/Math.max(vp.width,vp.height), v2=pg.getViewport({scale:sc}), c=document.createElement('canvas'); c.width=v2.width; c.height=v2.height; await pg.render({canvasContext:c.getContext('2d'),viewport:v2}).promise; out.images.push(c.toDataURL('image/jpeg',.85)); } } }
+    if(d.kind==='acta' || out.text.replace(/\s/g,'').length<400){ if(out.text.replace(/\s/g,'').length<40) out.text=''; for(let i=1;i<=Math.min(pdf.numPages,3);i++){ const pg=await pdf.getPage(i), vp=pg.getViewport({scale:1}), sc=1600/Math.max(vp.width,vp.height), v2=pg.getViewport({scale:sc}), c=document.createElement('canvas'); c.width=v2.width; c.height=v2.height; await pg.render({canvasContext:c.getContext('2d'),viewport:v2}).promise; out.images.push(c.toDataURL('image/jpeg',.85)); } } }
   else if(/sheet|excel|csv/.test(d.mime)||/\.(xlsx?|csv)$/.test(name)){ await loadScript(LIBS.xlsx); const wb=XLSX.read(new Uint8Array(await blob.arrayBuffer()),{type:'array'}); out.text=wb.SheetNames.map(n=>'### '+n+'\n'+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n'); }
   else if(name.endsWith('.docx')){ await loadScript(LIBS.mammoth); out.text=(await mammoth.extractRawText({arrayBuffer:await blob.arrayBuffer()})).value; }
   else if(name.endsWith('.doc')) throw new Error('Los .doc antiguos no se pueden leer: guárdalo como .docx o PDF');
   else if(/image/.test(d.mime)){ out.images.push(await imgToJpeg(URL.createObjectURL(blob))); }
   else if(/text/.test(d.mime)) out.text=await blob.text();
   out.text=out.text.slice(0,60000); return out; }
-async function docRead(id){
+async function docRead(id, opt={}){
   const d=docs[id]; if(!d) return; if(B.mode!=='firebase') return toast('La lectura con IA funciona en la app publicada, no en la vista previa');
   const ref=`${SEASON_PATH}/docs/${id}`; await B.update(ref,{status:'procesando', procAt:Date.now()}).catch(()=>{});
   try{ const prep=await prepareDoc(id), tok=await B.idToken();
-    const ctx={team:curTeam().name, players:S.players.map(p=>p.full||p.name), clubs:S.teams.map(t=>t.name), jornada:d.j||null};
+    const fx=d.j? poloFix(d.j) : null; const ctx={team:curTeam().name, players:S.players.map(p=>p.full||p.name), clubs:S.teams.map(t=>t.name), jornada:d.j||null, ...(fx? {rival:clubName(persp(fx).rival), fecha:fx.date} : {})};
     const r=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({kind:d.kind,text:prep.text,images:prep.images,context:ctx})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(j.error||('Error '+r.status));
     await trackWrite(B.update(ref,{status:'revision', extraction:{kind:d.kind, data:j.data, provider:j.provider, model:j.model, usage:j.usage||null, at:Date.now(), images:j.imagesUsed||0}, error:DEL}));
-    toast('Lectura lista: revísala'); location.hash='doc-'+id;
+    toast('Lectura lista: revísala'); if(!opt.stay) location.hash='doc-'+id;
   }catch(e){ await B.update(ref,{status:'error', error:String(e.message||e).slice(0,300)}).catch(()=>{}); toast('No se ha podido leer: '+(e.message||e)); }
 }
+/* ===================== SUBIR ACTA OFICIAL (Acta de resultats tècnics, FCT) ===================== */
+// Emparejado tolerante para nombres escritos a mano: iniciales, apellidos sueltos y pequeñas faltas
+function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let p=Array.from({length:n+1},(_,i)=>i); for(let i=1;i<=m;i++){ const c=[i]; for(let j=1;j<=n;j++) c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1)); p=c; } return p[n]; }
+function guessPlayer(name){ const toks=normTxt(name).split(' ').filter(Boolean); if(!toks.length) return null;
+  const sc=S.players.filter(p=>p.active!==false).map(p=>{ const pt=normTxt((p.full||'')+' '+p.name).split(' ').filter(Boolean); let tot=0, wsum=0;
+    toks.forEach(t=>{ const w=t.length<=2? .5 : 1; let best=0; pt.forEach(q=>{ let s=0; if(t.length<=2) s= q.startsWith(t[0])? .75 : 0; else if(q===t) s=1; else if(t.length>=4 && (q.startsWith(t)||t.startsWith(q))) s=.9; else s=Math.max(0,1-lev(t,q)/Math.max(t.length,q.length)); if(s<.6) s=0; best=Math.max(best,s); }); tot+=best*w; wsum+=w; });
+    return {id:p.id, s: wsum? tot/wsum : 0}; }).sort((a,b)=>b.s-a.s);
+  const top=sc[0], second=sc[1]; if(!top || top.s<.45) return {id:'', conf:top?.s||0, ambiguous:false};
+  return {id:top.id, conf:+top.s.toFixed(2), ambiguous: !!second && second.s>=top.s-.1 && top.s<.97, alts:sc.slice(0,3).map(x=>x.id)}; }
+const actaDocFor = j => Object.entries(docs).map(([id,d])=>({id,...d})).filter(d=>d.kind==='acta' && +d.j===+j).sort((a,b)=>(b.at||0)-(a.at||0))[0]||null;
+const rubIdx = r => r.type==='S'? (r.n>=1&&r.n<=4? r.n-1 : -1) : (r.n===1? 4 : -1);
+function actaDraft(j,d){ const x=d.extraction?.data||{};
+  const rows=(x.matches||[]).map(m=>{ const type=m.type==='D'?'D':'S'; const gs=(m.polo_players||[]).slice(0,type==='D'?2:1).map(nm=>({nm, g:guessPlayer(nm)}));
+    return {type, n:+m.order||null, names:gs.map(z=>z.nm), pids:gs.map(z=>z.g&&z.g.id&&z.g.conf>=.55? z.g.id : ''), pconf:gs.map(z=>z.g?.conf||0), pamb:gs.map(z=>!!z.g?.ambiguous),
+      rival:m.rival_text||'', written:m.score_written||'', side:m.score_side||null, score:String(m.score||'').trim(), winner:m.winner||'', note:m.retired_or_wo||'', conf:isFinite(+m.confidence)? +m.confidence : .5}; })
+    .sort((a,b)=>(a.type===b.type? (a.n||9)-(b.n||9) : a.type==='S'? -1 : 1));
+  return {id:d.id, j, rows, punt:x.puntuacion||{}, rival:x.rival||'', date:x.date||null, numero:x.acta_numero||null, unclear:Array.isArray(x.unclear)? x.unclear : [], override:false}; }
+function actaCheck(A){ const f=poloFix(A.j), t=tie(A.j)||blankTie(), issues=[], used={}, seen={};
+  A.rows.forEach((r,i)=>{ r.err=[]; r.warn=[]; const idx=rubIdx(r); if(idx>=0){ if(seen[idx]) r.err.push('Partido repetido en el acta: revisa el número de fila'); seen[idx]=1; }
+    if(idx<0){ r.warn.push(r.type==='S'? `Fila ${r.n||'?'} de individuales: la Lliga juega 4 individuales; no se guardará` : `Segunda pareja de dobles: la Lliga juega 1 dobles; no se guardará`); return; }
+    const need=r.type==='D'?2:1; r.pids.slice(0,need).forEach((pid,k)=>{ if(!pid) r.err.push(`Elige el jugador del Polo${r.names[k]? ' («'+r.names[k]+'»)' : ''}`); else { if(r.pconf[k] && (r.pconf[k]<.8||r.pamb[k]) && r.names[k]) r.warn.push(`Comprueba que «${r.names[k]}» es ${pname(pid)}`); if(r.type==='S'){ if(used[pid]) r.err.push(pname(pid)+' aparece en dos individuales'); used[pid]=1; } } });
+    if(r.type==='D' && r.pids[0] && r.pids[0]===r.pids[1]) r.err.push('La pareja repite jugador');
+    if(!r.score && !r.winner) r.err.push('Falta el marcador');
+    const res = !r.score && r.winner? (r.winner==='polo'?'W':'L') : null;
+    validateRubber({type:r.type, polo:r.pids.filter(Boolean), score:r.score, res}).filter(e=>!/Falta el jugador|Falta la pareja/.test(e)).forEach(e=>r.err.push(e));
+    const c=rubberCalc({score:r.score}); if(r.winner && c.res && (c.res==='W')!==(r.winner==='polo')) r.err.push('El ganador no coincide con el marcador: revisa si el marcador está escrito desde el lado del Polo');
+    if(r.conf<.75) r.warn.push('Lectura dudosa: compáralo con el acta');
+    const ex=t.rubbers[idx]; if(ex && (ex.score||ex.res) && ex.score!==r.score) r.warn.push(`Ya había otro marcador guardado (${ex.score||ex.res}); se sustituirá`); });
+  // resultado global: suma de los partidos frente a la «Puntuació» del acta
+  let w=0,l=0,dRes=null; A.rows.forEach(r=>{ if(rubIdx(r)<0) return; const c=rubberCalc({score:r.score}); const rr=c.res|| (r.winner? (r.winner==='polo'?'W':'L') : null); if(!rr) return; if(r.type==='S') rr==='W'? w++ : l++; else dRes=rr; });
+  if(dRes && ((w===2&&l===2) || !dblDecider())) dRes==='W'? w++ : l++;
+  const pp=A.punt||{}; const has=pp.polo!=null && pp.rival!=null;
+  if(has && (+pp.polo!==w || +pp.rival!==l)) issues.push({lvl:'err', t:`La «Puntuació» del acta dice ${pp.polo}-${pp.rival}, pero los partidos suman ${w}-${l}. Revisa los marcadores o el ganador de algún partido.`});
+  if(A.rival && f){ const m=matchTeam(A.rival); if(m && m!==persp(f).rival) issues.push({lvl:'warn', t:`El acta indica como rival «${A.rival}», pero la jornada ${A.j} es contra ${clubName(persp(f).rival)}. Comprueba que es el acta correcta.`}); }
+  if(A.date && f && A.date!==f.date) issues.push({lvl:'warn', t:`La fecha del acta (${A.date}) no coincide con la de la jornada (${f.date}).`});
+  if(f?.status==='official' && t.rubbers.some(r=>r.score||r.res)) issues.push({lvl:'auth', t:'Esta jornada tiene un resultado ya confirmado como oficial. Para sustituirlo, marca la casilla de autorización.'});
+  A.unclear.forEach(u=>issues.push({lvl:'warn', t:'La IA avisa: '+u}));
+  return {w,l,issues, blocking: A.rows.some(r=>r.err.length) || issues.some(i=>i.lvl==='err') || (issues.some(i=>i.lvl==='auth') && !A.override)};
+}
+function actaPanel(j){
+  ensureDocsSub(); const d=actaDocFor(j), f=poloFix(j);
+  if(d && !(ui.docUrls||{})[d.id] && !(ui.docUrlLoading||{})[d.id]){ (ui.docUrlLoading ||= {})[d.id]=1; docBlob(d.id).then(b=>{ (ui.docUrls ||= {})[d.id]=URL.createObjectURL(b); renderQuiet(); }).catch(()=>{}); }
+  const steps=[['subido','Acta subida'],['procesando','Leyendo el acta'],['revision','Pendiente de revisión'],['completado','Resultados confirmados']];
+  const cur=d? (d.status==='error'?'subido':d.status) : null, ci=steps.findIndex(s=>s[0]===cur);
+  const stepper=`<ol class="actasteps">${steps.map(([k,l],i)=>`<li class="${i<ci?'done':i===ci?'cur':''}"><span>${i<ci?'✓':i+1}</span>${l}</li>`).join('')}${d?.status==='completado' && f?.status!=='official'? '<li class="cur"><span>!</span>Pendiente de validación</li>' : ''}</ol>`;
+  const pick=`<label class="btn brass big actapick"><input type="file" accept="image/*,application/pdf" data-acta-file="${j}" hidden>📷 ${d?'Subir otra acta':'Hacer foto o elegir el acta'}</label>`;
+  if(!d) return `<section class="sec"><div class="panel actapanel"><b>Subir el acta oficial de la jornada ${j}</b><p class="muted small" style="margin:4px 0 12px">Haz una foto del acta firmada o sube el PDF. La app lee los nombres del Polo, los marcadores y quién gana cada partido. No se guarda nada hasta que lo revises y lo confirmes.</p>${pick}<div id="doc-prog"></div></div></section>`;
+  const prev=`<div class="actaprev">${ui.docUrls?.[d.id]? (/image/.test(d.mime)? `<a href="${ui.docUrls[d.id]}" target="_blank" rel="noopener"><img src="${ui.docUrls[d.id]}" alt="Acta de la jornada ${j}"></a>` : `<a class="btn ghost" href="${ui.docUrls[d.id]}" target="_blank" rel="noopener">Abrir el acta (PDF)</a>`) : `<button class="btn ghost sm" data-act="acta-preview" data-id="${esc(d.id)}">Ver el acta</button>`}
+    <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="doc-dl" data-id="${esc(d.id)}">Descargar</button><span class="muted small">${esc(d.name)}, subida por ${esc(d.byName||d.by||'')} ${relTime(d.at)}</span></div></div>`;
+  let body='';
+  if(d.status==='subido' || d.status==='error') body=`${d.status==='error'? `<div class="vbox err">No se ha podido leer: ${esc(d.error||'')}. Puedes reintentar o introducir los resultados a mano.</div>` : ''}<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Leer el acta con IA</button>`;
+  else if(d.status==='procesando'){ const stuck=Date.now()-(d.procAt||0)>120000; body= stuck? `<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Volver a leer</button>` : `<p class="small"><span class="spin"></span> Leyendo el acta… tarda unos segundos.</p>`; }
+  else if(d.status==='revision') body=actaReview(j,d);
+  else if(d.status==='completado') body=`<div class="final"><b>✓ Resultados confirmados</b><span>Validado por ${esc(d.validatedBy||'')} ${d.validatedAt? relTime(d.validatedAt) : ''}. Ya están en la jornada, las estadísticas y la clasificación.${f?.status!=='official'? ' Queda pendiente de validación oficial.' : ''}</span></div>`;
+  return `<section class="sec"><div class="panel actapanel"><b>Acta oficial, jornada ${j}</b>${stepper}${prev}<div style="margin-top:12px">${body}</div>${d.status!=='revision'? `<div style="margin-top:14px">${pick}</div>` : ''}<div id="doc-prog"></div></div></section>`;
+}
+function actaReview(j,d){
+  if(!ui.acta || ui.acta.id!==d.id) ui.acta=actaDraft(j,d);
+  const A=ui.acta, chk=actaCheck(A), conv=new Set((tie(j)||{}).convocados||[]);
+  const order=[...S.players.filter(x=>conv.has(x.id)), ...S.players.filter(x=>!conv.has(x.id)&&x.active!==false)].map(x=>x.id);
+  const popts=sel=>`<option value="">Elegir jugador</option>`+order.map(id=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const confChip=c=>`<span class="conf ${c>=.85?'hi':c>=.65?'mid':'lo'}">${c>=.85?'Alta':c>=.65?'Media':'Baja'}</span>`;
+  const rows=A.rows.map((r,i)=>{ const idx=rubIdx(r), need=r.type==='D'?2:1;
+    return `<div class="actarow ${r.err.length?'bad':r.warn.length?'warn':''} ${idx<0?'extra':''}">
+      <div class="ar-h"><b>${r.type==='S'? 'Individual '+(r.n||'?') : 'Dobles '+(r.n||'?')}</b>${confChip(r.conf)}</div>
+      <div class="ar-g">${Array.from({length:need},(_,k)=>`<label><span>Jugador del Polo${need>1?' '+(k+1):''}${r.names[k]? ` <i>«${esc(r.names[k])}»</i>` : ''}</span><select data-acta-row="${i}" data-k="pid${k}" ${idx<0?'disabled':''}>${popts(r.pids[k])}</select></label>`).join('')}
+        <label><span>Rival</span><input type="text" value="${esc(r.rival)}" disabled></label>
+        <label><span>Marcador (Polo primero)${r.written? ` <i>escrito: «${esc(r.written)}»</i>` : ''}</span><input type="text" inputmode="numeric" data-acta-row="${i}" data-k="score" value="${esc(r.score)}" placeholder="6-4 6-3" ${idx<0?'disabled':''}></label>
+        <label><span>Ganador</span><select data-acta-row="${i}" data-k="winner" ${idx<0?'disabled':''}><option value="">–</option><option value="polo" ${r.winner==='polo'?'selected':''}>Polo</option><option value="rival" ${r.winner==='rival'?'selected':''}>Rival</option></select></label></div>
+      ${r.note? `<p class="small" style="margin:4px 0 0">Anotación: <b>${esc(r.note)}</b></p>` : ''}
+      ${r.err.map(e=>`<p class="rerr">${esc(e)}</p>`).join('')}${r.warn.map(e=>`<p class="rwarn">${esc(e)}</p>`).join('')}</div>`; }).join('');
+  const pp=A.punt||{};
+  return `<div class="actarev"><p class="muted small" style="margin:0 0 10px">Revisa cada partido con el acta delante. Puedes cambiar cualquier dato. El marcador se guarda desde el lado del Polo (si ganó el rival, sus juegos van segundos).</p>
+    ${rows || '<div class="empty">La IA no ha encontrado partidos en el acta. Prueba con una foto más nítida o introduce los resultados a mano.</div>'}
+    <div class="actatot ${chk.issues.some(x=>x.lvl==='err')?'bad':''}"><div><span class="muted small">Suma de los partidos</span><b>Polo ${chk.w}-${chk.l}</b></div><div><span class="muted small">Puntuació del acta</span><b>${pp.polo!=null&&pp.rival!=null? `Polo ${pp.polo}-${pp.rival}` : 'No se lee'}</b></div><div>${pp.polo!=null&&pp.rival!=null? (+pp.polo===chk.w && +pp.rival===chk.l? '<span class="ccb win">Coincide</span>' : '<span class="ccb loss">No coincide</span>') : '<span class="ccb confirm">Sin comprobar</span>'}</div></div>
+    ${chk.issues.map(x=>`<div class="vbox ${x.lvl==='err'?'err':'warn'}">${esc(x.t)}${x.lvl==='auth'? `<label class="row" style="margin-top:6px;gap:8px"><input type="checkbox" data-act="acta-override" ${A.override?'checked':''}> Autorizo sustituir el resultado oficial</label>` : ''}</div>`).join('')}
+    <div class="revbar"><button class="btn brass" data-act="acta-confirm" data-j="${j}" ${chk.blocking?'disabled':''}>Confirmar resultados</button><button class="btn ghost" data-act="acta-manual" data-j="${j}">Corregir manualmente</button><button class="btn ghost sm" data-act="acta-read" data-id="${esc(d.id)}">Volver a leer</button></div>
+    ${chk.blocking? '<p class="muted small" style="margin:6px 0 0">Corrige lo marcado en rojo para poder confirmar.</p>' : ''}</div>`;
+}
+function actaToTie(j){ const A=ui.acta, t=ensureTie(j); A.rows.forEach(r=>{ const idx=rubIdx(r); if(idx<0) return; const rb=t.rubbers[idx];
+  rb.polo=r.pids.slice(0,r.type==='D'?2:1).filter(Boolean); rb.score=r.score.trim(); rb.res= !rb.score && r.winner? (r.winner==='polo'?'W':'L') : null; rb.note=r.note||rb.note||''; }); return t; }
+async function actaConfirm(j){ const A=ui.acta; if(!A) return; const chk=actaCheck(A); if(chk.blocking) return toast('Corrige lo marcado antes de confirmar');
+  const d=docs[A.id]; const t=actaToTie(j); const v=validateTie(t); if(v.errors.length){ toast(v.errors[0]); renderQuiet(); return; }
+  t.actaId=A.id; finishTieSave(j, A.punt?.polo??'', A.punt?.rival??'');
+  await safe(()=>B.update(`${SEASON_PATH}/docs/${A.id}`,{status:'completado', kind:'acta', validatedBy:(me&&player(me)?.name)||authUser?.email||'', validatedAt:Date.now(), applied:`Resultados de la jornada ${j}`}), 'Resultados confirmados desde el acta');
+  ui.acta=null; renderQuiet(); }
+
+// Guarda el marcador de la eliminatoria a partir de los partidos (lo usan el formulario manual y el acta)
+function finishTieSave(j, psIn, rsIn){ const t=ensureTie(j);
+    const f=poloFix(j), calc=tieFromRubbers(j), home=f.home===POLO; let ps=psIn===null||psIn===undefined? '' : String(psIn), rs=rsIn===null||rsIn===undefined? '' : String(rsIn), src='manual';
+    if(calc.complete){ ps=calc.w; rs=calc.l; src='rubbers'; }
+    else if(ps!==''&&rs!=='' && calc.decided && (+ps!==calc.w || +rs!==calc.l) && calc.decided>=(+ps)+(+rs)) toast('El marcador por equipos no coincide con los partidos introducidos');
+    const val=validateTie(t);
+    const prevScore=[f.hs,f.as].join('-');
+    if(ps!==''&&rs!==''){ f.hs=home?+ps:+rs; f.as=home?+rs:+ps; f.src=src; } else { f.hs=null; f.as=null; f.src=null; }
+    if([f.hs,f.as].join('-')!==prevScore || !f.status) f.status = f.hs==null? null : 'provisional';
+    val.warnings.forEach(w=>toast(w));
+    const wasPlayed=!!t._played; t._played=isPlayed(f);
+    saveState(isPlayed(f)? 'Resultados guardados: estadísticas actualizadas' : 'Jornada '+j+' guardada');
+    if(isPlayed(f) && !wasPlayed){ if(!S.mvp[jid(j)]){ S.mvp[jid(j)]={open:true,openedAt:Date.now(),deadline:Date.now()+(+S.rules.mvpHours||48)*3600e3}; saveState('Votación del MVP abierta'); setTimeout(()=>notify('mvp',j),1400); }
+      setTimeout(()=>notify('survey',j),400); ui.compose={kind:'survey',j,text:composeText('survey',j)}; renderQuiet(); } }
 /* ---------- emparejar nombres del documento con la app ---------- */
 const STOP=new Set(['club','de','del','la','el','tenis','tennis','rc','rst','ct','ce','rct','real','sant','sport','esportiu','s','i','y','a','b']);
 function matchTeam(name){ const n=normTxt(name); if(/\bpolo\b/.test(n)) return POLO; const toks=n.split(' ').filter(t=>t&&!STOP.has(t)); let best=null,bs=0;
@@ -2448,17 +2555,14 @@ document.addEventListener('click', async e=>{
       r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); r.score=g('score').trim(); r.res=g('res')||null; r.note=g('note').trim(); });
     t.moment=$('#moment').value.trim();
     const val=validateTie(t); if(val.errors.length){ renderQuiet(); toast('Hay errores en los resultados: revísalos'); return; }
-    const f=poloFix(j), calc=tieFromRubbers(j), home=f.home===POLO; let ps=$('#ps').value, rs=$('#rs').value, src='manual';
-    if(calc.complete){ ps=calc.w; rs=calc.l; src='rubbers'; }
-    else if(ps!==''&&rs!=='' && calc.decided && (+ps!==calc.w || +rs!==calc.l) && calc.decided>=(+ps)+(+rs)) toast('El marcador por equipos no coincide con los partidos introducidos');
-    const prevScore=[f.hs,f.as].join('-');
-    if(ps!==''&&rs!==''){ f.hs=home?+ps:+rs; f.as=home?+rs:+ps; f.src=src; } else { f.hs=null; f.as=null; f.src=null; }
-    if([f.hs,f.as].join('-')!==prevScore || !f.status) f.status = f.hs==null? null : 'provisional';
-    val.warnings.forEach(w=>toast(w));
-    const wasPlayed=!!t._played; t._played=isPlayed(f);
-    saveState(isPlayed(f)? 'Resultados guardados: estadísticas actualizadas' : 'Jornada '+j+' guardada');
-    if(isPlayed(f) && !wasPlayed){ if(!S.mvp[jid(j)]){ S.mvp[jid(j)]={open:true,openedAt:Date.now(),deadline:Date.now()+(+S.rules.mvpHours||48)*3600e3}; saveState('Votación del MVP abierta'); setTimeout(()=>notify('mvp',j),1400); }
-      setTimeout(()=>notify('survey',j),400); ui.compose={kind:'survey',j,text:composeText('survey',j)}; renderQuiet(); } }
+    finishTieSave(j, $('#ps')?.value??'', $('#rs')?.value??'');
+    if(ui.actaManual===j){ const ad=actaDocFor(j); ui.actaManual=null; if(ad && ad.status!=='completado') safe(()=>B.update(`${SEASON_PATH}/docs/${ad.id}`,{status:'completado', validatedBy:(me&&player(me)?.name)||authUser?.email||'', validatedAt:Date.now(), applied:`Resultados de la jornada ${j} (corregidos a mano)`})); } }
+  else if(a==='acta-preview'){ const id=el.dataset.id; try{ const b=await docBlob(id); (ui.docUrls ||= {})[id]=URL.createObjectURL(b); renderQuiet(); }catch(e){ toast('No se ha podido abrir el acta'); } }
+  else if(a==='acta-read'){ const id=el.dataset.id; ui.acta=null; renderQuiet(); await docRead(id,{stay:true}); renderQuiet(); }
+  else if(a==='acta-confirm'){ actaConfirm(+el.dataset.j); }
+  else if(a==='acta-manual'){ const j=+el.dataset.j; if(ui.acta){ actaToTie(j); ui.actaManual=j; } (ui.resMode ||= {})[j]='manual'; renderQuiet(); toast('Datos del acta pasados al formulario: corrige y pulsa «Guardar resultados»'); }
+  else if(a==='res-mode'){ (ui.resMode ||= {})[+el.dataset.j]=el.dataset.v; renderQuiet(); }
+  else if(a==='acta-override'){ if(ui.acta){ ui.acta.override=el.checked; renderQuiet(); } }
   else if(a==='team-save'){ if(!isAdmin) return; S.rules={...S.rules,teamManage:$('#team-manage').checked}; saveState(S.rules.teamManage? 'Gestión abierta a todo el equipo' : 'Gestión solo para capitanes'); }
   else if(a==='diag'){ ui.diag=[['Comprobando…','',true]]; renderQuiet(); try{ ui.diag=await B.diag(SEASON_PATH, clone(S)); }catch(e){ ui.diag=[['Error',e.code||e.message,false]]; } renderQuiet(); }
   else if(a==='fe-chip'){ const k=el.dataset.k, v=el.dataset.v; ui.fe.draft[k] = ui.fe.draft[k]===v? '' : v;
@@ -2612,6 +2716,11 @@ document.addEventListener('click', async e=>{
   else if(a==='demo-reset'){ if(confirm('¿Borrar todos los datos de la vista previa?')){ await B.reset(); location.reload(); } }
 });
 document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
+  if(el.dataset?.actaFile){ const j=+el.dataset.actaFile, fl=el.files?.[0]; el.value=''; if(fl){ if(!/image|pdf/.test(fl.type) && !/\.(pdf|jpe?g|png|heic|webp)$/i.test(fl.name)) return toast('Sube una foto o un PDF del acta'); ui.acta=null; uploadDocs([fl],{kind:'acta', j}).then(()=>renderQuiet()); } return; }
+  if(el.dataset?.actaRow!==undefined && ui.acta){ const r=ui.acta.rows[+el.dataset.actaRow], k=el.dataset.k; if(!r) return;
+    if(k==='score'){ r.score=el.value.trim().replace(/\s+/g,' '); const c=rubberCalc({score:r.score}); if(c.res) r.winner=c.res==='W'?'polo':'rival'; }
+    else if(k==='winner') r.winner=el.value; else if(k.startsWith('pid')){ const n=+k.slice(3); r.pids[n]=el.value; r.pconf[n]=1; r.pamb[n]=false; }
+    renderQuiet(); return; }
   if(el.id==='doc-files' && el.files?.length){ uploadDocs([...el.files]); el.value=''; return; }
   if(el.dataset?.rev && ui.rev){ const k=el.dataset.rev, i=+el.dataset.i, r=ui.rev.rows?.[i];
     if(k==='act'){ r.act=el.value; if(r.act==='link'&&!r.pid) r.pid=matchPlayer(r.name); } else if(k==='pid') r.pid=el.value||null; else if(k==='use') r.use=el.checked;
