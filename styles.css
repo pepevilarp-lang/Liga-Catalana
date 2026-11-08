@@ -1151,3 +1151,92 @@ body.clubmode .clublink{background:rgba(255,255,255,.12);color:var(--onGreen)}
   .scanbox,.fadein,.scan-doc img{animation:none;transition:none}
 }
 .scan-steps{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px}.scan-steps span{display:inline-flex;align-items:center}
+
+/* ===================== Rediseño por perfiles ===================== */
+.op-k{display:block;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brass)}
+/* Centro de operaciones del capitán */
+.opscard{border:1px solid var(--line);border-radius:20px;background:var(--surface);padding:18px 18px 14px;display:grid;gap:14px}
+.opscard.urgent{border-color:color-mix(in srgb,var(--brass) 55%,var(--line))}
+.op-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.op-top b{display:block;font-stretch:72%;font-size:1.45rem;line-height:1.1;margin-top:2px}
+.op-top small{color:var(--muted);font-size:.85rem}
+.op-dots{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.op-dots li{display:flex;flex-direction:column;gap:6px;align-items:flex-start;min-width:0}
+.op-dots span{display:block;width:100%;height:4px;border-radius:4px;background:var(--surface2)}
+.op-dots .done span{background:var(--win)}
+.op-dots .doing span{background:color-mix(in srgb,var(--brass) 60%,var(--surface2))}
+.op-dots .now span{background:var(--brass)}
+.op-dots em{font-style:normal;font-size:.66rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.op-dots .now em{color:var(--ink);font-weight:700}
+.op-next{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:14px;border-radius:14px;background:var(--green);color:var(--onGreen)}
+.opscard:not(.urgent) .op-next{background:var(--surface2);color:var(--ink)}
+.opscard:not(.urgent) .op-next .op-k{color:var(--muted)}
+.op-next b{display:block;font-stretch:72%;font-size:1.25rem;line-height:1.15;margin-top:2px}
+.op-next p{margin:4px 0 0;font-size:.86rem;opacity:.85}
+.op-next.done{background:var(--winSoft);color:var(--ink);grid-template-columns:1fr}
+.op-next .btn.ghost{border-color:currentColor}
+@media (max-width:620px){ .op-next{grid-template-columns:1fr} .op-next .row .btn{flex:1;justify-content:center} }
+.op-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px}
+.op-kpis div{padding:4px 2px}
+.op-kpis b{display:block;font-stretch:62%;font-weight:800;font-size:1.6rem;line-height:1}
+.op-kpis span{font-size:.72rem;color:var(--muted)}
+.op-kpis .warn b{color:var(--brass)}
+/* Tu próxima jornada (jugador) */
+.myj{border:1px solid var(--line);border-radius:20px;background:var(--surface);padding:16px 18px}
+.myj-h b{display:block;font-stretch:72%;font-size:1.35rem;line-height:1.1;margin-top:2px}
+.myj-g{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.myj-s{display:flex;flex-direction:column;gap:2px;padding:12px;border-radius:14px;background:var(--bg);text-decoration:none;color:var(--ink);border:1px solid var(--line);transition:border-color .2s,transform .15s}
+.myj-s:active{transform:scale(.98)}
+.myj-s span{font-size:.72rem;color:var(--muted);font-weight:600}
+.myj-s b{font-size:1rem;line-height:1.2}
+.myj-s em{font-style:normal;font-size:.76rem;font-weight:700;color:var(--brass);margin-top:4px}
+.myj-s.ok{border-color:color-mix(in srgb,var(--win) 45%,var(--line))}.myj-s.ok b{color:var(--win)}
+.myj-s.ko b{color:var(--loss)}.myj-s.mid b{color:var(--brass)}
+.myj-s.todo{border-color:var(--brass);box-shadow:inset 3px 0 0 var(--brass)}
+@media (max-width:420px){ .myj-g{grid-template-columns:1fr} }
+/* Tus estadísticas */
+.mystats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.mystats div{padding:12px 6px;border-radius:14px;background:var(--surface);border:1px solid var(--line);text-align:center}
+.mystats b{display:block;font-stretch:62%;font-weight:800;font-size:1.7rem;line-height:1}
+.mystats span{font-size:.7rem;color:var(--muted)}
+@media (max-width:520px){ .mystats{grid-template-columns:repeat(3,1fr)} }
+/* Actividad del equipo */
+.activity{list-style:none;margin:0;padding:0}
+.activity li{display:grid;grid-template-columns:14px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.activity .ac-dot{width:8px;height:8px;border-radius:50%;background:var(--brass);margin-top:6px}
+.activity b{display:block;font-size:.92rem;font-weight:600}
+.activity small{color:var(--muted);font-size:.78rem}
+/* Requiere atención (gestor) */
+.attn{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
+.attn li+li{border-top:1px solid var(--line)}
+.attn a{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;text-decoration:none;color:var(--ink);font-size:.92rem}
+.attn a span{color:var(--muted)}
+.attn .warn a{box-shadow:inset 3px 0 0 var(--brass);font-weight:600}
+.attn .info a{box-shadow:inset 3px 0 0 var(--line)}
+.attn-ok{padding:12px 14px;border-radius:14px;background:var(--winSoft);color:var(--win);font-weight:600;margin:0}
+.mdkpis.four{grid-template-columns:repeat(4,1fr)}
+.mdkpis b small{font-size:.9rem;color:var(--muted);font-stretch:100%}
+@media (max-width:620px){ .mdkpis.four{grid-template-columns:repeat(2,1fr)} }
+/* Perfiles del usuario */
+.roles{display:grid;gap:8px}
+.role-list{display:flex;flex-wrap:wrap;gap:6px}
+.role{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-weight:700;font-size:.86rem;color:var(--ink);text-decoration:none}
+.role em{font-style:normal;color:var(--brass);font-weight:700;font-size:.8rem}
+.role.cap{border-color:color-mix(in srgb,var(--brass) 50%,var(--line))}
+.role.mgr{background:var(--green);color:var(--onGreen);border-color:var(--green)}.role.mgr em{color:var(--gold)}
+/* Fases de la jornada (Gestión) */
+.mdtabs .chip .tn{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;font-size:.7rem;background:var(--surface2);margin-right:6px}
+.mdtabs .chip[aria-pressed="true"] .tn{background:var(--brass);color:#fff}
+/* Tareas del jugador: lista compacta en lugar de bloques pesados */
+.tasks{display:grid;gap:8px}
+.tasks .callout{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0;box-shadow:none;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.tasks .callout::before,.tasks .callout::after{display:none}
+.tasks .callout b{font-size:.98rem;font-stretch:100%;font-weight:700;color:var(--ink)}
+.tasks .callout span{display:block;font-size:.8rem;color:var(--muted);margin-top:2px}
+.tasks .callout .btn{background:var(--green);color:var(--onGreen);border-color:var(--green);padding:8px 14px;min-height:36px;flex:none}
+/* Cabecera más compacta en el móvil: la información útil llega antes */
+@media (max-width:600px){
+  .hero-in{min-height:0;padding-top:28px;padding-bottom:18px}
+  .hero-title{font-size:clamp(3.4rem,17vw,5rem)}
+  .hero-comp{font-size:.78rem}
+}
