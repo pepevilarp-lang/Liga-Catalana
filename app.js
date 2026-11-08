@@ -468,6 +468,41 @@ function posters(j){
 }
 
 /* ===================== VISTAS ===================== */
+/* ---------- Portada por perfiles: jugador (lo suyo) y capitán (centro de operaciones) ---------- */
+function opsCard(){
+  if(!canManage || !S.fixtures.length) return ''; const j=adminJ(); const f=j&&poloFix(j); if(!f) return '';
+  const ph=phases(j), idx=ph.findIndex(x=>x.st!=='done'), pa=pendingAction(), a=availFor(j), t=tie(j)||{}, tr=tieFromRubbers(j)||{}, p=persp(f);
+  const na= idx<0? null : nextAction(j), urgent=!!pa;
+  const pendRes=(t.rubbers||[]).filter(r=>(r.type==='S'||tr.needsDoubles) && !rubberCalc(r).res).length;
+  const kp=[[a.yes.length,'disponibles'],[a.none.length,'sin responder',a.none.length&&!deadlinePassed(j)],[(t.convocados||[]).length,'convocados'],...(isPlayed(f)||Date.now()>new Date(f.date+'T'+(f.time||'15:00')).getTime()? [[pendRes,'partidos sin resultado',pendRes>0]] : [])];
+  return `<section class="sec"><div class="opscard ${urgent?'urgent':''}" data-home-j="${j}">
+    <div class="op-top"><div><span class="op-k">Gestión, jornada ${j}</span><b>${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</b><small>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'}</small></div>
+      <a class="btn sm ghost op-open" href="#admin" data-act="go-admin" data-j="${j}" data-t="${idx<0?'post':ph[idx].k}">Abrir</a></div>
+    <ol class="op-dots" aria-label="Estado de la jornada">${ph.map((x,i)=>`<li class="${x.st} ${i===idx?'now':''}"><span></span><em>${esc(['Calendario','Disponibilidad','Cierre','Convocatoria','Resultados','MVP'][i])}</em></li>`).join('')}</ol>
+    ${na? `<div class="op-next"><div><span class="op-k">${urgent?'Siguiente paso':'Próximo paso (aún hay margen)'}</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${urgent? na.b : na.b.replace(/btn brass/g,'btn ghost')}</div></div>` : `<div class="op-next done"><b>✓ Jornada completada</b><p>Todo publicado. Estadísticas, clasificación y perfiles al día.</p></div>`}
+    <div class="op-kpis">${kp.map(([n,l,w])=>`<div class="${w?'warn':''}"><b>${n}</b><span>${l}</span></div>`).join('')}</div></div></section>`;
+}
+function myJornadaBlock(f){
+  if(!f) return ''; const j=f.j, p=persp(f), t=tie(j)||{}, pub=!!t.lineupPub, av=me? avOf(me,j) : null, open=availOpen(f);
+  let conv='Aún no publicada', convCls='';
+  if(me && pub){ const ri=(t.rubbers||[]).map((r,i)=>(r.polo||[]).includes(me)? i : -1).filter(i=>i>=0);
+    conv= ri.length? ri.map(i=>i<4? 'individual '+(i+1) : 'dobles').join(' y ').replace(/^/,'Convocado: ') : (t.convocados||[]).includes(me)? 'Convocado como suplente' : 'No convocado esta vez'; convCls= ri.length||(t.convocados||[]).includes(me)? 'ok' : ''; }
+  const avTxt= !me? '' : av? ({yes:'Disponible',no:'No disponible',maybe:'Por confirmar'}[av.s]||av.s) : open? 'Sin responder' : (deadlinePassed(j)? 'Plazo cerrado' : 'Aún no se ha pedido');
+  return `<section class="sec"><div class="myj"><div class="myj-h"><span class="op-k">Tu próxima jornada</span><b>Jornada ${j}</b></div>
+    ${me? `<div class="myj-g"><a class="myj-s ${av? (av.s==='yes'?'ok':av.s==='no'?'ko':'mid') : open?'todo':''}" href="${open? '#disponibilidad-'+j : '#jornada-'+j}"><span>Tu disponibilidad</span><b>${esc(avTxt)}</b>${open? `<em>${av?'Cambiar':'Responder'}</em>` : ''}</a>
+      <a class="myj-s ${convCls}" href="#jornada-${j}"><span>Convocatoria</span><b>${esc(conv)}</b><em>Ver la jornada</em></a></div>` : ''}
+    ${pub? `<div style="margin-top:14px">${posters(j)}</div>` : ''}</div></section>`;
+}
+function myStatsBlock(){
+  if(!me || !player(me)) return ''; const s=playerStats(me), d=playerStats(me,null,'D'), mv=mvpCount(me);
+  return `<section class="sec"><div class="sec-h"><h2>Tus estadísticas</h2><a href="#jugador-${esc(me)}">Tu perfil</a></div><div class="mystats">
+    <div><b>${s.pj? pct(s.w,s.pj)+'%' : '–'}</b><span>win rate individual</span></div><div><b>${s.w}-${s.l}</b><span>individuales</span></div><div><b>${d.w}-${d.l}</b><span>dobles</span></div><div><b>${s.streak?.n? (s.streak.t==='W'?'+':'−')+s.streak.n : '–'}</b><span>racha</span></div><div><b>${mv}</b><span>MVP</span></div></div></section>`;
+}
+function activityBlock(){
+  const items=(S.audit||[]).slice(0,6); if(!items.length) return '';
+  return `<section class="sec"><div class="sec-h"><h2>Actividad del equipo</h2></div><ul class="activity">${items.map(a=>`<li><span class="ac-dot"></span><div><b>${esc(a.what.join(', '))}</b><small>${esc(a.by)}, ${relTime(a.at)}</small></div></li>`).join('')}</ul></section>`;
+}
+
 function vInicio(){
   const nx=nextPoloFix(), last=lastPoloPlayed(), st=standings(), mine=st.find(r=>r.id===POLO), ts=teamStats();
   const photo = `${courtSVG()}<span class="ball" aria-hidden="true"></span>${photos._team?.d?`<div class="hero-media"><img src="${esc(photos._team.d)}" alt="Equipo masculino absoluto del Real Club de Polo"></div>`:''}`;
@@ -476,22 +511,14 @@ function vInicio(){
     <h1 class="hero-title" aria-label="${esc(teamLabel())}">${titleLetters(teamLabel())}</h1>
     <p class="hero-sub">Real Club de Polo de Barcelona, temporada ${esc(S.seasonId||viewSeason)}</p>
     ${nx? scoreboard(nx) : ''}</div></section><div class="wrap">`;
-  h+=captainNote()+callouts(nx);
-  h+=`<section class="sec"><div class="figs stagger">
-    <div class="fig"><b>${mine.pj? count(mine.pos,'º'):'–'}</b><span>en la clasificación</span></div>
-    <div class="fig"><b>${count(mine.pts)}</b><span>puntos</span></div>
-    <div class="fig"><b>${ts.tw}-${ts.tl}</b><span>eliminatorias</span></div>
-    <div class="fig"><b>${ts.rw}-${ts.rl}</b><span>partidos individuales</span></div></div></section>`;
-  if(nx){ const p=persp(nx);
-    h+=`<section class="sec"><div class="sec-h"><h2>Jornada ${nx.j}</h2><a href="#jornada-${nx.j}">Abrir</a></div>
-      <p class="lede">Polo contra ${esc(clubName(p.rival))}, ${esc(fdate(nx,{weekday:'long',day:'numeric',month:'long'}))} a las ${esc(nx.time)} h. ${p.home?'Jugamos en casa.':'Jugamos fuera.'}</p>
-      <div style="margin-top:16px">${posters(nx.j) || availBlock(nx)}</div></section>`; }
-  h+=leadersBlock();
+  // 1) capitán: centro de operaciones  2) tareas del jugador  3) su próxima jornada  4) resultados  5) clasificación  6) sus números  7) actividad
+  ui.homeMyj=true; const co=callouts(nx); ui.homeMyj=false;
+  h+=opsCard()+myJornadaBlock(nx)+(co? `<section class="sec"><div class="sec-h"><h2>Tienes pendiente</h2></div><div class="tasks">${co}</div></section>` : '');
   if(last){ const c=cronica(last.j);
-    h+=`<section class="sec"><div class="sec-h"><h2>Última jornada</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
-    <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${mvpCard(last.j)}</div></div></section>`; }
-  h+=`<section class="sec"><div class="split"><div><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">Liga completa</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></div>
-    <div><div class="sec-h"><h2>Momentos</h2></div>${momentsList()}</div></div></section>${Object.values(S.published).some(p=>p.mvp)? `<section class="sec">${mvpRanking(true)}</section>`:''}</div>`;
+    h+=`<section class="sec"><div class="sec-h"><h2>Último resultado</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
+    <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${S.published[jid(last.j)]?.mvp? mvpCard(last.j) : ''}</div></div></section>`; }
+  h+=`<section class="sec"><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">${mine.pj? mine.pos+'º, '+mine.pts+' puntos' : 'Liga completa'}</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></section>`;
+  h+=myStatsBlock()+activityBlock()+`</div>`;
   return h;
 }
 function leadersBlock(){
@@ -521,7 +548,7 @@ function callouts(nx){
   let h=''; const ps=pendingSurveys();
   pendingMvp().forEach(j=>{ h+=`<div class="callout"><div><b>🏆 Vota al MVP de la jornada ${j}</b><span>Un voto por jugador. Abierta hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</span></div><div class="row"><a class="btn light" href="#mvp-${j}">Votar</a></div></div>`; });
   ps.forEach(j=>{ h+=`<div class="callout"><div><b>Encuesta de la jornada ${j}</b><span>Jugaste contra ${esc(clubName(persp(poloFix(j)).rival))}. Tardas dos minutos.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Responder</a></div></div>`; });
-  S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ if(!me || avOf(me,f.j)) return; const p=persp(f);
+  S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ if(!me || avOf(me,f.j) || (nx && f.j===nx.j && ui.homeMyj)) return; const p=persp(f);
     h+=`<div class="callout"><div><b>¿Puedes jugar el ${esc(fdate(f,{weekday:'long',day:'numeric'}))}?</b><span>Jornada ${f.j} contra ${esc(clubName(p.rival))}. Responde antes del ${esc(fmtDT(deadline(f.j)))}.</span></div><div class="row"><a class="btn light" href="#disponibilidad-${f.j}">Responder</a></div></div>`; });
   return h;
 }
@@ -1013,6 +1040,10 @@ function vYo(){
   pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>Encuesta de la jornada ${j}</b><small>Has jugado contra ${esc(clubName(persp(poloFix(j)).rival))}. 2 minutos.</small></span></a>`));
   const roles=[isCaptain?'Capitán':'',isAdmin?'Administrador':''].filter(Boolean);
   return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Ver mi perfil</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
+  <section class="sec"><div class="roles"><span class="op-k">Tus perfiles</span><div class="role-list">
+    <span class="role">Jugador${me&&player(me)? ' del '+esc(teamLabel()) : ''}</span>
+    ${canManage? `<a class="role cap" href="#admin">Capitán${!isCaptain&&!isAdmin&&teamMode()? ' (todo el equipo gestiona)' : ''} <em>Gestión ›</em></a>` : ''}
+    ${canClub()? `<a class="role mgr" href="#club">Gestor deportivo <em>Gestión deportiva ›</em></a>` : ''}</div></div></section>
   <section class="sec"><a class="fcta big press" href="#mi-ficha">${avatar(p,'lg')}<span><b>Mi ficha de jugador</b><small>${(()=>{ const pc=fichaPct(me); return pc? pc+'% completada. ' : ''; })()}Foto, golpe favorito, jugador favorito, grito de guerra, ritual…</small><span class="fbar"><i style="width:${fichaPct(me)}%"></i></span></span><span class="btn brass sm">${fichaPct(me)?'Editar':'Empezar'}</span></a></section>
   <section class="sec"><div class="sec-h"><h2>Pendiente</h2></div>${tasks.length? `<div class="tasks stagger">${tasks.join('')}</div>` : '<div class="empty">Todo al día. Cuando haya disponibilidad que responder o una encuesta tuya, aparecerá aquí.</div>'}</section>
   <section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>
@@ -1064,11 +1095,12 @@ function vClaim(){
 /* ---------------- Administración ---------------- */
 function vAdmin(){
   if(!canManage) return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1></div><div class="notice">${me? 'La gestión está limitada a los capitanes marcados. Un administrador puede abrirla a todo el equipo en Temporadas y ajustes.' : 'Elige tu nombre en Yo para poder gestionar.'}</div></div>`;
-  const tabs=[['jornada','Matchday'],['docs-go','Documentos'],['calendario','Liga y calendario'],['preguntas','Encuesta'],...(canManage?[['plantilla','Plantilla y fotos'],['temporadas','Temporadas y ajustes']]:[])];
+  if(ui.adminTab==='preguntas') ui.adminTab='temporadas';
+  const tabs=[['jornada','Jornada'],['docs-go','Documentos'],['calendario','Liga'],...(canManage?[['plantilla','Plantilla'],['temporadas','Ajustes']]:[])];
   if(!tabs.some(x=>x[0]===ui.adminTab)) ui.adminTab='jornada'; const t=ui.adminTab;
   return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1><p class="lede">Todo se edita aquí y se actualiza solo en el resto de la app.${viewSeason!==currentSeason()?` <b>Estás editando la temporada ${esc(viewSeason)}.</b>`:''}</p></div>
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
-    ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():t==='preguntas'?aPreguntas():aTemporadas()}</div>`;
+    ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():t==='preguntas'?aPreguntas():aTemporadas()+`<div class="sec-h" style="margin-top:28px"><h2>Encuesta postpartido</h2></div>`+aPreguntas()}</div>`;
 }
 function jSelect(act,cur,onlyPolo=true){ return `<select data-act="${act}" style="max-width:360px">${Array.from({length:NJ()},(_,i)=>i+1).filter(j=>!onlyPolo||poloFix(j)).map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?'Polo contra '+team(f.away).short:team(f.home).short+' contra Polo')+', '+fdate(f):''}</option>`; }).join('')}</select>`; }
 function adminJ(){ if(ui.adminJ && poloFix(ui.adminJ)) return ui.adminJ; const nx=nextPoloFix(); if(nx) return nx.j; const l=lastPoloPlayed(); if(l) return l.j; const f=S.fixtures.find(x=>x.home===POLO||x.away===POLO); return f? f.j : null; }
@@ -1093,7 +1125,7 @@ function nextAction(j){
     case 1: return {t:'Pide la disponibilidad', d:'Se prepara el mensaje de WhatsApp con el enlace y se envía la notificación al equipo.', b:`<button class="btn brass" data-act="go-compose" data-kind="req" data-j="${j}">Solicitar disponibilidad</button>`};
     case 2: return {t: a.none.length? `Faltan ${a.none.length} por responder` : 'Ya han respondido todos', d:`${a.yes.length} disponibles, ${a.maybe.length} pendientes de confirmar, ${a.no.length} no. Plazo: ${fmtDT(deadline(j))}.`, b:(a.none.length? `<button class="btn brass" data-act="go-compose" data-kind="rem" data-j="${j}">Recordar a los ${a.none.length}</button>`:'')+`<button class="btn ${a.none.length?'ghost':'brass'}" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button>`};
     case 3: return {t:'Prepara la convocatoria', d:`${a.yes.length} disponibles. Elige convocados, individuales y la pareja de dobles.`, b:`<button class="btn brass" data-act="jtab" data-v="conv">Ir a la convocatoria</button>`};
-    case 4: return {t: isPlayed(f)&&!tieFromRubbers(j)?.decided? 'Faltan los partidos' : 'Introduce los resultados', d:'Al guardarlos se recalcula todo y se abren la encuesta y la votación del MVP.', b:`<button class="btn brass" data-act="jtab" data-v="res">Introducir resultados</button>`};
+    case 4: return {t: isPlayed(f)&&!tieFromRubbers(j)?.decided? 'Faltan los partidos' : 'Introduce los resultados', d:'Sube el acta oficial (la IA la lee y tú confirmas) o escríbelos a mano. Al guardarlos se recalcula todo y se abren la encuesta y el MVP.', b:`<button class="btn brass" data-act="jtab" data-v="res" data-mode="acta">Subir el acta</button><button class="btn ghost" data-act="jtab" data-v="res" data-mode="manual">A mano</button>`};
     default: return {t: mvpOpen(j)? 'Votación del MVP en marcha' : 'Publica el MVP', d: mvpOpen(j)? `Han votado ${mvpVoteCount(jid(j))}. Plazo: ${fmtDT(new Date(mvpState(j).deadline))}.` : 'Revisa el recuento y publica al ganador.', b:`<button class="btn brass" data-act="jtab" data-v="post">Ver el MVP</button>`};
   }
 }
@@ -1103,14 +1135,14 @@ function aJornada(){
   if(!ui.jTabSet || ui.jTabFor!==j){ ui.jTabFor=j; ui.jTabSet=true; const c=ph.find(x=>x.st!=='done'); ui.jTab = c? c.k : 'post'; }
   const stIcon={done:'✓',doing:'•',todo:''}, stTxt={done:'Completada',doing:'En curso',todo:'Pendiente'};
   const pendRes=t.rubbers.filter((r,i)=> (r.type==='S' || tr.needsDoubles) && !rubberCalc(r).res).length;
-  const tabs=[['prep','1. Preparación'],['disp','2. Disponibilidad'],['conv','3. Convocatoria'],['res','4. Resultados'],['post','5. Postpartido']];
+  const tabs=[['prep','Preparar'],['conv','Convocar'],['res','Resultados'],['post','Postpartido']], jt=ui.jTab==='disp'?'prep':ui.jTab;
   return `<section class="sec" style="padding-top:6px">
     <div class="mdhead"><div>${jSelect('admin-j',j)}<p class="mdtitle">${crest(p.rival)}<span>Polo contra ${esc(clubName(p.rival))}</span></p><p class="muted small" style="margin:0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'}. ${isPlayed(f)? 'Resultado: Polo '+p.ps+'-'+p.rs+(f.status==='official'?' (oficial)':' (provisional)') : countdown(f)}</p></div></div>
     <div class="mdkpis stagger"><div><b>${a.yes.length}</b><span>disponibles</span></div><div class="${a.none.length?'warn':''}"><b>${a.none.length}</b><span>sin responder</span></div><div><b>${(t.convocados||[]).length}</b><span>convocados</span></div><div class="${pendRes&&(t.lineupPub||isPlayed(f))?'warn':''}"><b>${pendRes}</b><span>partidos sin resultado</span></div><div><b>${isPlayed(f)? agg.n+'/'+parts.length : '–'}</b><span>encuestas</span></div><div><b>${mvpState(j)? mvpVoteCount(jid(j)) : '–'}</b><span>votos MVP</span></div></div>
     <ol class="steps">${ph.map((x,i)=>`<li class="${x.st}"><button data-act="jtab" data-v="${x.k}"><span class="sn">${stIcon[x.st]||i+1}</span><span class="sl"><b>${x.l}</b><small>${stTxt[x.st]}. ${esc(x.d)}</small></span></button></li>`).join('')}</ol>
     <div class="nextcard"><div><span class="nk">Siguiente paso</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${na.b}</div></div>
-    <div class="mdtabs">${tabs.map(([k,l])=>`<button class="chip" data-act="jtab" data-v="${k}" aria-pressed="${ui.jTab===k}">${l}</button>`).join('')}</div></section>
-    ${ui.jTab==='prep'?aPrep(j):ui.jTab==='disp'?aDisp(j):ui.jTab==='conv'?aConv(j)+(t.lineupPub||lineupList(j).length? `<div class="sec-h" style="margin-top:30px"><h2>Cartel de la convocatoria</h2></div>`+aCartel(j):''):ui.jTab==='res'?aResultados(j):aPost(j)}`;
+    <div class="mdtabs">${tabs.map(([k,l],i)=>`<button class="chip" data-act="jtab" data-v="${k}" aria-pressed="${jt===k}"><span class="tn">${i+1}</span>${l}</button>`).join('')}</div></section>
+    ${ui.jTab==='prep'||ui.jTab==='disp'? aPrep(j)+`<div class="sec-h" style="margin-top:8px"><h2>Disponibilidad</h2></div>`+aDisp(j) :ui.jTab==='conv'?aConv(j)+(t.lineupPub||lineupList(j).length? `<div class="sec-h" style="margin-top:30px"><h2>Cartel de la convocatoria</h2></div>`+aCartel(j):''):ui.jTab==='res'?aResultados(j):aPost(j)}`;
 }
 function aPrep(j){
   const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), topts=sel=>S.teams.filter(x=>x.id!==POLO).map(x=>`<option value="${x.id}" ${sel===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
@@ -1768,6 +1800,15 @@ function clubWeekRows(){
     fx.forEach(f=>{ const s=tieState(d,f); if(ui.clubRes && ui.clubRes!==(s.confirm?'confirm':s.st)) return; out.push({t,d,f,s}); }); });
   return {rg, sat, rows:out, idle};
 }
+function clubAttention(){ const out=[], today=ymd(new Date()), lim=ymd(new Date(Date.now()-28*864e5)); ensureClubDocs();
+  clubTeams().forEach(t=>{ const d=clubData[t.id];
+    if(!d || !d.fixtures.length){ if(clubData.hasOwnProperty(t.id)) out.push({lvl:'info', t:`${t.short}: falta cargar el calendario y la plantilla`, href:'#club-docs', tid:t.id, go:'docs'}); return; }
+    d.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&f.date<today&&f.date>=lim).forEach(f=>{ const s=tieState(d,f);
+      if(s.st==='pending') out.push({lvl:'warn', t:`${t.short}, jornada ${f.j} contra ${s.rival}: sin resultado`, href:'#club-equipo-'+t.id});
+      else if(s.confirm) out.push({lvl:'info', t:`${t.short}, jornada ${f.j}: resultado ${s.p.ps}-${s.p.rs} pendiente de validar`, href:'#club-equipo-'+t.id}); });
+    const rv=Object.values(clubDocs[t.id]||{}).filter(x=>x.status==='revision'||x.status==='error').length;
+    if(rv) out.push({lvl:'info', t:`${t.short}: ${rv} ${rv===1?'documento':'documentos'} por revisar`, href:'#club-docs', tid:t.id, go:'docs'}); });
+  return out.sort((a,b)=>(a.lvl==='warn'?0:1)-(b.lvl==='warn'?0:1)); }
 function vClub(){
   if(!canClub()) return `<div class="wrap"><div class="pagehead"><h1>Gestión deportiva</h1></div><div class="notice">Esta zona es para el gestor deportivo del club y los administradores.</div></div>`;
   ensureClubSubs(); const W=clubWeekRows(), rows=W.rows, all=clubTeams();
@@ -1783,7 +1824,8 @@ function vClub(){
     <div class="row" style="margin-top:10px"><select data-act="club-f" data-k="clubTeam" style="max-width:220px"><option value="">Todos los equipos</option>${all.map(t=>`<option value="${esc(t.id)}" ${ui.clubTeam===t.id?'selected':''}>${esc(t.short)}</option>`).join('')}</select>
       ${cats.length>1?`<select data-act="club-f" data-k="clubCat" style="max-width:220px"><option value="">Todas las categorías</option>${cats.map(c=>`<option ${ui.clubCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>`:''}
       <select data-act="club-f" data-k="clubRes" style="max-width:220px"><option value="">Todos los resultados</option>${[['win','Victorias'],['loss','Derrotas'],['pending','Pendientes de resultado'],['confirm','Por confirmar'],['next','Programadas']].map(([v,l])=>`<option value="${v}" ${ui.clubRes===v?'selected':''}>${l}</option>`).join('')}</select></div></section>
-  <section class="sec"><div class="mdkpis stagger"><div><b>${k.teams}</b><span>equipos del club</span></div><div><b>${k.played}</b><span>han competido</span></div><div><b style="color:var(--win)">${k.win}</b><span>victorias</span></div><div><b style="color:var(--loss)">${k.loss}</b><span>derrotas</span></div><div class="${k.pending?'warn':''}"><b>${k.pending}</b><span>pendientes de resultado</span></div><div class="${k.confirm?'warn':''}"><b>${k.confirm}</b><span>por confirmar</span></div></div></section>
+  ${(()=>{ const at=clubAttention(); return `<section class="sec"><div class="sec-h"><h2>Requiere atención</h2></div>${at.length? `<ul class="attn">${at.slice(0,8).map(x=>`<li class="${x.lvl}"><a href="${x.href}" ${x.go==='docs'?`data-act="club-doc-team-go" data-t="${esc(x.tid)}"`:''}>${esc(x.t)}<span>›</span></a></li>`).join('')}</ul>` : '<p class="attn-ok">✓ Nada pendiente: resultados, validaciones y documentos al día.</p>'}</section>`; })()}
+  <section class="sec"><div class="mdkpis four stagger"><div><b>${k.played}<small>/${k.teams}</small></b><span>equipos han competido</span></div><div><b style="color:var(--win)">${k.win}</b><span>victorias</span></div><div><b style="color:var(--loss)">${k.loss}</b><span>derrotas</span></div><div><b>${k.pending+k.confirm}</b><span>por cerrar o validar</span></div></div></section>
   <section class="sec"><div class="sec-h"><h2>Equipos del fin de semana</h2><a href="#club-resumen">Resumen para imprimir</a></div>
     ${rows.length? `<div class="ccards stagger">${rows.map(({t,d,f,s})=>`<a class="ccard ${s.st}" href="#club-equipo-${esc(t.id)}">
       <span class="cc-top"><b>${esc(t.name)}</b><small>${esc(teamCat(t))}</small></span>
@@ -2599,6 +2641,7 @@ document.addEventListener('click', async e=>{
   else if(a==='team-open'){ switchTeam(el.dataset.t); location.hash='inicio'; }
   else if(a==='club-wk'){ const dd=+el.dataset.d; const base=ui.clubSat||ymd(weekendSat()); const x=new Date(base+'T12:00:00'); if(dd) x.setDate(x.getDate()+dd); ui.clubSat= dd? ymd(x) : ymd(weekendSat()); renderQuiet(); }
   else if(a==='club-print'){ window.print(); }
+  else if(a==='club-doc-team-go'){ if(el.dataset.t) switchTeam(el.dataset.t); }
   else if(a==='capr-save'){ const j=+el.dataset.j, t=ensureTie(j), r={}; document.querySelectorAll('[data-capr]').forEach(x=>{ const v=x.value.trim(); if(v) r[x.dataset.capr]= x.dataset.capr==='nota'? +v : v.slice(0,2000); });
     if(!Object.keys(r).length) return toast('Escribe algo antes de guardar'); t.captainReport={...r, by:(me&&player(me)?.name)||authUser?.email||'', at:Date.now()}; saveState('Informe del capitán guardado'); }
   else if(a==='eq-view'){ ui.eqView=el.dataset.v; try{ localStorage.setItem('polo-eqview',ui.eqView); }catch(e){} renderQuiet(); }
@@ -2657,7 +2700,7 @@ document.addEventListener('click', async e=>{
   else if(a==='official-save'){ const order=[...document.querySelectorAll('#offlist select')].map(x=>x.value); if(new Set(order).size!==order.length) return toast('Hay clubes repetidos'); S.official={asOf:+$('#off-j').value||0,order}; saveState('Clasificación oficial guardada'); }
   else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48)), doubles:$('#r-dbl')?.value||'always'}; saveState('Reglas guardadas'); }
   else if(a==='go-admin'){ ui.adminTab='jornada'; ui.adminJ=+el.dataset.j; const tt=el.dataset.t||'disp'; ui.jTab= tt==='enc'||tt==='mvp'? 'post' : tt==='cartel'? 'conv' : tt; ui.jTabSet=true; ui.jTabFor=+el.dataset.j; location.hash='admin'; }
-  else if(a==='jtab'){ const hj=el.closest('[data-home-j]')?.dataset.homeJ; ui.jTab=el.dataset.v; ui.compose=null; if(hj || route()!=='admin'){ if(hj){ ui.adminJ=+hj; ui.jTabFor=+hj; } ui.jTabSet=true; ui.adminTab='jornada'; location.hash='admin'; return; } render(); }
+  else if(a==='jtab'){ const hj=el.closest('[data-home-j]')?.dataset.homeJ; ui.jTab=el.dataset.v; ui.compose=null; if(el.dataset.mode) (ui.resMode ||= {})[+(hj||adminJ())]=el.dataset.mode; if(hj || route()!=='admin'){ if(hj){ ui.adminJ=+hj; ui.jTabFor=+hj; } ui.jTabSet=true; ui.adminTab='jornada'; if(route()==='admin') render(); else location.hash='admin'; return; } render(); }
   else if(a==='av-pick'){ ui.avDraft.s=el.dataset.v; const ta=$('#av-c'); if(ta) ui.avDraft.c=ta.value; renderQuiet(); }
   else if(a==='av-chip'){ const ta=$('#av-c'); const c=(ta?.value||'').trim(); ui.avDraft.c = c? (c.includes(el.dataset.v)? c : c+'. '+el.dataset.v) : el.dataset.v; renderQuiet(); }
   else if(a==='av-save'){ const j=+el.dataset.j, k=jid(j), now=Date.now(), d=ui.avDraft; if(!me||!d?.s) return; d.c=($('#av-c')?.value||'').trim();
