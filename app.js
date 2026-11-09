@@ -2452,7 +2452,7 @@ function actaPanel(j){
   else if(d.status==='procesando') body=`<button class="btn brass big" data-act="acta-read" data-id="${esc(d.id)}">Volver a leer</button>`;
   else if(d.status==='revision') body=actaReview(j,d);
   else if(d.status==='completado') body=`<div class="final"><b>✓ Resultados confirmados</b><span>Validado por ${esc(d.validatedBy||'')} ${d.validatedAt? relTime(d.validatedAt) : ''}. Ya están en la jornada, las estadísticas y la clasificación.${f?.status!=='official'? ' Queda pendiente de validación oficial.' : ''}</span></div>`;
-  return `<section class="sec"><div class="panel actapanel"><b>Acta oficial, jornada ${j}</b>${stepper}${prev}<div style="margin-top:12px">${body}</div>${d.status!=='revision'? `<div style="margin-top:14px">${pick}</div>` : ''}<div id="doc-prog"></div></div></section>`;
+  return `<section class="sec"><div class="panel actapanel"><b>Acta oficial, jornada ${j}</b>${stepper}${prev}<div style="margin-top:12px">${body}</div>${isReading(d.id,d)? '' : `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${d.status==='revision'? pick.replace('btn brass big','btn ghost') : pick}<button class="btn ghost sm" data-act="acta-unlink" data-id="${esc(d.id)}" data-j="${j}">No es el acta de esta jornada</button></div>`}<div id="doc-prog"></div></div></section>`;
 }
 function actaReview(j,d){
   if(!ui.acta || ui.acta.id!==d.id) ui.acta=actaDraft(j,d);
@@ -2681,7 +2681,7 @@ function slidesManager(){ return [
   {t:'Equipos y resultados', d:'Todos los equipos en tarjetas o en tabla, con su clasificación y próxima jornada.', w:'Gestión deportiva, Equipos', m:`<div class="dm-club">${EJ}${[['Absoluto Masculino A','2º','J4 vs CT Mirador'],['Absoluto Masculino B','5º','J4 vs Club Brisamar'],['Absoluto Femenino A','1º','J4 vs Tennis Atalaya'],['Veteranos +35','3º','J4 vs CT Sant Roc']].map(r=>`<div class="dm-team"><b>${r[0]}</b><em>${r[1]}</em><span>${r[2]}</span></div>`).join('')}</div>`},
   {t:'Documentación con IA', d:'Elige equipo, sube actas o listados, la IA los lee y tú validas.', w:'Gestión deportiva, Documentación', m:`<div class="dm-club">${EJ}${[['Acta jornada 3.pdf','Incorporado','ok'],['Listado jugadores.xlsx','Por revisar','mid'],['Orden de juego J4.jpg','Leyendo…','scan']].map(r=>`<div class="dm-docrow"><i>${svgi('list',14)}</i><b>${r[0]}</b><em class="${r[2]}">${r[1]}</em></div>`).join('')}</div>`},
   {t:'Informe del fin de semana', d:'Un botón genera el PDF profesional y lo envía por correo a los gestores.', w:'Gestión deportiva, Resumen', m:`<div class="dm-pdf">${EJ}<div class="dm-cover"><img src="${ASSET.crestSm}" alt=""><b>WEEKEND SPORTS REPORT</b><span>7–8 noviembre 2026</span></div><div class="dm-sent">${svgi('check',14,2.6)} Enviado a Albert con el PDF adjunto</div></div>`} ]; }
-function onbRoles(){ return [...(me? [['player','Jugador','Consulta tu jornada, tus estadísticas y tu equipo']] : []), ...(me&&canManage? [['captain','Capitán','Gestiona convocatorias, resultados y actas']] : []), ...(canClub()? [['manager', isManager? 'Gestor deportivo' : 'Administrador', isManager? 'Supervisa todos los equipos del club' : 'Acceso completo, también a la gestión deportiva']] : [])]; }
+function onbRoles(){ return [...(me? [['player','Jugador','Consulta tu jornada, tus estadísticas y tu equipo']] : []), ...(me&&(isCaptain||isAdmin)? [['captain','Capitán','Gestiona convocatorias, resultados y actas']] : []), ...(canClub()? [['manager', isManager? 'Gestor deportivo' : 'Administrador', isManager? 'Supervisa todos los equipos del club' : 'Acceso completo, también a la gestión deportiva']] : [])]; }
 function onbSave(){ try{ const o=ui.onb; localStorage.setItem(onbKey(), JSON.stringify({stage:o.stage,i:o.i,step:o.step,roles:o.roles})); }catch(e){} }
 function startOnb(opts={}){ ensureOnbCss(); let st=null; try{ st=JSON.parse(localStorage.getItem(onbKey())||'null'); }catch(e){}
   const roles=onbRoles().map(r=>r[0]);
@@ -2864,10 +2864,10 @@ function spotSteps(){ const R=ui.onb?.roles||[], st=[];
     st.push({r:'inicio', sel:'.hero .board', t:'Tu próxima jornada', d:'Rival, fecha y hora. El día del partido, el marcador se actualiza en directo.'});
     st.push({r:'inicio', sel:'.hx-my', t:'Tu estado en la jornada', d:'Si estás disponible y si estás convocado. Un toque para responder.', ex:`<div class="dm-tiles"><div class="ok">${svgi('check',14,2.4)}<span>Disponible</span></div><div class="ok">${svgi('list',14,2.2)}<span>Individual 2</span></div></div>`});
     st.push({r:'inicio', sel:'.hx-stats, .hx-empty', t:'Tus números y la actividad', d:'Tu win rate, tu racha y lo último del equipo: resultados, convocatorias y MVP.', ex:`<div class="dm-st"><div class="dm-ring" style="width:64px;height:64px"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="bg"/><circle cx="50" cy="50" r="42" class="fg" stroke-dasharray="264" stroke-dashoffset="77"/></svg><b style="font-size:1.1rem">71%</b></div><div class="dm-sg"><div><b>5-2</b><span>individuales</span></div><div><b>3-1</b><span>dobles</span></div></div></div>`});
-    st.push({r:'clasificacion', sel:navSel('clasificacion'), t:'Clasificación', d:'La tabla de la liga y cómo evoluciona el equipo jornada a jornada.'});
+    st.push({r:'clasificacion', sel:navSel('clasificacion'), t:'Clasificación', d:'La tabla de la liga y cómo evoluciona el equipo jornada a jornada.', ex:`<div style="display:grid;gap:4px">${DEMO.table.slice(0,4).map((r,i)=>dmRow(`${i+1}. ${r[0]}`,`${r[1]} pts`,r[2]?'ok':'')).join('')}</div>`});
     st.push({r:'calendario', sel:navSel('calendario'), t:'Calendario', d:'Todas las jornadas, jugadas y por jugar. Toca una para ver la convocatoria y los partidos.', ex:`<div class="dm-cal">${DEMO.results.slice(1).map(r=>`<div><span class="j">${r[0]}</span><b>${r[1]}</b><em class="${r[3]==='W'?'w':'l'}">${r[3]==='W'?'G':'P'} ${r[2]}</em></div>`).join('')}<div class="nx"><span class="j">4</span><b>CT Mirador</b><em>Sáb 15:00</em></div></div>`});
     st.push({r:'equipo', sel:navSel('equipo'), t:'Equipo', d:'La plantilla con fotos. Toca a un compañero para ver su perfil y sus estadísticas.', ex:`<div class="dm-grid">${[0,1,2,3].map(i=>`<div>${demoFace(i,38)}<b>${DEMO.players[i][0].split(' ')[0]}</b></div>`).join('')}</div>`});
-    st.push({r:'stats', sel:navSel('stats'), t:'Estadísticas', d:'Rankings de individuales y dobles, MVP de la temporada y récords del equipo.'});
+    st.push({r:'stats', sel:navSel('stats'), t:'Estadísticas', d:'Rankings de individuales y dobles, MVP de la temporada y récords del equipo.', ex:`<div style="display:grid;gap:4px">${[['Pau Ferrer','6-1 · 86%'],['Marc Soler','5-2 · 71%'],['Àlex Puig','4-2 · 67%']].map((r,i)=>dmRow(`${i+1}. ${r[0]}`,r[1],i?'':'ok')).join('')}${dmRow('MVP de la temporada','Pau Ferrer (2)')}</div>`});
     st.push({r:'yo', sel:navSel('yo'), t:'Yo', d:'Tu ficha, tus avisos pendientes, instalar la app y las notificaciones. Y esta introducción, por si quieres repetirla.'}); }
   if(R.includes('captain')){
     st.push({r:'inicio', sel:'.hx-ops', t:'Tu centro de operaciones', d:'Como capitán ves aquí el estado de la jornada y el siguiente paso, con su botón.'});
@@ -2875,7 +2875,7 @@ function spotSteps(){ const R=ui.onb?.roles||[], st=[];
     st.push({r:'admin', sel:'.mdtabs', t:'Las fases de cada jornada', d:'Preparar (disponibilidad), Convocar (orden de juego y cartel), Resultados (con el acta y la IA) y Postpartido (informe y MVP).'}); }
   if(R.includes('manager')){
     st.push({r:me?'inicio':'club', sel:'.clublink', t:'Gestión deportiva', d:'El icono de la casa abre la vista de todo el club, separada de la de tu equipo.'});
-    st.push({r:'club', sel:'.attn, .attn-ok', t:'Lo que requiere atención', d:'Resultados sin poner, por validar y documentos por revisar de todos los equipos, lo primero.'});
+    st.push({r:'club', sel:'.attn, .attn-ok', t:'Lo que requiere atención', d:'Resultados sin poner, por validar y documentos por revisar de todos los equipos, lo primero.', ex:`<div style="display:grid;gap:6px">${['Polo B, jornada 4: sin resultado','Femenino A: resultado por validar','Polo A: 2 documentos por revisar'].map(x=>`<div class="dm-at">${x}<span>›</span></div>`).join('')}</div>`});
     st.push({r:'club-resumen', sel:'[data-act=mail-toggle]', t:'Informe del fin de semana', d:'Genera el PDF profesional y lo envía por correo a los gestores, con un botón.'}); }
   return st; }
 function visibleEl(sel){ return [...document.querySelectorAll(sel)].find(e=>{ const r=e.getBoundingClientRect(); const cs=getComputedStyle(e); return r.width>0 && r.height>0 && cs.visibility!=='hidden' && cs.display!=='none'; }); }
@@ -3175,6 +3175,10 @@ document.addEventListener('click', async e=>{
   else if(a==='acta-read'){ const id=el.dataset.id; ui.acta=null; renderQuiet(); await docRead(id,{stay:true}); renderQuiet(); }
   else if(a==='acta-confirm'){ actaConfirm(+el.dataset.j); }
   else if(a==='acta-manual'){ const j=+el.dataset.j; if(ui.acta){ actaToTie(j); ui.actaManual=j; } (ui.resMode ||= {})[j]='manual'; renderQuiet(); toast('Datos del acta pasados al formulario: corrige y pulsa «Guardar resultados»'); }
+  else if(a==='acta-unlink'){ const id=el.dataset.id, j=+el.dataset.j, d=docs[id]; if(!d) return;
+    const applied=(tie(j)||{}).actaId===id;
+    if(!confirm(`¿Quitar «${d.name}» de la jornada ${j}? El archivo se queda en Documentos, sin jornada asignada.${applied? '\n\nLos resultados que se guardaron con esta acta se mantienen: sube el acta correcta o corrígelos a mano.' : ''}`)) return;
+    ui.acta=null; await safe(()=>B.update(`${SEASON_PATH}/docs/${id}`,{j:null, status:'subido', validatedBy:DEL, validatedAt:DEL, applied:DEL, extraction:DEL}), 'Acta quitada de la jornada '+j); renderQuiet(); }
   else if(a==='res-mode'){ (ui.resMode ||= {})[+el.dataset.j]=el.dataset.v; renderQuiet(); }
   else if(a==='acta-override'){ if(ui.acta){ ui.acta.override=el.checked; renderQuiet(); } }
   else if(a==='team-save'){ if(!isAdmin) return; S.rules={...S.rules,teamManage:$('#team-manage').checked}; saveState(S.rules.teamManage? 'Gestión abierta a todo el equipo' : 'Gestión solo para capitanes'); }
