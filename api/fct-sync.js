@@ -29,6 +29,44 @@ async function fctMatches(group) {
   return Array.isArray(j.partidos) ? j.partidos : [];
 }
 
+// Plantilla del equipo del Polo en la FCT (nombre, licencia, categoría y puntos; sin capitán)
+async function fctRoster(teamCode) {
+  const r = await fetch(FCT_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'recuperarJugadoresEquipoLiga', data: { codigoEquipo: +teamCode } }) });
+  if (!r.ok) throw new Error('FCT respondió ' + r.status);
+  const j = await r.json();
+  if (j.error) throw new Error('FCT: error al leer la plantilla del equipo ' + teamCode);
+  return Array.isArray(j.datos) ? j.datos : [];
+}
+const PARTICLE = new Set(['de', 'del', 'la', 'las', 'los', 'i', 'y', 'van', 'von', 'da', 'dos']);
+const titleCase = s => String(s || '').toLowerCase().split(/\s+/).filter(Boolean).map((w, i) => i && PARTICLE.has(w) ? w : w.replace(/(^|[-'])(\p{L})/gu, (m, a, b) => a + b.toUpperCase())).join(' ');
+// «Francisco Javier Torrent Correa» → «Francisco Torrent»; «Michael B Goldenberg» → «Michael Goldenberg»
+function shortOf(full) {
+  const t = titleCase(full).split(' '); if (t.length <= 2) return t.join(' ');
+  let i = t.length - 2; if (PARTICLE.has(t[i].toLowerCase())) i--; if (t[i].replace(/\W/g, '').length <= 1) i = t.length - 1;
+  return t[0] + ' ' + t[Math.max(1, i)];
+}
+// Importa la plantilla: la primera vez (temporada sin jugadores) da de alta a todos; después solo
+// actualiza licencia, categoría y puntos de los que reconoce, y añade nuevos si la plantilla vino de la FCT.
+function syncRoster(S, list) {
+  S.players = Array.isArray(S.players) ? S.players : []; S.comp = S.comp || {};
+  const out = { added: 0, updated: 0 };
+  const fromFct = !S.players.length || S.comp.fctRoster === true;
+  const byLic = l => S.players.find(p => p.lic && String(p.lic) === String(l));
+  const byName = n => { const a = norm(n); return S.players.find(p => norm(p.full) === a || (p.full && norm(p.full).split(' ').length >= 2 && a.startsWith(norm(p.full) + ' '))); };
+  list.slice().sort((a, b) => (+a.posicion || 99) - (+b.posicion || 99)).forEach((x, i) => {
+    const full = titleCase(x.nombreCompleto || ''); if (!full) return;
+    const cat = String(x.codigoCategoriaNombre || '').trim(), pts = +x.puntos || 0, order = +x.posicion || i + 1;
+    let p = byLic(x.licencia) || byName(full);
+    if (p) { const before = JSON.stringify(p); if (x.licencia) p.lic = String(x.licencia); if (cat) p.cat = cat; p.pts = pts; if (fromFct) p.order = order; if (JSON.stringify(p) !== before) out.updated++; return; }
+    if (!fromFct) return;
+    const name = shortOf(full); let id = slug(name) || 'jugador'; while (S.players.some(q => q.id === id)) id += '-2';
+    S.players.push({ id, name, full, cat, pts, order, lic: x.licencia ? String(x.licencia) : '', captain: false, active: x.activa !== false, src: 'fct' });
+    out.added++;
+  });
+  if (out.added) S.comp.fctRoster = true;
+  return out;
+}
+
 // Busca el equipo de la app que corresponde a un equipo de la FCT (por código guardado o por nombre)
 function teamFor(S, code, name, added) {
   let t = S.teams.find(x => +x.fct === +code); if (t) return t.id;
@@ -91,11 +129,16 @@ async function runSeason(db, id) {
   if ((S.comp || {}).fctSync === false) return { season: id, skipped: 'desactivado' };
   const partidos = await fctMatches(group);
   if (!partidos.length) return { season: id, group, skipped: 'grupo-vacio' };
-  const before = JSON.stringify({ t: S.teams, f: S.fixtures });
+  const before = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {} });
   const out = syncSeason(S, partidos);
-  const changed = JSON.stringify({ t: S.teams, f: S.fixtures }) !== before;
+  // Plantilla: con el código FCT del equipo del Polo en este grupo
+  const poloCode = (S.teams.find(t => t.id === POLO) || {}).fct;
+  if (poloCode && (S.comp || {}).fctRosterSync !== false) {
+    try { out.roster = syncRoster(S, await fctRoster(poloCode)); } catch (e) { out.rosterError = e.message; }
+  }
+  const changed = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {} }) !== before;
   const meta = { at: Date.now(), group, ...out };
-  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, fctLast: meta, updatedAt: Date.now() } : { fctLast: meta });
+  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, fctLast: meta, updatedAt: Date.now() } : { fctLast: meta });
   return { season: id, changed, ...meta };
 }
 
@@ -128,3 +171,5 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: e.code || e.message });
   }
 };
+
+module.exports._test = { syncRoster, shortOf, syncSeason };
