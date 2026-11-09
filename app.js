@@ -1244,14 +1244,17 @@ function vClaim(){
 }
 
 /* ---------------- Administración ---------------- */
+// Bloque plegable que recuerda si estaba abierto entre renders
+const fold=(k,title,sub,body,def=false,extra='')=>`<details class="fold" data-k="${k}" ${(ui.open?.[k]??def)?'open':''}><summary><span class="fl"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</span>${extra}<span class="fchev" aria-hidden="true"></span></summary><div class="fbody">${body}</div></details>`;
+document.addEventListener('toggle',e=>{ const d=e.target; if(d?.matches?.('details[data-k]')) (ui.open ||= {})[d.dataset.k]=d.open; },true);
 function vAdmin(){
   if(!canManage) return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1></div><div class="notice">${me? 'La gestión está limitada a los capitanes marcados. Un administrador puede abrirla a todo el equipo en Temporadas y ajustes.' : 'Elige tu nombre en Yo para poder gestionar.'}</div></div>`;
   if(ui.adminTab==='preguntas') ui.adminTab='temporadas';
-  const tabs=[['jornada','Jornada'],['docs-go','Documentos'],['calendario','Liga'],...(canManage?[['plantilla','Plantilla'],['temporadas','Ajustes']]:[])];
+  const tabs=[['jornada','Jornada'],['calendario','Calendario'],['plantilla','Plantilla'],['temporadas','Ajustes']];
   if(!tabs.some(x=>x[0]===ui.adminTab)) ui.adminTab='jornada'; const t=ui.adminTab;
-  return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1><p class="lede">Todo se edita aquí y se actualiza solo en el resto de la app.${viewSeason!==currentSeason()?` <b>Estás editando la temporada ${esc(viewSeason)}.</b>`:''}</p></div>
+  return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1>${viewSeason!==currentSeason()?`<p class="notice">Estás editando la temporada ${esc(viewSeason)}.</p>`:''}</div>
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
-    ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():t==='preguntas'?aPreguntas():aTemporadas()+`<div class="sec-h" style="margin-top:28px"><h2>Encuesta postpartido</h2></div>`+aPreguntas()}</div>`;
+    ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():aTemporadas()}</div>`;
 }
 function jSelect(act,cur,onlyPolo=true){ const js= onlyPolo? poloOrder() : Array.from({length:NJ()},(_,i)=>i+1); return `<select data-act="${act}" style="max-width:380px">${js.map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?'Polo contra '+team(f.away).short:team(f.home).short+' contra Polo')+', '+fdate(f)+(f.moved?.from&&f.moved.from!==f.date? (f.date<f.moved.from?' (adelantada)':' (aplazada)') : ''):''}</option>`; }).join('')}</select>`; }
 function adminJ(){ if(ui.adminJ && poloFix(ui.adminJ)) return ui.adminJ; const nx=nextPoloFix(); if(nx) return nx.j; const l=lastPoloPlayed(); if(l) return l.j; const f=S.fixtures.find(x=>x.home===POLO||x.away===POLO); return f? f.j : null; }
@@ -1260,12 +1263,12 @@ function phases(j){
   const f=poloFix(j), t=tie(j)||blankTie(), a=availFor(j), tr=tieFromRubbers(j)||{}, p=persp(f), pub=S.published[jid(j)]||{}, closed=deadlinePassed(j)||isPlayed(f);
   const resDone = !!(tr.complete) || (isPlayed(f) && f.status==='official' && !tr.decided);
   return [
-    {k:'prep', l:'Calendario confirmado', st: t.calOk||isPlayed(f)? 'done' : 'todo', d: t.calOk? 'Confirmado' : isPlayed(f)? 'Disputada' : 'Confirma fecha, hora y rival'},
-    {k:'disp', l:'Disponibilidad solicitada', st: t.availReq||closed? 'done' : availOpen(f)? 'doing' : 'todo', d: t.availReq? 'Pedida '+relTime(t.availReq.at) : closed? 'Plazo cerrado' : 'Sin pedir'},
-    {k:'disp', l:'Disponibilidad cerrada', st: closed? 'done' : (t.availReq||a.answered)? 'doing' : 'todo', d: `${a.answered} de ${a.total} respuestas`},
-    {k:'conv', l:'Convocatoria publicada', st: t.lineupPub? 'done' : (t.convocados?.length||t.rubbers.some(r=>r.polo.length))? 'doing' : 'todo', d: t.lineupPub? 'Publicada' : t.convocados?.length? 'Borrador' : 'Pendiente'},
-    {k:'res', l:'Resultados introducidos', st: resDone? 'done' : (tr.decided||isPlayed(f))? 'doing' : 'todo', d: resDone? `Polo ${p.ps}-${p.rs}${f.status==='official'?', oficial':''}` : tr.decided? `${tr.decided} partidos con resultado` : 'Pendiente'},
-    {k:'post', l:'MVP publicado', st: pub.mvp? 'done' : mvpState(j)? 'doing' : 'todo', d: pub.mvp? pname(pub.mvp) : mvpOpen(j)? `Votando: ${mvpVoteCount(jid(j))}` : mvpState(j)? 'Por publicar' : 'Tras el partido'}];
+    {k:'prep', s:'Calendario', l:'Calendario confirmado', st: t.calOk||isPlayed(f)? 'done' : 'todo', d: t.calOk? 'Confirmado' : isPlayed(f)? 'Disputada' : 'Confirma fecha, hora y rival'},
+    {k:'disp', s:'Pedir disponibilidad', l:'Disponibilidad solicitada', st: t.availReq||closed? 'done' : 'todo', d: t.availReq? 'Pedida '+relTime(t.availReq.at) : closed? 'Plazo cerrado' : 'Sin pedir'},
+    {k:'disp', s:'Cerrar disponibilidad', l:'Disponibilidad cerrada', st: closed? 'done' : (t.availReq||a.answered)? 'doing' : 'todo', d: `${a.answered} de ${a.total} respuestas`},
+    {k:'conv', s:'Convocatoria', l:'Convocatoria publicada', st: t.lineupPub? 'done' : (t.convocados?.length||t.rubbers.some(r=>r.polo.length))? 'doing' : 'todo', d: t.lineupPub? 'Publicada' : t.convocados?.length? 'Borrador' : 'Pendiente'},
+    {k:'res', s:'Resultados', l:'Resultados introducidos', st: resDone? 'done' : (tr.decided||isPlayed(f))? 'doing' : 'todo', d: resDone? `Polo ${p.ps}-${p.rs}${f.status==='official'?', oficial':''}` : tr.decided? `${tr.decided} partidos con resultado` : 'Pendiente'},
+    {k:'post', s:'MVP', l:'MVP publicado', st: pub.mvp? 'done' : mvpState(j)? 'doing' : 'todo', d: pub.mvp? pname(pub.mvp) : mvpOpen(j)? `Votando: ${mvpVoteCount(jid(j))}` : mvpState(j)? 'Por publicar' : 'Tras el partido'}];
 }
 function nextAction(j){
   const f=poloFix(j), t=tie(j)||blankTie(), a=availFor(j), ph=phases(j), cur=ph.find(x=>x.st!=='done');
@@ -1281,51 +1284,59 @@ function nextAction(j){
   }
 }
 function aJornada(){
-  const j=adminJ(); if(!j) return `<div class="empty">No hay eliminatorias del Polo en el calendario. Añádelas en «Liga y calendario».</div>`;
-  const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), a=availFor(j), ph=phases(j), na=nextAction(j), tr=tieFromRubbers(j)||{}, agg=aggregate(jid(j)), parts=participants(j);
+  const j=adminJ(); if(!j) return `<div class="empty">No hay eliminatorias del Polo en el calendario. Añádelas en «Calendario».</div>`;
+  const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), ph=phases(j), na=nextAction(j);
   if(!ui.jTabSet || ui.jTabFor!==j){ ui.jTabFor=j; ui.jTabSet=true; const c=ph.find(x=>x.st!=='done'); ui.jTab = c? c.k : 'post'; }
-  const stIcon={done:'✓',doing:'•',todo:''}, stTxt={done:'Completada',doing:'En curso',todo:'Pendiente'};
-  const pendRes=t.rubbers.filter((r,i)=> (r.type==='S' || tr.needsDoubles) && !rubberCalc(r).res).length;
-  const tabs=[['prep','Preparar'],['conv','Convocar'],['res','Resultados'],['post','Postpartido']], jt=ui.jTab==='disp'?'prep':ui.jTab;
-  return `<section class="sec" style="padding-top:6px">
-    <div class="mdhead"><div>${jSelect('admin-j',j)}<p class="mdtitle">${crest(p.rival)}<span>Polo contra ${esc(clubName(p.rival))}</span></p><p class="muted small" style="margin:0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'}. ${isPlayed(f)? 'Resultado: Polo '+p.ps+'-'+p.rs+(f.status==='official'?' (oficial)':' (provisional)') : countdown(f)}</p></div></div>
-    <div class="row" style="margin:12px 0 0"><button class="btn ghost" data-act="msg-open" data-j="${j}">${svgi('mega',16)} Mensaje al equipo</button></div>
-    <div class="mdkpis stagger"><div><b>${a.yes.length}</b><span>disponibles</span></div><div class="${a.none.length?'warn':''}"><b>${a.none.length}</b><span>sin responder</span></div><div><b>${(t.convocados||[]).length}</b><span>convocados</span></div><div class="${pendRes&&(t.lineupPub||isPlayed(f))?'warn':''}"><b>${pendRes}</b><span>partidos sin resultado</span></div><div><b>${isPlayed(f)? agg.n+'/'+parts.length : '–'}</b><span>encuestas</span></div><div><b>${mvpState(j)? mvpVoteCount(jid(j)) : '–'}</b><span>votos MVP</span></div></div>
-    <ol class="steps">${ph.map((x,i)=>`<li class="${x.st}"><button data-act="jtab" data-v="${x.k}"><span class="sn">${stIcon[x.st]||i+1}</span><span class="sl"><b>${x.l}</b><small>${stTxt[x.st]}. ${esc(x.d)}</small></span></button></li>`).join('')}</ol>
-    <div class="nextcard"><div><span class="nk">Siguiente paso</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${na.b}</div></div>
-    <div class="mdtabs">${tabs.map(([k,l],i)=>`<button class="chip" data-act="jtab" data-v="${k}" aria-pressed="${jt===k}"><span class="tn">${i+1}</span>${l}</button>`).join('')}</div></section>
-    ${ui.jTab==='prep'||ui.jTab==='disp'? aPrep(j)+`<div class="sec-h" style="margin-top:8px"><h2>Disponibilidad</h2></div>`+aDisp(j) :ui.jTab==='conv'?aConv(j)+(t.lineupPub||lineupList(j).length? `<div class="sec-h" style="margin-top:30px"><h2>Cartel de la convocatoria</h2></div>`+aCartel(j):''):ui.jTab==='res'?aResultados(j):aPost(j)}`;
+  const jt=ui.jTab, cur=ph.findIndex(x=>x.st!=='done'), nDocs=(ensureDocsSub(), Object.values(docs).filter(d=>d.j===j).length);
+  const panel = jt==='prep'? aPrep(j)
+    : jt==='disp'? aDisp(j)
+    : jt==='conv'? aConv(j)+(t.lineupPub||lineupList(j).length? `<div class="sec-h" style="margin-top:30px"><h2>Cartel de la convocatoria</h2></div>`+aCartel(j):'')
+    : jt==='res'? aResultados(j) : aPost(j);
+  return `<section class="sec" style="padding-top:6px"><div class="jhero">
+    <div class="jh-top">${jSelect('admin-j',j)}<div class="jh-links"><button class="btn ghost sm" data-act="msg-open" data-j="${j}">${svgi('mega',15)} Mensaje al equipo</button><a class="btn ghost sm" href="#jornada-${j}">Ver la jornada</a><button class="btn ghost sm" data-act="docs-j" data-j="${j}">Documentos${nDocs?' ('+nDocs+')':''}</button></div></div>
+    <div class="jh-match"><div class="jh-side">${crest(POLO)}<b>Polo</b></div>
+      <div class="jh-mid">${isPlayed(f)? `<b class="jh-score">${p.ps}-${p.rs}</b><small>${f.status==='official'?'Oficial':'Provisional'}</small>` : `<b class="jh-vs">vs</b><small>${esc(countdown(f))}</small>`}</div>
+      <div class="jh-side">${crest(p.rival)}<b>${esc(clubName(p.rival))}</b></div></div>
+    <p class="jh-when">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'} ${movedTag(f)}</p>
+    <ol class="jprog">${ph.map((x,i)=>`<li class="p-${x.st}${i===cur?' cur':''}"><button data-act="jtab" data-v="${x.k}" aria-pressed="${x.k===jt}" title="${esc(x.l+'. '+x.d)}"><span class="jd">${x.st==='done'?'✓':i+1}</span><span class="jl">${x.s}</span><small>${esc(x.d)}</small></button></li>`).join('')}</ol>
+  </div>
+  <div class="nextcard"><div><span class="nk">Siguiente paso</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${na.b}</div></div></section>
+  ${panel}`;
 }
 function aPrep(j){
   const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), topts=sel=>S.teams.filter(x=>x.id!==POLO).map(x=>`<option value="${x.id}" ${sel===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
-  return `<section class="sec"><div class="split"><div><div class="sec-h"><h2>Datos de la eliminatoria</h2></div>
-    <div class="mvbox"><div><span class="hx-k3">Fecha del partido</span><b>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</b>${movedTag(f)}${f.fctDate&&f.fctDate!==f.date? `<p class="notice" style="margin:8px 0 0">La FCT todavía tiene este partido el ${esc(shortD(f.fctDate))}. La app mantiene tu fecha; cuando la Federació lo cambie, el aviso desaparecerá.</p>` : ''}<p class="muted small" style="margin:4px 0 0">¿Se adelanta o se aplaza? Cambia la fecha aquí, aunque sea otra jornada en el calendario: la app se reordena sola.</p></div>
-      <div class="mvf"><label>Nueva fecha<input type="date" id="pp-date" value="${f.date}"></label><label>Hora<input type="time" id="pp-time" value="${f.time}"></label></div>
-      <div class="row"><button class="btn brass" data-act="prep-save" data-j="${j}">Guardar fecha</button>${f.moved?.from&&f.moved.from!==f.date? `<button class="btn ghost sm" data-act="move-reset" data-j="${j}">Volver al ${esc(shortD(f.moved.from))}</button><a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📅 Cambio de fecha: la jornada ${j} contra ${clubName(p.rival)} se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'long'})} a las ${f.time} h (${p.home?'en casa':'fuera'}). Antes era el ${shortD(f.moved.from)}. Todo en la app: ${location.origin}/#jornada-${j}`)}">Avisar al equipo por WhatsApp</a>` : ''}</div></div>
-    <div class="tfields">
-      <label>Rival<select id="pp-rival">${topts(p.rival)}</select></label><label>Dónde<select id="pp-home"><option value="1" ${p.home?'selected':''}>En casa</option><option value="0" ${!p.home?'selected':''}>Fuera</option></select></label></div>
-    <div class="row" style="margin-top:14px"><button class="btn" data-act="prep-save" data-j="${j}">Guardar cambios</button>${t.calOk? '<span class="okmark">✓ Calendario confirmado</span>' : `<button class="btn brass" data-act="cal-ok" data-j="${j}">Confirmar calendario</button>`}</div>
-    <p class="muted small">Al cambiar fecha u hora se actualizan solos el calendario, la portada, la página de la jornada, el plazo de disponibilidad y los mensajes. El resto de enfrentamientos de la liga se editan en «Liga y calendario».</p></div>
-    <div><div class="sec-h"><h2>Orden de juego</h2></div>${lineupList(j).length? lineupStrip(j) : '<div class="empty">Aún sin convocatoria.</div>'}
-      <div class="row" style="margin-top:12px"><a class="btn ghost sm" href="#jornada-${j}">Ver la página de la jornada</a><button class="btn ghost sm" data-act="docs-j" data-j="${j}">Documentos de la jornada (${(ensureDocsSub(), Object.values(docs).filter(d=>d.j===j).length)})</button></div></div></div></section>`;
+  const moved=f.moved?.from&&f.moved.from!==f.date, lu=lineupList(j).length;
+  const edit=`<div class="mvf"><label>Fecha<input type="date" id="pp-date" value="${f.date}"></label><label>Hora<input type="time" id="pp-time" value="${f.time}"></label></div>
+      <div class="tfields" style="margin-top:10px"><label>Rival<select id="pp-rival">${topts(p.rival)}</select></label><label>Dónde<select id="pp-home"><option value="1" ${p.home?'selected':''}>En casa</option><option value="0" ${!p.home?'selected':''}>Fuera</option></select></label></div>
+      <div class="row" style="margin-top:12px"><button class="btn brass" data-act="prep-save" data-j="${j}">Guardar cambios</button></div>`;
+  const box=`<div class="sec-h"><h2>Datos de la eliminatoria</h2>${t.calOk?'<span class="okmark">✓ Confirmado</span>':''}</div>
+    <div class="mvbox"><dl class="kvs"><div><dt>Fecha</dt><dd>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h ${movedTag(f)}</dd></div><div><dt>Rival</dt><dd>${esc(clubName(p.rival))}</dd></div><div><dt>Dónde</dt><dd>${p.home?'En casa':'Fuera'}</dd></div></dl>
+      ${f.fctDate&&f.fctDate!==f.date? `<p class="notice" style="margin:0">La FCT todavía tiene este partido el ${esc(shortD(f.fctDate))}. La app mantiene tu fecha.</p>` : ''}
+      ${moved? `<div class="row"><button class="btn ghost sm" data-act="move-reset" data-j="${j}">Volver al ${esc(shortD(f.moved.from))}</button><a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📅 Cambio de fecha: la jornada ${j} contra ${clubName(p.rival)} se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'long'})} a las ${f.time} h (${p.home?'en casa':'fuera'}). Antes era el ${shortD(f.moved.from)}. Todo en la app: ${location.origin}/#jornada-${j}`)}">Avisar al equipo por WhatsApp</a></div>` : ''}
+      ${fold('prep-edit-'+j,'Cambiar fecha, hora, rival o lugar','Si se adelanta o se aplaza, la app se reordena sola',edit)}</div>`;
+  return `<section class="sec">${lu? `<div class="split"><div>${box}</div><div><div class="sec-h"><h2>Orden de juego</h2></div>${lineupStrip(j)}</div></div>` : `<div style="max-width:640px">${box}</div>`}</section>`;
 }
 const CAP_FIELDS=[['valoracion','Valoración general','¿Cómo ha ido la eliminatoria en conjunto?'],['desarrollo','Desarrollo de la jornada','Cómo fueron los partidos, momentos clave'],['destacados','Jugadores destacados','Quién y por qué'],['positivos','Aspectos positivos',''],['mejorar','Aspectos a mejorar',''],['incidencias','Incidencias','Lesiones, retrasos, pistas, arbitraje…'],['compromiso','Disponibilidad y compromiso del equipo',''],['observaciones','Observaciones adicionales','']];
-function captainReportForm(j){ const t=tie(j)||{}, r=t.captainReport||{};
-  return `<div class="panel caprep"><b>Informe del capitán</b><p class="muted small" style="margin:4px 0 10px">Lo lee el gestor deportivo y forma parte del informe semanal del club. Escribe solo lo que quieras que conste; la IA puede ordenarlo, pero no añade nada que no hayas escrito.</p>
-    <label class="f">Nota de la jornada (1 a 10)<select data-capr="nota" style="width:auto;margin-left:8px"><option value="">Sin nota</option>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${+r.nota===n?'selected':''}>${n}</option>`).join('')}</select></label>
-    ${CAP_FIELDS.map(([k,l,ph])=>`<label class="f" for="capr-${k}">${l}</label><textarea id="capr-${k}" data-capr="${k}" rows="2" placeholder="${esc(ph)}">${esc(r[k]||'')}</textarea>`).join('')}
+function captainReportForm(j){ const t=tie(j)||{}, r=t.captainReport||{}, more=CAP_FIELDS.slice(1), nMore=more.filter(([k])=>r[k]).length;
+  const fld=([k,l,ph])=>`<label class="f" for="capr-${k}">${l}</label><textarea id="capr-${k}" data-capr="${k}" rows="2" placeholder="${esc(ph)}">${esc(r[k]||'')}</textarea>`;
+  return `<div class="panel caprep"><p class="muted small" style="margin:0 0 10px">Lo lee el gestor deportivo para el informe semanal del club.</p>
+    <label class="f" style="margin-top:0">Nota de la jornada (1 a 10)<select data-capr="nota" style="width:auto;margin-left:8px"><option value="">Sin nota</option>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${+r.nota===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    ${fld(CAP_FIELDS[0])}
+    ${fold('capr-more-'+j,'Más apartados',nMore? nMore+' de '+more.length+' rellenados' : more.map(x=>x[1].toLowerCase()).slice(0,3).join(', ')+'…',more.map(fld).join(''))}
     <div class="row" style="margin-top:10px"><button class="btn brass" data-act="capr-save" data-j="${j}">Guardar informe</button>${r.at? `<span class="muted small">Guardado por ${esc(r.by||'')} ${relTime(r.at)}</span>` : ''}</div></div>`; }
 function aPost(j){
   const f=poloFix(j); if(!isPlayed(f)) return `<section class="sec"><div class="empty">El postpartido se activa al guardar los resultados: se abren la encuesta para los que jugaron y la votación del MVP.</div></section>`;
-  const c=cronica(j);
+  const c=cronica(j), k=jid(j), m=mvpState(j), pub=S.published[k]||{}, voters=S.players.filter(p=>p.active!==false).length, agg=aggregate(k), parts=participants(j), r=(tie(j)||{}).captainReport||{};
+  const mvpSub = pub.mvp? '🏆 '+esc(pname(pub.mvp)) : mvpOpen(j)? `Votando: ${mvpVoteCount(k)} de ${voters} · cierra ${esc(fmtDT(new Date(+m.deadline)))}` : m? 'Cerrada, falta publicar' : 'Sin abrir';
+  const encSub = `${agg.n} de ${parts.length} respuestas${S.survey.closed?.[k]?' · cerrada':''}`;
   return `<section class="sec"><div class="sec-h"><h2>Resumen de la jornada</h2></div><div class="panel"><p class="cronica" style="margin:0">${esc(c?.txt||'')}</p>
-      <div class="row" style="margin-top:12px"><button class="btn ghost sm" data-act="compose" data-kind="summary" data-j="${j}">Compartir el resumen por WhatsApp</button><a class="btn ghost sm" href="#jornada-${j}">Ver la jornada</a></div>${composer('summary',j,'Resumen de la jornada')}
-      <p class="source">Estadísticas individuales y de dobles, clasificación, rankings y perfiles ya están actualizados con estos resultados.</p></div></section>
-    <div class="sec-h" style="margin-top:20px"><h2>Informe del capitán</h2></div>${captainReportForm(j)}
-    <div class="sec-h" style="margin-top:20px"><h2>Votación del MVP</h2></div>${aMvp(j)}
-    <div class="sec-h" style="margin-top:20px"><h2>Encuesta postpartido</h2></div>${aEncuesta(j)}`;
+      <div class="row" style="margin-top:12px"><button class="btn ghost sm" data-act="compose" data-kind="summary" data-j="${j}">Compartir por WhatsApp</button></div>${composer('summary',j,'Resumen de la jornada')}</div></section>
+    <section class="sec postcards">
+      ${fold('post-mvp-'+j,'Votación del MVP',mvpSub,aMvp(j),!pub.mvp)}
+      ${fold('post-enc-'+j,'Encuesta postpartido',encSub,aEncuesta(j))}
+      ${fold('post-cap-'+j,'Informe del capitán',r.at? 'Guardado '+relTime(r.at)+(r.nota?' · nota '+r.nota:'') : 'Sin escribir',captainReportForm(j))}
+    </section>`;
 }
-
 /* --- WhatsApp --- */
 const appLink = h => location.origin + location.pathname + '#' + h;
 function msgVars(j){ const f=poloFix(j), p=persp(f); return {rival:clubName(p.rival), fecha:fdate(f,{weekday:'long',day:'numeric',month:'long'}), hora:f.time, limite:fmtDT(deadline(j)), enlace:appLink('disponibilidad-'+j), enlaceJornada:appLink('jornada-'+j), jornada:j, lugar:p.home?'en casa':'fuera, en las pistas del '+clubName(p.rival)}; }
@@ -1358,22 +1369,28 @@ function respChart(j){
   return `<div class="sec-h" style="margin-top:22px"><h3>Evolución de las respuestas</h3></div><svg class="chart" viewBox="0 0 ${W} ${H}">${g}<path class="ln" d="${step('n')}" fill="none" stroke="var(--muted)" stroke-width="2"/><path class="ln" d="${step('y')}" fill="none" stroke="var(--win)" stroke-width="2.5"/></svg><div class="legend"><span><i style="background:var(--muted)"></i>Han respondido</span><span><i style="background:var(--win)"></i>Disponibles</span></div>`;
 }
 function aDisp(j){
-  const f=poloFix(j), t=tie(j)||blankTie(), a=availFor(j), dl=deadline(j);
+  const f=poloFix(j), t=tie(j)||blankTie(), a=availFor(j), dl=deadline(j), closed=deadlinePassed(j);
   const dlv=new Date(dl.getTime()-dl.getTimezoneOffset()*6e4).toISOString().slice(0,16);
-  const row=(pid,k)=>{ const v=avOf(pid,j), n=noteOf(pid,j), hist=(avail[pid]?.h?.[jid(j)]||[]).length, ph=phones[pid];
-    const hs=availStats(pid);
-    return `<li><div class="row" style="gap:10px;flex-wrap:nowrap">${avatar(player(pid),'sm')}<div style="flex:1;min-width:0"><b>${esc(pname(pid))}</b> <span class="hist" title="Disponibilidad en la temporada">${hs.total? Math.round(hs.pct*100)+'% temp.' : ''}</span>${n?.c?`<div class="small">«${esc(n.c)}»</div>`:''}<div class="muted small">${v?.at? relTime(v.at) : 'Sin respuesta'}${hist>1? ', cambió '+(hist-1)+(hist>2?' veces':' vez'):''}</div></div>
-      ${k==='none'? (ph? `<button class="btn sm ghost" data-act="wa-one" data-pid="${esc(pid)}" data-j="${j}">Recordar</button>` : '<span class="muted small">sin teléfono</span>') : ''}
-      <select data-act="av-admin" data-pid="${esc(pid)}" data-j="${j}" aria-label="Anotar a mano" style="width:auto;min-height:32px;padding:4px 8px;font-size:.8rem"><option value="">Anotar</option><option value="yes">Disponible</option><option value="maybe">Pendiente</option><option value="no">No disponible</option></select></div></li>`; };
-  return `<section class="sec"><div class="split"><div><div class="row" style="gap:20px;align-items:center">${ring(a.total? a.pct : null,'disponible')}<div style="flex:1">${availSummary(j)}</div></div>
-      <p class="muted small">${a.yes.length} disponibles de ${a.total} jugadores en plantilla. ${t.availReq? 'Pedida '+relTime(t.availReq.at)+(t.availReq.n>1?' ('+t.availReq.n+' envíos)':'')+'.' : 'Aún no se ha pedido por WhatsApp.'}${(t.remLog||[]).length? ' Recordatorios enviados: '+t.remLog.length+'.' : ''}</p>
-      ${deadlinePassed(j)? `<div class="final"><b>Resumen definitivo</b><span>${a.yes.length} disponibles: ${a.yes.map(x=>pname(x).split(' ')[0]).join(', ')||'nadie'}.${a.maybe.length?' Pendientes de confirmar: '+a.maybe.map(x=>pname(x).split(' ')[0]).join(', ')+'.':''} Sin respuesta: ${a.none.length}.</span><div class="row" style="margin-top:8px">${t.availClosed?`<button class="btn sm ghost" data-act="avail-reopen" data-j="${j}">Reabrir disponibilidad</button>`:''}<button class="btn sm brass" data-act="jtab" data-v="conv">Preparar la convocatoria</button></div></div>` : ''}
-      <div class="row" style="margin-top:12px"><button class="btn brass" data-act="compose" data-kind="req" data-j="${j}">Solicitar disponibilidad</button>${!deadlinePassed(j)?`<button class="btn ghost sm" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button>`:''}<button class="btn ghost" data-act="compose" data-kind="rem" data-j="${j}" ${a.none.length?'':'disabled'}>Recordar a quien no ha respondido (${a.none.length})</button><a class="btn ghost sm" href="#disponibilidad-${j}">Ver la encuesta</a></div>
-      ${composer('req',j,'Mensaje para el grupo')}${composer('rem',j,'Recordatorio para el grupo')}
-      <div class="panel" style="margin-top:16px"><label class="f" style="margin-top:0" for="dl">Fecha límite para responder</label><div class="row"><input type="datetime-local" id="dl" value="${dlv}" style="max-width:260px"><button class="btn sm" data-act="dl-save" data-j="${j}">Guardar plazo</button>${t.deadline?`<button class="btn sm ghost" data-act="dl-reset" data-j="${j}">Usar el plazo por defecto</button>`:''}</div><p class="muted small" style="margin:6px 0 0">Por defecto, ${S.rules.deadlineDays} días antes a las ${esc(S.rules.deadlineTime)}. Pasado el plazo, solo los administradores pueden cambiar respuestas.</p></div>
-      ${respChart(j)}</div>
-    <div>${['yes','maybe','no','none'].map(k=>`<div class="avgroup ${k}"><h3>${AV_LABEL[k]} <span class="muted">${a[k].length}</span></h3>${a[k].length?`<ul class="avlist">${a[k].map(pid=>row(pid,k)).join('')}</ul>`:'<p class="muted small">Nadie.</p>'}</div>`).join('')}
-      <p class="source">Los recordatorios individuales usan el teléfono guardado en «Plantilla y fotos». Los comentarios solo los ven los administradores y su autor.</p></div></div></section>`;
+  const order=['yes','maybe','no','none'], tot=Math.max(1,a.total);
+  const face=(pid,k)=>{ const v=avOf(pid,j), n=noteOf(pid,j), ph=phones[pid], hs=availStats(pid);
+    return `<li class="face ${k}" title="${esc(pname(pid)+(hs.total?' · '+Math.round(hs.pct*100)+'% disponible en la temporada':''))}"><div class="fhit">${avatar(player(pid),'sm')}<b>${esc(pname(pid).split(' ')[0])}</b><small>${k==='none'?'Sin respuesta':esc(AV_LABEL[k])}${v?.at?' · '+relTime(v.at):''}</small>${n?.c?`<em>«${esc(n.c)}»</em>`:''}
+      <select class="fsel" data-act="av-admin" data-pid="${esc(pid)}" data-j="${j}" aria-label="Anotar a mano la respuesta de ${esc(pname(pid))}"><option value="">Anotar a mano…</option><option value="yes">Disponible</option><option value="maybe">Pendiente de confirmar</option><option value="no">No disponible</option></select></div>
+      ${k==='none'&&ph&&!closed? `<button class="fwa" data-act="wa-one" data-pid="${esc(pid)}" data-j="${j}" title="Recordar por WhatsApp">Recordar</button>` : ''}</li>`; };
+  const main = closed? `<button class="btn brass" data-act="jtab" data-v="conv">Preparar la convocatoria</button>${t.availClosed?`<button class="btn ghost sm" data-act="avail-reopen" data-j="${j}">Reabrir disponibilidad</button>`:''}`
+    : !t.availReq? `<button class="btn brass" data-act="compose" data-kind="req" data-j="${j}">Solicitar disponibilidad</button><button class="btn ghost sm" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button>`
+    : `${a.none.length? `<button class="btn brass" data-act="compose" data-kind="rem" data-j="${j}">Recordar a los ${a.none.length} que faltan</button>` : ''}<button class="btn ${a.none.length?'ghost sm':'brass'}" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button><button class="btn ghost sm" data-act="compose" data-kind="req" data-j="${j}">Volver a pedir</button>`;
+  const dlForm=`<div class="row"><input type="datetime-local" id="dl" value="${dlv}" style="max-width:240px"><button class="btn sm" data-act="dl-save" data-j="${j}">Guardar plazo</button>${t.deadline?`<button class="btn sm ghost" data-act="dl-reset" data-j="${j}">Usar el plazo por defecto</button>`:''}</div><p class="muted small" style="margin:6px 0 0">Por defecto, ${S.rules.deadlineDays} días antes a las ${esc(S.rules.deadlineTime)}.</p>`;
+  return `<section class="sec"><div class="sec-h"><h2>Disponibilidad</h2></div>
+    <div class="avbar">${order.map(k=>a[k].length?`<i class="${k}" style="flex:${a[k].length}"></i>`:'').join('')||'<i class="none" style="flex:1"></i>'}</div>
+    <div class="avlegend">${order.map(k=>`<span class="${k}"><b>${a[k].length}</b> ${k==='yes'?'disponibles':k==='maybe'?'por confirmar':k==='no'?'no pueden':'sin responder'}</span>`).join('')}</div>
+    <div class="avmeta"><span class="chip-s">${t.availReq? 'Pedida '+relTime(t.availReq.at)+((t.remLog||[]).length?' · '+t.remLog.length+' recordatorios':'') : 'Aún no se ha pedido'}</span>
+      <details class="dlchip" data-k="dl-${j}" ${ui.open?.['dl-'+j]?'open':''}><summary>${closed?'Plazo cerrado':'Plazo'}: ${esc(fmtDT(dl))} ✎</summary><div class="dlpop">${dlForm}</div></details></div>
+    <div class="row" style="margin-top:12px">${main}</div>
+    ${composer('req',j,'Mensaje para el grupo')}${composer('rem',j,'Recordatorio para el grupo')}
+    <ul class="faces">${order.flatMap(k=>a[k].map(pid=>face(pid,k))).join('')}</ul>
+    <p class="muted small" style="margin-top:8px">Toca una cara para anotar su respuesta a mano.</p>
+    ${(()=>{ const rc=respChart(j); return rc? fold('respchart-'+j,'Evolución de las respuestas','',rc.replace(/^<div class="sec-h"[^]*?<\/div><\/div>|^<div class="sec-h"[^]*?<\/h3><\/div>/,'')) : ''; })()}
+  </section>`;
 }
 function aConv(j){
   const t=tie(j)||blankTie(), a=availFor(j), conv=new Set(t.convocados?.length? t.convocados : a.yes);
@@ -1511,12 +1528,12 @@ function mvpRanking(compact){
 function aPreguntas(){
   const sc=v=>Object.entries(SCOPE_LABEL).map(([k,l])=>`<option value="${k}" ${v===k?'selected':''}>${l}</option>`).join('');
   const ty=v=>[['scale','Nota 1-10'],['player','Elegir jugador'],['text','Texto libre']].map(([k,l])=>`<option value="${k}" ${v===k?'selected':''}>${l}</option>`).join('');
-  return `<section class="sec"><div class="sec-h"><h2>Preguntas de la encuesta</h2></div><p class="muted small">«Sobre tus compañeros» se publica como votos agregados y solo deja elegir entre los que jugaron. «Sobre el equipo» como nota media. «Sobre ti» y «Comentarios» son privados.</p>
+  return `<div><p class="muted small" style="margin-top:0">«Sobre tus compañeros» se publica como votos agregados y solo deja elegir entre los que jugaron. «Sobre el equipo» como nota media. «Sobre ti» y «Comentarios» son privados.</p>
     <div id="qlist">${S.survey.questions.map((q,i)=>`<div class="qedit" data-i="${i}"><input type="text" name="text" value="${esc(q.text)}" aria-label="Pregunta"><select name="scope">${sc(q.scope)}</select><select name="type">${ty(q.type)}</select><button class="iconbtn" data-act="q-del" data-i="${i}" aria-label="Eliminar">✕</button></div>`).join('')}</div>
-    <div class="row" style="margin-top:14px"><button class="btn ghost sm" data-act="q-add">Añadir pregunta</button><button class="btn brass" data-act="q-save">Guardar preguntas</button><button class="btn ghost sm" data-act="q-reset">Restaurar</button></div></section>`;
+    <div class="row" style="margin-top:14px"><button class="btn ghost sm" data-act="q-add">Añadir pregunta</button><button class="btn brass" data-act="q-save">Guardar preguntas</button><button class="btn ghost sm" data-act="q-reset">Restaurar</button></div></div>`;
 }
 function aPlantilla(){
-  return `<section class="sec"><div class="sec-h"><h2>Plantilla</h2><span class="muted small">${S.players.length} jugadores</span></div><p class="muted small">Los marcados como capitanes pueden pedir disponibilidad, convocar, preparar el cartel, poner resultados y gestionar la encuesta. Cada jugador puede subir su propia foto, su teléfono y su ficha desde «Yo». Cada foto se sube una vez y se usa en toda la app: perfiles, equipo, rankings, convocatorias y carteles. El teléfono solo lo ven los administradores y sirve para los recordatorios individuales por WhatsApp.</p>
+  return `<section class="sec"><div class="sec-h"><h2>Plantilla</h2><span class="muted small">${S.players.length} jugadores</span></div><p class="muted small">Los capitanes pueden pedir disponibilidad, convocar, poner resultados y publicar el MVP. Cada jugador sube su foto y su teléfono desde «Yo»; el teléfono solo lo ven los administradores.</p>
     <div id="plist">${S.players.slice().sort((a,b)=>a.order-b.order).map(p=>`<div class="pedit" data-id="${esc(p.id)}">
       <button class="phbtn" data-act="crop" data-target="${esc(p.id)}" title="Subir o recortar la foto">${avatar(p)}<span>${photos[p.id]?'Cambiar':'Subir'} foto</span></button>
       <div class="pf"><label>Nombre<input type="text" name="name" value="${esc(p.name)}"></label><label>Nombre completo<input type="text" name="full" value="${esc(p.full)}"></label></div>
@@ -1529,29 +1546,38 @@ const FCT_GROUPS={'2026-27':4622,'2026-27-polo-a':4622,'2026-27-polo-b':4621,'20
 const fctDefaultGroup = () => FCT_GROUPS[SEASON_PATH.split('/')[1]]||null;
 function fctAgo(){ const L=S.fctLast; return L?.at? relTime(L.at) : null; }
 function fctPanel(){ const L=S.fctLast, has=S.comp.fctGroup||fctDefaultGroup();
-  return `<section class="sec"><div class="sec-h"><h2>Resultados de la FCT</h2></div><div class="panel"><p class="muted small" style="margin:0 0 10px">Cada noche la app consulta el portal de la Federació (grupo ${esc(String(has||'sin configurar'))}) y copia los resultados de toda la liga y los cambios de fecha. Acta cerrada en la FCT = oficial; si no, provisional. Los resultados del Polo que ya hayáis puesto no se cambian: si no coinciden, se avisa.</p>
-    ${L? `<p class="small" style="margin:0 0 10px">Última consulta ${esc(fctAgo())}: ${L.results||0} resultados y ${L.dates||0} fechas actualizadas${L.diffs?.length? `. <b>La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}</b>` : ''}${L.dateDiffs?.length? `. <b>La FCT tiene otra fecha en la jornada ${L.dateDiffs.map(x=>x.j).join(', ')}</b> (se mantiene la que puso el capitán)` : ''}${L.newTeams?.length? `. Clubes nuevos añadidos: ${esc(L.newTeams.join(', '))}; revisa en «Clubes» que no estén repetidos` : ''}.</p>` : ''}
-    <button class="btn ghost sm" data-act="fct-sync" ${has?'':'disabled'}>Actualizar ahora desde la FCT</button></div></section>`; }
+  const warn=[L?.diffs?.length? `La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}` : '', L?.dateDiffs?.length? `La FCT tiene otra fecha en la jornada ${L.dateDiffs.map(x=>x.j).join(', ')} (se mantiene la vuestra)` : '', L?.newTeams?.length? `Clubes nuevos añadidos: ${L.newTeams.join(', ')}` : ''].filter(Boolean);
+  return `<div class="fctline"><span class="fdot ${has?(L?'ok':''):'off'}"></span><span>${has? (L? `FCT sincronizada ${esc(fctAgo())}: ${L.results||0} resultados y ${L.dates||0} fechas` : 'FCT: aún no se ha consultado') : 'FCT sin configurar: pon el código del grupo en «Configuración de la liga»'}</span><button class="btn ghost sm" data-act="fct-sync" ${has?'':'disabled'}>Actualizar</button></div>
+    ${warn.length? `<p class="notice" style="margin:8px 0 0">${warn.map(esc).join('. ')}.</p>` : ''}`; }
 function aCalendario(){
-  const j=ui.calJ || currentJ() || 1, fs=S.fixtures.filter(f=>f.j===j), topts=sel=>S.teams.map(t=>`<option value="${t.id}" ${sel===t.id?'selected':''}>${esc(t.short)}</option>`).join('');
-  const js=[...new Set(S.fixtures.map(f=>f.j))].sort((a,b)=>a-b);
-  return `<section class="sec"><div class="sec-h"><h2>Competición</h2></div>
-    <label class="f">Nombre</label><input type="text" id="c-name" value="${esc(S.comp.name)}"><label class="f">Grupo</label><input type="text" id="c-group" value="${esc(S.comp.group)}"><label class="f">Memorial o subtítulo</label><input type="text" id="c-mem" value="${esc(S.comp.memorial||'')}">
-    <label class="f">Código del grupo en la FCT</label><input type="text" inputmode="numeric" id="c-fct" value="${esc(String(S.comp.fctGroup||fctDefaultGroup()||''))}" placeholder="Por ejemplo, 4622" style="max-width:160px">
-    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="comp-save">Guardar competición</button></div></section>
-  ${fctPanel()}
-  <section class="sec"><div class="sec-h"><h2>Clubes</h2></div><div id="tlist">${S.teams.map(t=>`<div class="qedit" data-id="${t.id}" style="grid-template-columns:1fr 1fr 90px 40px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre del club"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="abbr" value="${esc(t.abbr)}" aria-label="Siglas">${t.id===POLO?'<span></span>':`<button class="iconbtn" data-act="team-del" data-id="${t.id}" aria-label="Quitar club">✕</button>`}</div>`).join('')}</div>
-    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="teams-save">Guardar clubes</button><input type="text" id="nt-name" placeholder="Nuevo club" style="max-width:220px"><button class="btn sm ghost" data-act="team-add">Añadir club</button></div></section>
-  <section class="sec"><div class="sec-h"><h2>Calendario y resultados</h2></div>
-    <div class="row"><select data-act="cal-j" style="max-width:260px">${js.map(x=>`<option value="${x}" ${x===j?'selected':''}>Jornada ${x}</option>`).join('')}</select><button class="btn sm ghost" data-act="jornada-add">Añadir jornada</button></div>
-    <div id="flist" style="margin-top:12px">${fs.map(f=>`<div class="qedit" data-k="${S.fixtures.indexOf(f)}" style="grid-template-columns:140px 90px 1fr 1fr 60px 60px 40px"><input type="date" name="date" value="${f.date}"><input type="time" name="time" value="${f.time}"><select name="home">${topts(f.home)}</select><select name="away">${topts(f.away)}</select><input type="number" name="hs" min="0" max="5" value="${f.hs??''}" aria-label="Local"><input type="number" name="as" min="0" max="5" value="${f.as??''}" aria-label="Visitante"><button class="iconbtn" data-act="fix-del" data-k="${S.fixtures.indexOf(f)}" aria-label="Quitar enfrentamiento">✕</button></div>`).join('')||'<div class="empty">Sin enfrentamientos en esta jornada.</div>'}</div>
-    <div class="row" style="margin-top:10px"><button class="btn sm ghost" data-act="fix-add" data-j="${j}">Añadir enfrentamiento</button><label class="small">Cambiar la fecha de toda la jornada <input type="date" id="jdate" style="max-width:170px"></label><button class="btn sm ghost" data-act="jdate" data-j="${j}">Aplicar</button></div>
-    <p class="muted small">Cambiar fecha u hora actualiza solo el calendario, la portada, la página de la jornada, el plazo de disponibilidad y los mensajes.</p>
-    <div class="row" style="margin-top:12px"><button class="btn brass" data-act="fixtures-save" data-j="${j}">Guardar jornada ${j}</button></div></section>
-  <section class="sec"><div class="sec-h"><h2>Clasificación oficial</h2></div><p class="muted small">Copia el orden que publica la FCT. Mientras corresponda a la última jornada disputada, la app lo respeta tal cual.</p>
+  const topts=sel=>S.teams.map(t=>`<option value="${t.id}" ${sel===t.id?'selected':''}>${esc(t.short)}</option>`).join('');
+  const js=[...new Set(S.fixtures.map(f=>f.j))].sort((a,b)=>a-b), nx=nextPoloFix(), open=ui.calOpen;
+  const editor=j=>{ const fs=S.fixtures.filter(f=>f.j===j);
+    return `<div class="caledit"><div id="flist">${fs.map(f=>`<div class="qedit" data-k="${S.fixtures.indexOf(f)}" style="grid-template-columns:140px 90px 1fr 1fr 60px 60px 40px"><input type="date" name="date" value="${f.date}"><input type="time" name="time" value="${f.time}"><select name="home">${topts(f.home)}</select><select name="away">${topts(f.away)}</select><input type="number" name="hs" min="0" max="5" value="${f.hs??''}" aria-label="Local"><input type="number" name="as" min="0" max="5" value="${f.as??''}" aria-label="Visitante"><button class="iconbtn" data-act="fix-del" data-k="${S.fixtures.indexOf(f)}" aria-label="Quitar enfrentamiento">✕</button></div>`).join('')}</div>
+      <div class="row" style="margin-top:10px"><button class="btn brass sm" data-act="fixtures-save" data-j="${j}">Guardar jornada ${j}</button><button class="btn sm ghost" data-act="fix-add" data-j="${j}">Añadir enfrentamiento</button><label class="small">Mover toda la jornada al <input type="date" id="jdate" style="max-width:170px"></label><button class="btn sm ghost" data-act="jdate" data-j="${j}">Aplicar</button></div></div>`; };
+  const row=j=>{ const fs=S.fixtures.filter(f=>f.j===j), f=poloFix(j)||fs[0]; if(!f) return '';
+    const isP=f.home===POLO||f.away===POLO, p=isP? persp(f) : null, pl=isPlayed(f), mv=f.moved?.from&&f.moved.from!==f.date;
+    const st= pl? (f.status==='official'? ['ok','Oficial'] : ['prov','Provisional']) : nx&&nx.j===j? ['next','Próxima'] : mv? ['mv',f.date<f.moved.from?'Adelantada':'Aplazada'] : daysTo(f)<0? ['late','Sin resultado'] : ['fut',''];
+    const others=fs.filter(x=>x!==f), oPlayed=others.filter(isPlayed).length;
+    return `<li class="calrow ${st[0]} ${open===j?'open':''}"><button class="calhead" data-act="cal-pick" data-j="${j}" aria-expanded="${open===j}">
+      <span class="cj">J${j}</span><span class="cd">${esc(fdate(f,{weekday:'short',day:'numeric',month:'short'}))}<small>${esc(f.time)} h</small></span>
+      <span class="cm">${isP? `${crest(p.rival)}<b>${p.home?'Polo – '+esc(team(p.rival).short):esc(team(p.rival).short)+' – Polo'}</b>` : '<b class="muted">Descansa el Polo</b>'}</span>
+      <span class="cr">${pl&&isP? `<b class="${p.ps>p.rs?'w':'l'}">${p.ps}-${p.rs}</b>` : ''}</span>
+      <span class="cs">${st[1]?`<em class="cst ${st[0]}">${st[1]}</em>`:''}<small>${others.length? `resto ${oPlayed}/${others.length}` : ''}</small></span></button>
+      ${open===j? editor(j) : ''}</li>`; };
+  const cfg=`<div class="sec-h"><h3>Competición</h3></div>
+    <div class="tfields"><label>Nombre<input type="text" id="c-name" value="${esc(S.comp.name)}"></label><label>Grupo<input type="text" id="c-group" value="${esc(S.comp.group)}"></label><label>Memorial o subtítulo<input type="text" id="c-mem" value="${esc(S.comp.memorial||'')}"></label><label>Código del grupo en la FCT<input type="text" inputmode="numeric" id="c-fct" value="${esc(String(S.comp.fctGroup||fctDefaultGroup()||''))}" placeholder="Por ejemplo, 4622"></label></div>
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="comp-save">Guardar competición</button></div>
+    <div class="sec-h" style="margin-top:22px"><h3>Clubes</h3></div><div id="tlist">${S.teams.map(t=>`<div class="qedit" data-id="${t.id}" style="grid-template-columns:1fr 1fr 90px 40px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre del club"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="abbr" value="${esc(t.abbr)}" aria-label="Siglas">${t.id===POLO?'<span></span>':`<button class="iconbtn" data-act="team-del" data-id="${t.id}" aria-label="Quitar club">✕</button>`}</div>`).join('')}</div>
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="teams-save">Guardar clubes</button><input type="text" id="nt-name" placeholder="Nuevo club" style="max-width:220px"><button class="btn sm ghost" data-act="team-add">Añadir club</button></div>
+    <div class="sec-h" style="margin-top:22px"><h3>Clasificación oficial a mano</h3></div><p class="muted small">Solo si la FCT no la trae: copia el orden publicado. Mientras corresponda a la última jornada disputada, la app lo respeta.</p>
     <label class="f">Tras la jornada</label><input type="number" id="off-j" min="0" max="${NJ()}" value="${S.official?.asOf??''}" style="max-width:100px">
     <div id="offlist" style="margin-top:8px">${S.teams.map((_,i)=>`<div class="row" style="padding:4px 0"><span style="width:24px">${i+1}</span><select style="max-width:280px">${topts(S.official?.order?.[i])}</select></div>`).join('')}</div>
-    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="official-save">Guardar orden oficial</button></div></section>`;
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="official-save">Guardar orden oficial</button></div>`;
+  return `<section class="sec"><div class="sec-h"><h2>${esc(S.comp.name)}</h2><span class="muted small">${js.length} jornadas</span></div>${fctPanel()}
+    <ul class="callist">${js.map(row).join('')}</ul>
+    <div class="row" style="margin-top:12px"><button class="btn sm ghost" data-act="jornada-add">Añadir jornada</button><span class="muted small">Toca una jornada para editar fechas y resultados.</span></div></section>
+  <section class="sec">${fold('liga-cfg','Configuración de la liga','Competición, código FCT, clubes y clasificación a mano',cfg)}</section>`;
 }
 const currentSeason = () => meta?.current || SEASON_ID;
 const clubTeams = () => { const base=(Array.isArray(meta?.teams) && meta.teams.length)? meta.teams : []; return [...base, ...DEFAULT_CLUB_TEAMS.filter(d=>!base.some(t=>t.id===d.id))].map(t=>({gender:'',...t})); };
@@ -1559,24 +1585,38 @@ const curTeam = () => clubTeams().find(t=>t.id===teamId) || clubTeams()[0];
 const teamLabel = () => curTeam()?.short || 'Polo A';
 const teamCat = t => [t?.cat, (t?.gender||'').toLowerCase()].filter(Boolean).join(' ');
 function aTemporadas(){
-  const list=meta?.seasons?.length? meta.seasons : [SEASON_ID];
-  const vars='{rival} {fecha} {hora} {lugar} {limite} {enlace} {enlaceJornada} {jornada} {pendientes} {nombre} {lista} {resultado} {jugadores} {enlaceEncuesta} {enlaceMvp} {limiteMvp} {cronica} {partidos}';
-  return `${autoRemindPanel()}${isAdmin? `<section class="sec"><div class="sec-h"><h2>Quién gestiona</h2></div><div class="panel"><label class="row" style="gap:10px;flex-wrap:nowrap"><input type="checkbox" id="team-manage" ${teamMode()?'checked':''}> <span><b>Todo el equipo</b> puede gestionar jornadas, convocatorias, resultados, MVP, calendario, plantilla y fotos.<br><span class="muted small">Si lo desactivas, solo los capitanes marcados y los administradores. Las respuestas individuales de la encuesta y quién votó a quién siguen siendo privadas en ambos casos.</span></span></label><div class="row" style="margin-top:10px"><button class="btn sm" data-act="team-save">Guardar</button></div></div></section>` : ''}
-  ${isAdmin? '' : '<!--'}<section class="sec"><div class="sec-h"><h2>Temporadas</h2></div>
-    <table><tbody>${list.map(id=>`<tr><td><b>${esc(id)}</b>${id===currentSeason()?' <span class="tag">actual</span>':''}${id===viewSeason?' <span class="tag">viendo</span>':''}</td><td>${id!==viewSeason?`<button class="btn sm ghost" data-act="season-view" data-id="${esc(id)}">Ver</button>`:''} ${id!==currentSeason()?`<button class="btn sm ghost" data-act="season-current" data-id="${esc(id)}">Hacer actual</button>`:''}</td></tr>`).join('')}</tbody></table>
-    <div class="panel" style="margin-top:16px"><b>Nueva temporada</b><p class="muted small" style="margin:4px 0 10px">Las temporadas anteriores se conservan enteras: resultados, disponibilidad, encuestas y MVP. La nueva copia plantilla y clubes; el calendario empieza vacío.</p>
-      <div class="row"><input type="text" id="ns-id" placeholder="2027-28" style="max-width:140px"><label class="small"><input type="checkbox" id="ns-copy" checked> Copiar plantilla y clubes</label><button class="btn sm" data-act="season-new">Crear temporada</button></div></div></section>
-  ${isAdmin? '' : '-->'}<section class="sec"><div class="sec-h"><h2>Foto del equipo</h2></div>${photos._team?`<img src="${esc(photos._team.d)}" alt="" style="border-radius:12px;max-height:240px;object-fit:cover;width:100%">`:'<div class="empty">Aún no hay foto. Saldrá a pantalla completa en la portada y como fondo opcional de los carteles.</div>'}
-    <div class="row" style="margin-top:12px"><button class="btn brass" data-act="crop" data-target="_team">${photos._team?'Cambiar':'Subir'} foto del equipo</button>${photos._team?'<button class="btn ghost sm" data-act="photo-del" data-target="_team">Quitar</button>':''}</div></section>
-  <section class="sec"><div class="sec-h"><h2>Mensajes de WhatsApp</h2></div><p class="muted small">Variables: ${esc(vars)}</p>
-    ${[['req','Solicitud de disponibilidad'],['rem','Recordatorio al grupo'],['remOne','Recordatorio individual'],['lineup','Anuncio de convocatoria'],['survey','Aviso de encuesta postpartido'],['mvp','Aviso de votación MVP'],['summary','Resumen de la jornada']].map(([k,l])=>`<label class="f">${l}</label><textarea id="msg-${k}" rows="6">${esc(S.msgs[k])}</textarea>`).join('')}
-    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="msgs-save">Guardar mensajes</button><button class="btn ghost sm" data-act="msgs-reset">Restaurar</button></div></section>
-  <section class="sec"><div class="sec-h"><h2>Reglas</h2></div><div class="row"><label>Victoria <input type="number" id="r-win" value="${S.rules.win}" style="width:80px"></label><label>Derrota <input type="number" id="r-loss" value="${S.rules.loss}" style="width:80px"></label></div>
-    <div class="row" style="margin-top:10px"><label>Avisar en la app <input type="number" id="r-av" value="${S.rules.availDays}" min="1" max="21" style="width:70px"> días antes</label><label>Plazo por defecto <input type="number" id="r-dd" value="${S.rules.deadlineDays}" min="0" max="14" style="width:70px"> días antes, a las <input type="time" id="r-dt" value="${esc(S.rules.deadlineTime)}" style="width:120px"></label></div>
-    <div class="row" style="margin-top:10px"><label>Dobles <select id="r-dbl" style="width:auto"><option value="always" ${!dblDecider()?'selected':''}>Cuenta siempre que se juegue</option><option value="decider" ${dblDecider()?'selected':''}>Solo cuenta si queda 2-2</option></select></label></div>
-    <div class="row" style="margin-top:10px"><label>Votación MVP abierta <input type="number" id="r-mvp" value="${S.rules.mvpHours||48}" min="1" max="240" style="width:80px"> horas tras el resultado</label></div>
-    <div class="row" style="margin-top:12px"><button class="btn sm" data-act="rules-save">Guardar reglas</button></div></section>
-`;
+  const list=meta?.seasons?.length? meta.seasons : [SEASON_ID], R=S.rules, ar=R.autoRemind||{};
+  const MSG_KINDS=[['req','Solicitud de disponibilidad'],['rem','Recordatorio al grupo'],['remOne','Recordatorio individual'],['lineup','Anuncio de convocatoria'],['survey','Aviso de encuesta'],['mvp','Aviso de votación MVP'],['summary','Resumen de la jornada']];
+  const pick=MSG_KINDS.some(x=>x[0]===ui.msgPick)? ui.msgPick : 'req';
+  const varsOf=k=>[...new Set(((DEFAULT_MSGS[k]||'')+(S.msgs[k]||'')).match(/\{[a-zA-Z]+\}/g)||[])];
+  const msgs=`<div class="chips msgpick">${MSG_KINDS.map(([k,l])=>`<button class="chip" data-act="msg-pick" data-v="${k}" aria-pressed="${k===pick}">${l}</button>`).join('')}</div>
+    ${MSG_KINDS.map(([k,l])=>`<div class="msged" data-msg="${k}" ${k===pick?'':'hidden'}><textarea id="msg-${k}" rows="7" aria-label="${l}">${esc(S.msgs[k])}</textarea>
+      <div class="varchips"><span class="muted small">Insertar:</span>${varsOf(k).map(v=>`<button class="vchip" data-act="msg-var" data-k="${k}" data-v="${v}">${v}</button>`).join('')}</div></div>`).join('')}
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="msgs-save">Guardar mensajes</button><button class="btn ghost sm" data-act="msgs-reset">Restaurar los originales</button></div>`;
+  const plazos=`<div class="sgrid"><label>Avisar en la app<span><input type="number" id="r-av" value="${R.availDays}" min="1" max="21"> días antes</span></label>
+      <label>Plazo para responder<span><input type="number" id="r-dd" value="${R.deadlineDays}" min="0" max="14"> días antes, a las <input type="time" id="r-dt" value="${esc(R.deadlineTime)}"></span></label></div>
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="rules-save">Guardar</button></div>`;
+  const punt=`<div class="sgrid"><label>Victoria<span><input type="number" id="r-win" value="${R.win}"> puntos</span></label><label>Derrota<span><input type="number" id="r-loss" value="${R.loss}"> puntos</span></label>
+      <label>Dobles<select id="r-dbl"><option value="always" ${!dblDecider()?'selected':''}>Cuentan siempre que se jueguen</option><option value="decider" ${dblDecider()?'selected':''}>Solo cuentan si queda 2-2</option></select></label>
+      <label>Votación MVP abierta<span><input type="number" id="r-mvp" value="${R.mvpHours||48}" min="1" max="240"> horas tras el resultado</span></label></div>
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="rules-save">Guardar</button></div>`;
+  const quien=`<label class="row" style="gap:10px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" id="team-manage" ${teamMode()?'checked':''}> <span><b>Todo el equipo</b> puede gestionar jornadas, convocatorias, resultados, MVP, calendario, plantilla y fotos.<br><span class="muted small">Si lo desactivas, solo los capitanes marcados y los administradores. Las respuestas de la encuesta y los votos siguen siendo privados.</span></span></label><div class="row" style="margin-top:10px"><button class="btn brass sm" data-act="team-save">Guardar</button></div>`;
+  const foto=`${photos._team?`<img src="${esc(photos._team.d)}" alt="" style="border-radius:12px;max-height:200px;object-fit:cover;width:100%">`:'<p class="muted small" style="margin:0">Sale a pantalla completa en la portada y como fondo opcional de los carteles.</p>'}
+    <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="crop" data-target="_team">${photos._team?'Cambiar':'Subir'} foto</button>${photos._team?'<button class="btn ghost sm" data-act="photo-del" data-target="_team">Quitar</button>':''}</div>`;
+  const temps=`<table><tbody>${list.map(id=>`<tr><td><b>${esc(id)}</b>${id===currentSeason()?' <span class="tag">actual</span>':''}${id===viewSeason?' <span class="tag">viendo</span>':''}</td><td>${id!==viewSeason?`<button class="btn sm ghost" data-act="season-view" data-id="${esc(id)}">Ver</button>`:''} ${id!==currentSeason()?`<button class="btn sm ghost" data-act="season-current" data-id="${esc(id)}">Hacer actual</button>`:''}</td></tr>`).join('')}</tbody></table>
+    <p class="muted small" style="margin:14px 0 8px"><b>Nueva temporada.</b> Las anteriores se conservan enteras. La nueva copia plantilla y clubes; el calendario empieza vacío.</p>
+    <div class="row"><input type="text" id="ns-id" placeholder="2027-28" style="max-width:140px"><label class="small"><input type="checkbox" id="ns-copy" checked> Copiar plantilla y clubes</label><button class="btn sm" data-act="season-new">Crear temporada</button></div>`;
+  const sw=`<label class="sw" aria-label="Activar recordatorios automáticos"><input type="checkbox" data-ar="on" ${ar.on?'checked':''}><i></i></label>`;
+  return `<section class="sec"><div class="slist">
+    ${fold('s-ar','Recordatorios automáticos',ar.on? `${(+ar.every||1)===1?'Cada día':'Cada '+ar.every+' días'} a quien no ha respondido${ar.dayBefore!==false?', y el día antes a los convocados':''}` : 'Desactivados',autoRemindPanel(true),false,sw)}
+    ${fold('s-plazos','Plazos de disponibilidad',`Aviso ${R.availDays} días antes · plazo ${R.deadlineDays} días antes, a las ${esc(R.deadlineTime)}`,plazos)}
+    ${fold('s-punt','Puntuación y MVP',`Victoria ${R.win}, derrota ${R.loss} · dobles ${dblDecider()?'solo si 2-2':'siempre'} · MVP ${R.mvpHours||48} h`,punt)}
+    ${fold('s-msgs','Mensajes de WhatsApp',`${MSG_KINDS.length} plantillas${MSG_KINDS.some(([k])=>S.msgs[k]!==DEFAULT_MSGS[k])?' · personalizadas':''}`,msgs)}
+    ${fold('s-enc','Encuesta postpartido',`${S.survey.questions.length} preguntas`,aPreguntas())}
+    ${fold('s-foto','Foto del equipo',photos._team?'Subida':'Sin foto',foto,false,photos._team?`<img class="sthumb" src="${esc(photos._team.d)}" alt="">`:'')}
+    ${isAdmin? fold('s-quien','Quién gestiona',teamMode()?'Todo el equipo':'Capitanes y administradores',quien) : ''}
+    ${isAdmin? fold('s-temps','Temporadas',`${esc(currentSeason())} (actual)${viewSeason!==currentSeason()?' · viendo '+esc(viewSeason):''}`,temps) : ''}
+  </div></section>`;
 }
 const vNotFound = () => `<div class="wrap"><div class="pagehead"><h1>No encontrado</h1><p class="lede"><a class="textlink" href="#inicio">Volver al inicio</a></p></div></div>`;
 
@@ -3038,15 +3078,15 @@ async function msgClick(e){ const M=ui.msg; if(!M) return; const b=e.target.clos
     M.busy=true; msgBtns(); const d=await notify('custom',M.j,{aud:M.aud,title:M.title,text:text.replace(/\s+/g,' ')}); if(!ui.msg) return; M.busy=false;
     if(d){ msgLogAdd('push',d); msgClose(); } else msgBtns(); } }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && ui.msg) msgClose(); });
-function autoRemindPanel(){ ensureMsgCss(); const ar=S.rules.autoRemind||{}, on=!!ar.on, every=+ar.every||1, day=ar.dayBefore!==false;
-  return `<section class="sec"><div class="sec-h"><h2>Recordatorios automáticos</h2></div><div class="panel ar">
+function autoRemindPanel(bare){ ensureMsgCss(); const ar=S.rules.autoRemind||{}, on=!!ar.on, every=+ar.every||1, day=ar.dayBefore!==false;
+  return `${bare?'':'<section class="sec"><div class="sec-h"><h2>Recordatorios automáticos</h2></div>'}<div class="panel ar${bare?' bare':''}">
     <div class="ar-top"><div><b>La app avisa sola al equipo</b><span class="muted small">Notificación al móvil, sin que el capitán tenga que acordarse.</span></div><label class="sw" aria-label="Activar recordatorios automáticos"><input type="checkbox" data-ar="on" ${on?'checked':''}><i></i></label></div>
     <div class="ar-opts ${on?'':'off'}"><label class="ar-r"><span>Disponibilidad pendiente</span><select data-ar="every" ${on?'':'disabled'}>${[1,2,3].map(n=>`<option value="${n}" ${every===n?'selected':''}>${n===1?'Cada día':'Cada '+n+' días'}</option>`).join('')}</select></label>
       <p class="muted small" style="margin:0 0 8px">Solo a quien no ha respondido, desde que se pide la disponibilidad hasta que se cierra o vence el plazo.</p>
       <label class="ar-c"><input type="checkbox" data-ar="day" ${day?'checked':''} ${on?'':'disabled'}> Recordar a los convocados el día antes del partido</label></div>
     <p class="muted small">Se envía una vez al día, a media tarde. Llega a quien tenga las notificaciones activadas; para el resto usa «Mensaje al equipo» por WhatsApp.</p>
     ${CFG.vapidKey? '' : '<p class="notice">Faltan por configurar las notificaciones (clave vapidKey en config.js y FIREBASE_SERVICE_ACCOUNT en Vercel). Mientras tanto, esta opción no enviará nada.</p>'}
-    <div class="row"><button class="btn ghost sm" data-act="ar-now">Enviar ahora los recordatorios pendientes</button></div></div></section>`; }
+    <div class="row"><button class="btn ghost sm" data-act="ar-now">Enviar ahora los recordatorios pendientes</button></div></div>${bare?'':'</section>'}`; }
 const MSG_CSS=`
 body.msg-on{overflow:hidden}
 #msgm{position:fixed;inset:0;z-index:230;display:grid;align-items:end;justify-items:center}
@@ -3445,8 +3485,11 @@ document.addEventListener('click', async e=>{
   else if(a==='teams-save'){ document.querySelectorAll('#tlist [data-id]').forEach(row=>{ const t=team(row.dataset.id); ['name','short','abbr'].forEach(n=>{ const v=row.querySelector(`[name=${n}]`).value.trim(); if(v) t[n]=v; }); }); saveState('Clubes guardados'); }
   else if(a==='fixtures-save'){ document.querySelectorAll('#flist [data-k]').forEach(row=>{ const f=S.fixtures[+row.dataset.k], g=n=>row.querySelector(`[name=${n}]`).value; f.date=g('date')||f.date; f.time=g('time')||f.time; f.home=g('home'); f.away=g('away'); const hs=g('hs'),as=g('as'); if(hs!==''&&as!==''){ f.hs=+hs; f.as=+as; } else { f.hs=null; f.as=null; } }); saveState('Jornada '+el.dataset.j+' guardada'); }
   else if(a==='official-save'){ const order=[...document.querySelectorAll('#offlist select')].map(x=>x.value); if(new Set(order).size!==order.length) return toast('Hay clubes repetidos'); S.official={asOf:+$('#off-j').value||0,order}; saveState('Clasificación oficial guardada'); }
-  else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48)), doubles:$('#r-dbl')?.value||'always'}; saveState('Reglas guardadas'); }
+  else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,deadlineDays:Math.max(0,Math.min(14,+($('#r-dd')?.value??S.rules.deadlineDays))),deadlineTime:$('#r-dt')?.value||S.rules.deadlineTime,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48)), doubles:$('#r-dbl')?.value||'always'}; saveState('Reglas guardadas'); }
   else if(a==='go-admin'){ ui.adminTab='jornada'; ui.adminJ=+el.dataset.j; const tt=el.dataset.t||'disp'; ui.jTab= tt==='enc'||tt==='mvp'? 'post' : tt==='cartel'? 'conv' : tt; ui.jTabSet=true; ui.jTabFor=+el.dataset.j; location.hash='admin'; }
+  else if(a==='cal-pick'){ const j=+el.dataset.j; ui.calOpen= ui.calOpen===j? null : j; ui.calJ=j; renderQuiet(); }
+  else if(a==='msg-pick'){ ui.msgPick=el.dataset.v; document.querySelectorAll('.msged').forEach(x=>x.hidden=x.dataset.msg!==ui.msgPick); document.querySelectorAll('.msgpick .chip').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v===ui.msgPick)); }
+  else if(a==='msg-var'){ const ta=$('#msg-'+el.dataset.k); if(!ta) return; const v=el.dataset.v, i0=ta.selectionStart??ta.value.length, i1=ta.selectionEnd??i0; ta.value=ta.value.slice(0,i0)+v+ta.value.slice(i1); ta.focus(); ta.selectionStart=ta.selectionEnd=i0+v.length; }
   else if(a==='jtab'){ const hj=el.closest('[data-home-j]')?.dataset.homeJ; ui.jTab=el.dataset.v; ui.compose=null; if(el.dataset.mode) (ui.resMode ||= {})[+(hj||adminJ())]=el.dataset.mode; if(hj || route()!=='admin'){ if(hj){ ui.adminJ=+hj; ui.jTabFor=+hj; } ui.jTabSet=true; ui.adminTab='jornada'; if(route()==='admin') render(); else location.hash='admin'; return; } render(); }
   else if(a==='av-pick'){ ui.avDraft.s=el.dataset.v; const ta=$('#av-c'); if(ta) ui.avDraft.c=ta.value; renderQuiet(); }
   else if(a==='av-chip'){ const ta=$('#av-c'); const c=(ta?.value||'').trim(); ui.avDraft.c = c? (c.includes(el.dataset.v)? c : c+'. '+el.dataset.v) : el.dataset.v; renderQuiet(); }
@@ -3501,7 +3544,7 @@ document.addEventListener('click', async e=>{
   else if(a==='team-add'){ const n=$('#nt-name').value.trim(); if(!n) return toast('Escribe el nombre del club'); let id=slug(n); while(S.teams.find(t=>t.id===id)) id+='-2'; S.teams.push({id,name:n,short:n,abbr:n.split(/\s+/).map(w=>w[0]).join('').slice(0,4).toUpperCase()}); saveState(n+' añadido'); }
   else if(a==='team-del'){ const id=el.dataset.id; if(S.fixtures.some(f=>f.home===id||f.away===id)) return toast('Quita antes sus enfrentamientos del calendario'); S.teams=S.teams.filter(t=>t.id!==id); saveState('Club quitado'); }
   else if(a==='jornada-add'){ const n=NJ()+1, last=S.fixtures.filter(f=>f.j===NJ())[0]; let d=new Date(); if(last){ d=new Date(last.date+'T12:00:00'); d.setDate(d.getDate()+7); } const others=S.teams.filter(t=>t.id!==POLO);
-    S.fixtures.push({j:n,date:d.toISOString().slice(0,10),time:last?.time||'15:00',home:POLO,away:others[0]?.id||POLO,hs:null,as:null}); ui.calJ=n; saveState('Jornada '+n+' añadida'); }
+    S.fixtures.push({j:n,date:d.toISOString().slice(0,10),time:last?.time||'15:00',home:POLO,away:others[0]?.id||POLO,hs:null,as:null}); ui.calJ=n; ui.calOpen=n; saveState('Jornada '+n+' añadida'); }
   else if(a==='fix-add'){ const j=+el.dataset.j, ref=S.fixtures.find(f=>f.j===j); S.fixtures.push({j,date:ref?.date||new Date().toISOString().slice(0,10),time:ref?.time||'15:00',home:S.teams[0].id,away:S.teams[1]?.id||S.teams[0].id,hs:null,as:null}); saveState('Enfrentamiento añadido'); }
   else if(a==='fix-del'){ const k=+el.dataset.k, f=S.fixtures[k]; if(!f||!confirm('¿Quitar '+team(f.home).short+' contra '+team(f.away).short+'?')) return; S.fixtures.splice(k,1); saveState('Enfrentamiento quitado'); }
   else if(a==='jdate'){ const v=$('#jdate').value; if(!v) return toast('Elige la fecha'); S.fixtures.filter(f=>f.j===+el.dataset.j).forEach(f=>f.date=v); saveState('Fecha de la jornada cambiada'); }
