@@ -67,6 +67,57 @@ function syncRoster(S, list) {
   return out;
 }
 
+// Acta de un partido: quién jugó cada individual y el dobles, con su marcador
+async function fctActa(partidoCode) {
+  const r = await fetch(FCT_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'recuperarActaPartido', data: { codigo: +partidoCode } }) });
+  if (!r.ok) throw new Error('FCT respondió ' + r.status);
+  const j = await r.json();
+  if (j.error || !j.acta) throw new Error('FCT: error al leer el acta ' + partidoCode);
+  return j.acta;
+}
+// Busca (o da de alta, si la plantilla viene de la FCT) al jugador del Polo que aparece en el acta
+function pidForFct(S, pl) {
+  if (!pl || !pl.nombreCuadro) return null;
+  const lic = pl.licencia ? String(pl.licencia) : '', full = titleCase(pl.nombreCuadro), a = norm(full);
+  let p = (lic && S.players.find(x => x.lic && String(x.lic) === lic)) || S.players.find(x => norm(x.full) === a);
+  if (p) { if (lic && !p.lic) p.lic = lic; return p.id; }
+  if (!(S.comp && S.comp.fctRoster === true)) return null;
+  const name = shortOf(full); let id = slug(name) || 'jugador'; while (S.players.some(q => q.id === id)) id += '-2';
+  S.players.push({ id, name, full, cat: String(pl.nombreCategoria || ''), pts: +pl.puntos || 0, order: S.players.length + 1, lic, captain: false, active: true, src: 'fct' });
+  return id;
+}
+// Pasa un enfrentamiento de la FCT al formato de la app (marcador desde el punto de vista del Polo)
+function rubberFromFct(e, poloCode, isD, S) {
+  const codeOf = side => side ? (isD ? (side.jugador1 || {}).codigo : side.codigo) : null;
+  const poloIs1 = e.equipo1 ? +codeOf(e.equipo1) === +poloCode : false;
+  const mine = poloIs1 ? e.equipo1 : e.equipo2, theirs = poloIs1 ? e.equipo2 : e.equipo1;
+  if (!mine) return null;
+  const pls = isD ? [mine.jugador1, mine.jugador2] : [mine];
+  const sets = [];
+  for (let i = 1; i <= 3; i++) { const a = e['r' + i], b = e['c' + i]; if (a == null || b == null || (+a === 0 && +b === 0)) continue; sets.push(poloIs1 ? `${a}-${b}` : `${b}-${a}`); }
+  const poloWins = e.ganador ? ((e.ganador === 'jugador') === poloIs1) : null;
+  const rivalNames = theirs ? (isD ? [theirs.jugador1, theirs.jugador2] : [theirs]).filter(Boolean).map(x => titleCase(x.nombreCuadro)) : [];
+  const wo = !sets.length && poloWins != null;
+  return { polo: pls.map(pl => pidForFct(S, pl)).filter(Boolean), score: sets.join(' '), res: wo ? (poloWins ? 'W' : 'L') : null, note: wo ? 'W.O.' : '', wo, rival: rivalNames.join(' / ') };
+}
+const rubSig = rs => JSON.stringify((rs || []).map(r => [r.n, (r.polo || []).slice().sort(), r.score || '', r.res || null]));
+// Carga el acta en la eliminatoria si está vacía o si lo que hay lo puso la propia sincronización (no pisa lo que haya editado el capitán)
+function syncActa(S, j, acta, poloCode) {
+  S.ties = S.ties || {}; const k = 'j' + j, t = S.ties[k];
+  const empty = !t || !(t.rubbers || []).some(r => (r.polo || []).length || r.score || r.res);
+  if (!empty && !(t.fctSig && t.fctSig === rubSig(t.rubbers))) return 'manual';
+  const singles = (acta.enfrentamientos || []).map(e => rubberFromFct(e, poloCode, false, S));
+  const dobles = (acta.enfrentamientosDobles || []).map(e => rubberFromFct(e, poloCode, true, S));
+  const base = t || { convocados: [], subs: [], lineupPub: false, poster: {}, moment: '' };
+  const prev = base.rubbers || [];
+  const rubbers = [1, 2, 3, 4, 5].map(n => { const x = n <= 4 ? singles[n - 1] : dobles[0]; const old = prev.find(r => r.n === n) || {};
+    return { ...old, n, type: n <= 4 ? 'S' : 'D', polo: x ? x.polo : [], score: x ? x.score : '', res: x ? x.res : null, note: x ? x.note : '', wo: !!(x && x.wo), rivalPl: x ? x.rival : '' }; });
+  const played = [...new Set(rubbers.flatMap(r => r.polo))];
+  const before = rubSig(prev);
+  S.ties[k] = { ...base, rubbers, convocados: [...new Set([...(base.convocados || []), ...played])], lineupPub: true, fctSig: rubSig(rubbers), fctActa: String(acta.estadoNombre || acta.estado || '') };
+  return before === rubSig(rubbers) ? 'same' : 'loaded';
+}
+
 // Busca el equipo de la app que corresponde a un equipo de la FCT (por código guardado o por nombre)
 function teamFor(S, code, name, added) {
   let t = S.teams.find(x => +x.fct === +code); if (t) return t.id;
@@ -134,16 +185,23 @@ async function runSeason(db, id) {
   if ((S.comp || {}).fctSync === false) return { season: id, skipped: 'desactivado' };
   const partidos = await fctMatches(group);
   if (!partidos.length) return { season: id, group, skipped: 'grupo-vacio' };
-  const before = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {} });
+  const before = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} });
   const out = syncSeason(S, partidos);
   // Plantilla: con el código FCT del equipo del Polo en este grupo
   const poloCode = (S.teams.find(t => t.id === POLO) || {}).fct;
   if (poloCode && (S.comp || {}).fctRosterSync !== false) {
     try { out.roster = syncRoster(S, await fctRoster(poloCode)); } catch (e) { out.rosterError = e.message; }
   }
-  const changed = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {} }) !== before;
+  // Actas: quién jugó cada partido del Polo y con qué marcador
+  if (poloCode && (S.comp || {}).fctActas !== false) {
+    const mine = partidos.filter(p => (+p.equipoLocal === +poloCode || +p.equipoVisitante === +poloCode) && +p.codigoActa > 0);
+    const acts = { loaded: [], manual: [] };
+    for (const p of mine) { try { const st = syncActa(S, +p.jornada, await fctActa(p.codigo), poloCode); if (st === 'loaded') acts.loaded.push(+p.jornada); if (st === 'manual') acts.manual.push(+p.jornada); } catch (e) { (acts.errors = acts.errors || []).push(+p.jornada); } }
+    out.actas = acts;
+  }
+  const changed = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} }) !== before;
   const meta = { at: Date.now(), group, ...out };
-  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, fctLast: meta, updatedAt: Date.now() } : { fctLast: meta });
+  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, ties: S.ties || {}, fctLast: meta, updatedAt: Date.now() } : { fctLast: meta });
   return { season: id, changed, ...meta };
 }
 
@@ -177,4 +235,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports._test = { syncRoster, shortOf, syncSeason };
+module.exports._test = { syncRoster, shortOf, syncSeason, syncActa, rubberFromFct };

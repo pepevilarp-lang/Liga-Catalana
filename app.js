@@ -243,6 +243,8 @@ const tie = j => S.ties[jid(j)];
 const blankTie = () => ({convocados:[], subs:[], lineupPub:false, poster:{}, rubbers: RUBBERS.map(R=>({n:R.n,type:R.type,polo:[],score:'',res:null,note:''})), moment:''});
 function ensureTie(j){ const k=jid(j); if(!S.ties[k]) S.ties[k]=blankTie(); return S.ties[k]; }
 function parseScore(str){ if(!str) return []; return String(str).split(/[\s,;]+/).map(x=>x.match(/^(\d{1,2})[-\/](\d{1,2})$/)).filter(Boolean).map(m=>[+m[1],+m[2]]); }
+// W.O.: cuenta para el resultado de la eliminatoria, pero no en las estadísticas del jugador
+const isWO = r => !!r.wo || (!String(r.score||'').trim() && /\bw\.?\s*o\b/i.test(r.note||''));
 function rubberCalc(r){
   const sets=parseScore(r.score); let sw=0,sl=0,gw=0,gl=0,lostFirst=false,bagelsW=0,tbs=0;
   let tbW=0,tbL=0; sets.forEach(([a,b],i)=>{ if(a>b) sw++; else if(b>a) sl++; gw+=a; gl+=b; if(a===6&&b===0) bagelsW++; if(a===7&&b===6){tbs++;tbW++;} if(a===6&&b===7){tbs++;tbL++;} if(i===0&&b>a) lostFirst=true; });
@@ -326,7 +328,7 @@ function lineupList(j){ const t=tie(j); if(!t) return []; const order=[]; const 
   const custom=(t.poster?.order||[]).filter(x=>order.includes(x)); const rest=order.filter(x=>!custom.includes(x)); return [...custom,...rest].filter(x=>!(t.poster?.hidden||[]).includes(x)); }
 const relTime = ts => { if(!ts) return ''; const m=Math.round((Date.now()-ts)/6e4); if(m<1) return 'ahora'; if(m<60) return 'hace '+m+' min'; const h=Math.round(m/60); if(h<24) return 'hace '+h+' h'; const d=Math.round(h/24); return d===1? 'ayer' : 'hace '+d+' días'; };
 const fmtDT = d => d? d.toLocaleString('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}) : '';
-function participants(j){ const t=tie(j); const played=new Set(); (t?.rubbers||[]).forEach(r=>{ if(rubberCalc(r).res) (r.polo||[]).forEach(p=>played.add(p)); }); return played.size? [...played] : convocados(j); }
+function participants(j){ const t=tie(j); const played=new Set(); (t?.rubbers||[]).forEach(r=>{ if(rubberCalc(r).res && !isWO(r)) (r.polo||[]).forEach(p=>played.add(p)); }); return played.size? [...played] : convocados(j); }
 function pendingSurveys(){
   if(!me) return [];
   return playedJornadas().filter(j=>{ const f=poloFix(j); if(!f) return false; const k=jid(j);
@@ -338,7 +340,7 @@ function pendingSurveys(){
 function playerStats(pid, onlyJ, kind='S'){
   const st={pid,kind,partners:{},pj:0,w:0,l:0,sw:0,sl:0,gw:0,gl:0,tbW:0,tbL:0,seq:[],byJ:{},byPos:{},three:{w:0,l:0},dbl:{w:0,l:0},comebacks:0,bagels:0,tbs:0,jornadas:new Set(),matches:[],vs:{}};
   for(let j=1;j<=NJ();j++){ if(onlyJ&&onlyJ!==j) continue; const t=tie(j); if(!t) continue; const f=poloFix(j);
-    t.rubbers.forEach(r=>{ if(r.type!==kind || !(r.polo||[]).includes(pid)) return; const c=rubberCalc(r); if(!c.res) return; const W=c.res==='W';
+    t.rubbers.forEach(r=>{ if(r.type!==kind || !(r.polo||[]).includes(pid) || isWO(r)) return; const c=rubberCalc(r); if(!c.res) return; const W=c.res==='W';
       if(kind==='D'){ const mate=(r.polo||[]).find(x=>x!==pid); if(mate) (st.partners[mate] ||= {w:0,l:0,sw:0,sl:0})[W?'w':'l']++, st.partners[mate].sw+=c.sw, st.partners[mate].sl+=c.sl; }
       st.pj++; st.jornadas.add(j); W? st.w++ : st.l++; st.sw+=c.sw; st.sl+=c.sl; st.gw+=c.gw; st.gl+=c.gl; st.seq.push(c.res);
       (st.byJ[j] ||= {w:0,l:0})[W?'w':'l']++; const pos=r.type==='D'?'D':r.n; (st.byPos[pos] ||= {w:0,l:0})[W?'w':'l']++;
@@ -3142,7 +3144,7 @@ async function fctSyncTeam(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t)
     return (d.results||[]).find(x=>x.season===info.sid)||(d.results||[])[0]||{};
   }catch(e){ toast(`${t.short||t.name}: sin conexión con el servidor`); return null; }
   finally{ delete ui.fctBusy[tid]; renderQuiet(); } }
-const fctSummary=(t,x)=> !x? '' : x.skipped==='grupo-vacio'? `${t.short||t.name}: la FCT no devuelve partidos para ese grupo; revisa el código` : x.skipped? `${t.short||t.name}: ${x.skipped}` : `${t.short||t.name}: ${x.results||0} resultados, ${x.dates||0} fechas${x.created? ', '+x.created+' partidos nuevos' : ''}${x.roster?.added? ', '+x.roster.added+' jugadores importados' : ''}${(x.diffs||[]).length+(x.dateDiffs||[]).length? ', '+((x.diffs||[]).length+(x.dateDiffs||[]).length)+' por revisar' : ''}`;
+const fctSummary=(t,x)=> !x? '' : x.skipped==='grupo-vacio'? `${t.short||t.name}: la FCT no devuelve partidos para ese grupo; revisa el código` : x.skipped? `${t.short||t.name}: ${x.skipped}` : `${t.short||t.name}: ${x.results||0} resultados, ${x.dates||0} fechas${x.created? ', '+x.created+' partidos nuevos' : ''}${x.roster?.added? ', '+x.roster.added+' jugadores importados' : ''}${x.actas?.loaded?.length? ', actas de las jornadas '+x.actas.loaded.join(', ') : ''}${(x.diffs||[]).length+(x.dateDiffs||[]).length? ', '+((x.diffs||[]).length+(x.dateDiffs||[]).length)+' por revisar' : ''}`;
 const FCT_CSS=`
 .fctc{display:grid;gap:10px}
 .fctc-row{display:grid;grid-template-columns:minmax(160px,1.2fr) 2fr auto;gap:12px 16px;align-items:center;padding:14px 16px;border-radius:18px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df);box-shadow:inset 4px 0 0 var(--line,#e3e6df)}
@@ -3385,7 +3387,7 @@ document.addEventListener('click', async e=>{
     try{ await trackWrite(B.set(SEASON_PATH+'/ballots/'+me,body)); myBallot=body; ui.survey=null; render(); scrollTo(0,0); toast('Respuestas enviadas'); confetti(innerWidth/2,innerHeight/3); }catch(err){ toast('No se ha podido enviar: '+(err?.code||err?.message||'error')); } }
   else if(a==='save-tie'){ const j=+el.dataset.j, t=ensureTie(j);
     document.querySelectorAll('.redit').forEach(row=>{ const r=t.rubbers[+row.dataset.r]; const g=n=>row.querySelector(`[name=${n}]`)?.value??'';
-      r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); r.score=g('score').trim(); r.res=g('res')||null; r.note=g('note').trim(); });
+      r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); r.score=g('score').trim(); r.res=g('res')||null; r.note=g('note').trim(); r.wo=!r.score && /\bw\.?\s*o\b/i.test(r.note); });
     t.moment=$('#moment').value.trim();
     const val=validateTie(t); if(val.errors.length){ renderQuiet(); toast('Hay errores en los resultados: revísalos'); return; }
     finishTieSave(j, $('#ps')?.value??'', $('#rs')?.value??'');
