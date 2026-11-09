@@ -1242,3 +1242,9 @@ body.clubmode .clublink{background:rgba(255,255,255,.12);color:var(--onGreen)}
 }
 .fbio{margin:14px 0 0;font-size:1.02rem;line-height:1.5;max-width:62ch}
 :root{--polo-css:"20261108"}
+.mvtag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
+.mvtag.ad{background:#E7EEF6;color:#3c5f86}.mvtag.ap{background:#F3EAD3;color:#94722A}
+.mvbox{display:grid;gap:12px;padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:var(--surface);margin-bottom:14px}
+.mvbox b{display:block;font-stretch:72%;font-size:1.3rem;line-height:1.15;margin:2px 0}
+.mvf{display:grid;grid-template-columns:1fr 140px;gap:10px}
+@media (max-width:480px){.mvf{grid-template-columns:1fr 1fr}}
