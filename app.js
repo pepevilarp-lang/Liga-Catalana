@@ -3140,7 +3140,7 @@ async function fctSyncTeam(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t)
     return (d.results||[]).find(x=>x.season===info.sid)||(d.results||[])[0]||{};
   }catch(e){ toast(`${t.short||t.name}: sin conexión con el servidor`); return null; }
   finally{ delete ui.fctBusy[tid]; renderQuiet(); } }
-const fctSummary=(t,x)=> !x? '' : x.skipped==='grupo-vacio'? `${t.short||t.name}: la FCT no devuelve partidos para ese grupo; revisa el código` : x.skipped? `${t.short||t.name}: ${x.skipped}` : `${t.short||t.name}: ${x.results||0} resultados, ${x.dates||0} fechas${x.created? ', '+x.created+' partidos nuevos' : ''}${(x.diffs||[]).length+(x.dateDiffs||[]).length? ', '+((x.diffs||[]).length+(x.dateDiffs||[]).length)+' por revisar' : ''}`;
+const fctSummary=(t,x)=> !x? '' : x.skipped==='grupo-vacio'? `${t.short||t.name}: la FCT no devuelve partidos para ese grupo; revisa el código` : x.skipped? `${t.short||t.name}: ${x.skipped}` : `${t.short||t.name}: ${x.results||0} resultados, ${x.dates||0} fechas${x.created? ', '+x.created+' partidos nuevos' : ''}${x.roster?.added? ', '+x.roster.added+' jugadores importados' : ''}${(x.diffs||[]).length+(x.dateDiffs||[]).length? ', '+((x.diffs||[]).length+(x.dateDiffs||[]).length)+' por revisar' : ''}`;
 const FCT_CSS=`
 .fctc{display:grid;gap:10px}
 .fctc-row{display:grid;grid-template-columns:minmax(160px,1.2fr) 2fr auto;gap:12px 16px;align-items:center;padding:14px 16px;border-radius:18px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df);box-shadow:inset 4px 0 0 var(--line,#e3e6df)}
