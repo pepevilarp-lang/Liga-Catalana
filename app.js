@@ -1244,6 +1244,8 @@ function vClaim(){
 }
 
 /* ---------------- Administración ---------------- */
+// Fecha u hora editadas a mano: quedan fijadas y la sincronización con la FCT ya no las cambia
+function lockFix(f,what){ if(!f) return; f.lock={...(f.lock||{}),[what]:true,at:Date.now(),by:(me&&player(me)?.name)||authUser?.email||''}; if(what==='date') delete f.fctDate; else delete f.fctTime; }
 // Bloque plegable que recuerda si estaba abierto entre renders
 const fold=(k,title,sub,body,def=false,extra='')=>`<details class="fold" data-k="${k}" ${(ui.open?.[k]??def)?'open':''}><summary><span class="fl"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</span>${extra}<span class="fchev" aria-hidden="true"></span></summary><div class="fbody">${body}</div></details>`;
 document.addEventListener('toggle',e=>{ const d=e.target; if(d?.matches?.('details[data-k]')) (ui.open ||= {})[d.dataset.k]=d.open; },true);
@@ -1311,7 +1313,7 @@ function aPrep(j){
       <div class="row" style="margin-top:12px"><button class="btn brass" data-act="prep-save" data-j="${j}">Guardar cambios</button></div>`;
   const box=`<div class="sec-h"><h2>Datos de la eliminatoria</h2>${t.calOk?'<span class="okmark">✓ Confirmado</span>':''}</div>
     <div class="mvbox"><dl class="kvs"><div><dt>Fecha</dt><dd>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h ${movedTag(f)}</dd></div><div><dt>Rival</dt><dd>${esc(clubName(p.rival))}</dd></div><div><dt>Dónde</dt><dd>${p.home?'En casa':'Fuera'}</dd></div></dl>
-      ${f.fctDate&&f.fctDate!==f.date? `<p class="notice" style="margin:0">La FCT todavía tiene este partido el ${esc(shortD(f.fctDate))}. La app mantiene tu fecha.</p>` : ''}
+      ${(f.fctDate&&f.fctDate!==f.date)||(f.fctTime&&f.fctTime!==f.time)? `<div class="notice" style="margin:0">La FCT tiene este partido el ${esc(shortD(f.fctDate||f.date))} a las ${esc(f.fctTime||f.time)} h. La app mantiene lo que habéis puesto${f.lock?.by?' ('+esc(f.lock.by)+')':''}. <button class="textlink" data-act="use-fct" data-j="${j}">Usar lo de la FCT</button></div>` : f.lock&&(f.lock.date||f.lock.time)? `<p class="muted small" style="margin:0">🔒 ${f.lock.date&&f.lock.time?'Fecha y hora fijadas':f.lock.date?'Fecha fijada':'Hora fijada'} a mano${f.lock.by?' por '+esc(f.lock.by):''}: la sincronización con la FCT no las cambia.</p>` : ''}
       ${moved? `<div class="row"><button class="btn ghost sm" data-act="move-reset" data-j="${j}">Volver al ${esc(shortD(f.moved.from))}</button><a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📅 Cambio de fecha: la jornada ${j} contra ${clubName(p.rival)} se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'long'})} a las ${f.time} h (${p.home?'en casa':'fuera'}). Antes era el ${shortD(f.moved.from)}. Todo en la app: ${location.origin}/#jornada-${j}`)}">Avisar al equipo por WhatsApp</a></div>` : ''}
       ${fold('prep-edit-'+j,'Cambiar fecha, hora, rival o lugar','Si se adelanta o se aplaza, la app se reordena sola',edit)}</div>`;
   return `<section class="sec">${lu? `<div class="split"><div>${box}</div><div><div class="sec-h"><h2>Orden de juego</h2></div>${lineupStrip(j)}</div></div>` : `<div style="max-width:640px">${box}</div>`}</section>`;
@@ -1546,7 +1548,7 @@ const FCT_GROUPS={'2026-27':4622,'2026-27-polo-a':4622,'2026-27-polo-b':4621,'20
 const fctDefaultGroup = () => FCT_GROUPS[SEASON_PATH.split('/')[1]]||null;
 function fctAgo(){ const L=S.fctLast; return L?.at? relTime(L.at) : null; }
 function fctPanel(){ const L=S.fctLast, has=S.comp.fctGroup||fctDefaultGroup();
-  const warn=[L?.diffs?.length? `La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}` : '', L?.dateDiffs?.length? `La FCT tiene otra fecha en la jornada ${L.dateDiffs.map(x=>x.j).join(', ')} (se mantiene la vuestra)` : '', L?.newTeams?.length? `Clubes nuevos añadidos: ${L.newTeams.join(', ')}` : ''].filter(Boolean);
+  const warn=[L?.diffs?.length? `La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}` : '', L?.dateDiffs?.length? `La FCT tiene otra fecha u hora en la jornada ${L.dateDiffs.map(x=>x.j).join(', ')} (se mantiene la vuestra)` : '', L?.newTeams?.length? `Clubes nuevos añadidos: ${L.newTeams.join(', ')}` : ''].filter(Boolean);
   return `<div class="fctline"><span class="fdot ${has?(L?'ok':''):'off'}"></span><span>${has? (L? `FCT sincronizada ${esc(fctAgo())}: ${L.results||0} resultados y ${L.dates||0} fechas` : 'FCT: aún no se ha consultado') : 'FCT sin configurar: pon el código del grupo en «Configuración de la liga»'}</span><button class="btn ghost sm" data-act="fct-sync" ${has?'':'disabled'}>Actualizar</button></div>
     ${warn.length? `<p class="notice" style="margin:8px 0 0">${warn.map(esc).join('. ')}.</p>` : ''}`; }
 function aCalendario(){
@@ -3116,7 +3118,7 @@ function ensureMsgCss(){ if(document.getElementById('msg-css')) return; const s=
 function fctTeamInfo(t){ const sid=docIdFor(t.id,viewSeason), d=clubData[t.id]||(('seasons/'+sid)===SEASON_PATH? S : null), grp= d? +((d.comp||{}).fctGroup||FCT_GROUPS[sid]||0) : +(FCT_GROUPS[sid]||0), today=ymd(new Date());
   const fx=(d&&d.fixtures)||[], polo=fx.filter(f=>f.home===POLO||f.away===POLO), L=d&&d.fctLast;
   const k={ imp:fx.filter(f=>f.src==='fct').length, off:fx.filter(f=>isPlayed(f)&&f.status==='official').length, prov:fx.filter(f=>isPlayed(f)&&f.status!=='official').length,
-    rev:polo.filter(f=>f.fctScore||(f.fctDate&&f.fctDate!==f.date)).length, pend:polo.filter(f=>f.date<today&&!isPlayed(f)).length };
+    rev:polo.filter(f=>f.fctScore||(f.fctDate&&f.fctDate!==f.date)||(f.fctTime&&f.fctTime!==f.time)).length, pend:polo.filter(f=>f.date<today&&!isPlayed(f)).length };
   const st= !d? ['nodata','Sin temporada'] : !grp? ['nogroup','Falta el grupo'] : k.rev? ['rev','Revisar'] : !L? ['new','Sin sincronizar'] : ['ok','Al día'];
   return {t,d,sid,grp,L,k,st}; }
 function fctCenter(){ ensureMsgCss(); ensureFctCss(); const rows=clubTeams().map(fctTeamInfo), busy=ui.fctBusy||{};
@@ -3457,10 +3459,11 @@ document.addEventListener('click', async e=>{
   else if(a==='cal-ok'){ const t=ensureTie(+el.dataset.j); t.calOk=true; saveState('Calendario confirmado'); }
   else if(a==='prep-save'){ const j=+el.dataset.j, f=poloFix(j), rv=$('#pp-rival').value, home=$('#pp-home').value==='1', d=$('#pp-date').value, tm=$('#pp-time').value;
     const clash=S.fixtures.find(x=>x!==f && x.j===j && (x.home===rv||x.away===rv)); if(clash) return toast(clubName(rv)+' ya juega otro enfrentamiento en esta jornada');
-    const old=f.date; f.home=home? POLO : rv; f.away=home? rv : POLO; if(tm) f.time=tm;
+    const old=f.date; f.home=home? POLO : rv; f.away=home? rv : POLO; if(tm && tm!==f.time){ f.time=tm; lockFix(f,'time'); } if(d && d!==old) lockFix(f,'date');
     if(d && d!==old){ const orig=f.moved?.from||old; f.date=d; if(d===orig) delete f.moved; else f.moved={from:orig, at:Date.now(), by:(me&&player(me)?.name)||authUser?.email||''}; ui.adminJ=j; saveState(d<orig? 'Partido adelantado: la app se ha reordenado' : d>orig? 'Partido aplazado: la app se ha reordenado' : 'Vuelve a su fecha original'); }
     else saveState('Eliminatoria actualizada'); }
-  else if(a==='move-reset'){ const f=poloFix(+el.dataset.j); if(f?.moved?.from){ f.date=f.moved.from; delete f.moved; saveState('Vuelve a su fecha original'); } }
+  else if(a==='use-fct'){ const f=poloFix(+el.dataset.j); if(!f) return; if(f.fctDate){ f.date=f.fctDate; delete f.moved; } if(f.fctTime) f.time=f.fctTime; delete f.fctDate; delete f.fctTime; delete f.lock; saveState('Fecha y hora de la FCT'); }
+  else if(a==='move-reset'){ const f=poloFix(+el.dataset.j); if(f?.moved?.from){ f.date=f.moved.from; delete f.moved; if(f.lock) delete f.lock.date; saveState('Vuelve a su fecha original'); } }
   else if(a==='avail-close'){ const t=ensureTie(+el.dataset.j); if(availFor(+el.dataset.j).none.length && !confirm('Aún falta gente por responder. ¿Cerrar la disponibilidad igualmente?')) return; t.availClosed=true; t.availClosedAt=Date.now(); ui.jTab='disp'; saveState('Disponibilidad cerrada'); }
   else if(a==='avail-reopen'){ const t=ensureTie(+el.dataset.j); t.availClosed=false; saveState('Disponibilidad reabierta'); }
   else if(a==='go-compose'){ const j=+el.dataset.j, kind=el.dataset.kind; if(route()!=='admin'){ ui.adminTab='jornada'; ui.adminJ=j; ui.jTabSet=true; ui.jTabFor=j; ui.jTab='disp'; ui.composeAfter={kind,j,text:composeText(kind,j)}; location.hash='admin'; return; } ui.jTab='disp'; ui.compose={kind,j,text:composeText(kind,j)}; render(); setTimeout(()=>$('#compose-text')?.scrollIntoView({behavior:'smooth',block:'center'}),80); }
@@ -3483,7 +3486,7 @@ document.addEventListener('click', async e=>{
   else if(a==='player-add'){ const name=$('#np-name').value.trim(); if(!name) return toast('Escribe el nombre'); let id=slug(name); while(player(id)) id+='-2';
     S.players.push({id,name,full:$('#np-full').value.trim()||name,cat:$('#np-cat').value.trim(),pts:0,order:Math.max(...S.players.map(p=>p.order))+1,captain:false,active:true}); saveState(name+' añadido'); }
   else if(a==='teams-save'){ document.querySelectorAll('#tlist [data-id]').forEach(row=>{ const t=team(row.dataset.id); ['name','short','abbr'].forEach(n=>{ const v=row.querySelector(`[name=${n}]`).value.trim(); if(v) t[n]=v; }); }); saveState('Clubes guardados'); }
-  else if(a==='fixtures-save'){ document.querySelectorAll('#flist [data-k]').forEach(row=>{ const f=S.fixtures[+row.dataset.k], g=n=>row.querySelector(`[name=${n}]`).value; f.date=g('date')||f.date; f.time=g('time')||f.time; f.home=g('home'); f.away=g('away'); const hs=g('hs'),as=g('as'); if(hs!==''&&as!==''){ f.hs=+hs; f.as=+as; } else { f.hs=null; f.as=null; } }); saveState('Jornada '+el.dataset.j+' guardada'); }
+  else if(a==='fixtures-save'){ document.querySelectorAll('#flist [data-k]').forEach(row=>{ const f=S.fixtures[+row.dataset.k], g=n=>row.querySelector(`[name=${n}]`).value, nd=g('date'), nt=g('time'); if(nd && nd!==f.date){ f.date=nd; lockFix(f,'date'); } if(nt && nt!==f.time){ f.time=nt; lockFix(f,'time'); } f.home=g('home'); f.away=g('away'); const hs=g('hs'),as=g('as'); if(hs!==''&&as!==''){ f.hs=+hs; f.as=+as; } else { f.hs=null; f.as=null; } }); saveState('Jornada '+el.dataset.j+' guardada'); }
   else if(a==='official-save'){ const order=[...document.querySelectorAll('#offlist select')].map(x=>x.value); if(new Set(order).size!==order.length) return toast('Hay clubes repetidos'); S.official={asOf:+$('#off-j').value||0,order}; saveState('Clasificación oficial guardada'); }
   else if(a==='rules-save'){ S.rules={...S.rules,win:+$('#r-win').value,loss:+$('#r-loss').value,deadlineDays:Math.max(0,Math.min(14,+($('#r-dd')?.value??S.rules.deadlineDays))),deadlineTime:$('#r-dt')?.value||S.rules.deadlineTime,availDays:Math.max(1,Math.min(21,+$('#r-av').value||6)), mvpHours:Math.max(1,Math.min(240,+($('#r-mvp')?.value)||48)), doubles:$('#r-dbl')?.value||'always'}; saveState('Reglas guardadas'); }
   else if(a==='go-admin'){ ui.adminTab='jornada'; ui.adminJ=+el.dataset.j; const tt=el.dataset.t||'disp'; ui.jTab= tt==='enc'||tt==='mvp'? 'post' : tt==='cartel'? 'conv' : tt; ui.jTabSet=true; ui.jTabFor=+el.dataset.j; location.hash='admin'; }
@@ -3547,7 +3550,7 @@ document.addEventListener('click', async e=>{
     S.fixtures.push({j:n,date:d.toISOString().slice(0,10),time:last?.time||'15:00',home:POLO,away:others[0]?.id||POLO,hs:null,as:null}); ui.calJ=n; ui.calOpen=n; saveState('Jornada '+n+' añadida'); }
   else if(a==='fix-add'){ const j=+el.dataset.j, ref=S.fixtures.find(f=>f.j===j); S.fixtures.push({j,date:ref?.date||new Date().toISOString().slice(0,10),time:ref?.time||'15:00',home:S.teams[0].id,away:S.teams[1]?.id||S.teams[0].id,hs:null,as:null}); saveState('Enfrentamiento añadido'); }
   else if(a==='fix-del'){ const k=+el.dataset.k, f=S.fixtures[k]; if(!f||!confirm('¿Quitar '+team(f.home).short+' contra '+team(f.away).short+'?')) return; S.fixtures.splice(k,1); saveState('Enfrentamiento quitado'); }
-  else if(a==='jdate'){ const v=$('#jdate').value; if(!v) return toast('Elige la fecha'); S.fixtures.filter(f=>f.j===+el.dataset.j).forEach(f=>f.date=v); saveState('Fecha de la jornada cambiada'); }
+  else if(a==='jdate'){ const v=$('#jdate').value; if(!v) return toast('Elige la fecha'); S.fixtures.filter(f=>f.j===+el.dataset.j).forEach(f=>{ if(f.date!==v){ f.date=v; lockFix(f,'date'); } }); saveState('Fecha de la jornada cambiada'); }
   else if(a==='msgs-save'){ ['req','rem','remOne','lineup','survey','mvp','summary'].forEach(k=>{ const v=$('#msg-'+k)?.value; if(v!=null) S.msgs[k]=v; }); saveState('Mensajes guardados'); }
   else if(a==='msgs-reset'){ S.msgs={...DEFAULT_MSGS}; saveState('Mensajes restaurados'); }
   else if(a==='season-view'){ switchSeason(el.dataset.id); }
