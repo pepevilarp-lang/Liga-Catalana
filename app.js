@@ -2302,7 +2302,7 @@ function vClubAjustes(){
       <div class="row" style="margin-top:10px"><button class="btn sm brass" data-act="cteams-save">Guardar equipos</button><input type="text" id="ct-name" placeholder="Nuevo equipo (por ejemplo, Veteranos +35)" style="max-width:280px"><input type="text" id="ct-short" placeholder="Nombre corto" style="max-width:140px"><button class="btn sm ghost" data-act="cteam-add">Añadir equipo</button></div></section></div>`;
 }
 async function saveMeta(patch,msg){ const m={current:currentSeason(), seasons:meta?.seasons||[viewSeason], ...(meta||{}), ...patch}; meta=m; renderQuiet(); await safe(()=>B.set('meta/app',m),msg); }
-function teamMenuHTML(){ const ts=clubTeams(); return `${ts.map(t=>`<button data-act="team-pick" data-t="${esc(t.id)}" aria-pressed="${t.id===teamId}"><b>${esc(t.short)}</b><small>${esc(t.name)}</small></button>`).join('')}${canClub()? `<a href="#club" data-act="team-menu-close"><b>Gestión deportiva</b><small>Todos los equipos del club</small></a>` : ''}`; }
+function teamMenuHTML(){ const ts=clubTeams(), inClub=route().startsWith('club'); return `${ts.map(t=>`<button data-act="team-pick" data-t="${esc(t.id)}" aria-pressed="${!inClub && t.id===teamId}"><b>${esc(t.short)}</b><small>${esc(t.name)}</small></button>`).join('')}${canClub()? `<a href="#club" data-act="team-menu-close" aria-pressed="${inClub}"><b>Gestión deportiva</b><small>Todos los equipos del club</small></a>` : ''}`; }
 
 /* ===================== DOCUMENTOS DEL EQUIPO (Fase 2) ===================== */
 const DOC_KINDS={plantilla:'Listado de jugadores',calendario:'Calendario de la competición',orden:'Orden de juego',acta:'Acta oficial',resultados:'Resultados',clasificacion:'Clasificación',competicion:'Documentación de la competición',foto:'Fotografía',otro:'Otro'};
@@ -3070,7 +3070,9 @@ function render(){
   let pend=null; try{ pend=canManage? pendingAction() : null; }catch(e){} al.classList.toggle('pending', !!pend); al.setAttribute('aria-label', pend? 'Gestión: hay un paso pendiente' : 'Gestión');
   const bs=$('.brand span'); if(bs) bs.innerHTML= nav==='club'? `Gestión deportiva <small>Real Club de Polo</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
   let tw=$('.teamsw'); if(!tw){ tw=document.createElement('button'); tw.className='teamsw'; tw.type='button'; tw.setAttribute('aria-label','Cambiar de equipo'); tw.dataset.act='team-menu'; tw.textContent='▾'; $('.brand').after(tw); }
-  tw.hidden = nav==='club' || !(clubTeams().length>1 || canClub());
+  const inClub = nav==='club'; tw.hidden = !(clubTeams().length>1 || canClub());
+  tw.textContent = inClub? 'Ir a un equipo ▾' : '▾'; tw.style.cssText = inClub? 'width:auto;padding:0 10px;margin-left:10px;white-space:nowrap;font-size:.78rem;font-weight:600' : '';
+  tw.setAttribute('aria-label', inClub? 'Ir a la app de un equipo' : 'Cambiar de equipo');
   let cl=$('.clublink'); if(!cl){ cl=document.createElement('a'); cl.className='clublink'; cl.href='#club'; cl.title='Gestión deportiva'; cl.setAttribute('aria-label','Gestión deportiva'); cl.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>'; $('.topicons').prepend(cl); }
   cl.classList.toggle('on',canClub()); if(nav==='club') cl.setAttribute('aria-current','page'); else cl.removeAttribute('aria-current');
   document.body.classList.toggle('clubmode', nav==='club');
