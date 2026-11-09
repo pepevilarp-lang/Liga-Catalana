@@ -1,4 +1,4 @@
-x'use strict';
+'use strict';
 window.__poloBoot = true;
 function showFatal(msg, hint){
   const a=document.getElementById('app'); if(!a || a.dataset.ok || a.dataset.fatal) return; a.dataset.fatal='1';
