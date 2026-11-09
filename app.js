@@ -1,4 +1,4 @@
-'use strict';
+x'use strict';
 window.__poloBoot = true;
 function showFatal(msg, hint){
   const a=document.getElementById('app'); if(!a || a.dataset.ok || a.dataset.fatal) return; a.dataset.fatal='1';
@@ -278,14 +278,18 @@ function tieFromRubbers(j){
   return {w,l,decided:w+l,singles,needsDoubles,complete: singles===4 && (!needsDoubles || !!dRes)};
 }
 
-function standings(uptoJ){
+function standings(uptoJ,noOff){
   const rows=S.teams.map(t=>({id:t.id,pj:0,g:0,p:0,pts:0,rw:0,rl:0,form:[]})); const R=Object.fromEntries(rows.map(r=>[r.id,r]));
   S.fixtures.filter(f=>isPlayed(f)&&(uptoJ==null||f.j<=uptoJ)).sort((a,b)=>a.j-b.j).forEach(f=>{ const h=R[f.home],a=R[f.away]; if(!h||!a) return;
     h.pj++; a.pj++; h.rw+=f.hs; h.rl+=f.as; a.rw+=f.as; a.rl+=f.hs;
     if(f.hs>f.as){ h.g++; a.p++; h.pts+=S.rules.win; a.pts+=S.rules.loss; h.form.push('W'); a.form.push('L'); }
     else if(f.as>f.hs){ a.g++; h.p++; a.pts+=S.rules.win; h.pts+=S.rules.loss; a.form.push('W'); h.form.push('L'); } });
   const lastJ = uptoJ ?? Math.max(0,...S.fixtures.filter(isPlayed).map(f=>f.j));
-  const off = S.official && S.official.asOf===lastJ && Array.isArray(S.official.order)? S.official.order : null;
+  const O = !noOff && S.official && Array.isArray(S.official.order) && S.official.asOf>0? S.official : null;
+  const ahead = !!O && uptoJ==null && O.asOf>lastJ;           // la oficial es más reciente que los resultados registrados
+  const off = O && (O.asOf===lastJ || ahead)? O.order : null;
+  if(off && O.pts) rows.forEach(r=>{ if(O.pts[r.id]!=null && isFinite(+O.pts[r.id])) r.pts=+O.pts[r.id]; });
+  if(off) rows.forEach(r=>{ r.off=true; if(ahead) r.stale=true; });
   const oi = id => { const i=off? off.indexOf(id) : -1; return i<0? 99 : i; };
   rows.sort((x,y)=> off? (oi(x.id)-oi(y.id)||y.pts-x.pts) : (y.pts-x.pts||(y.rw-y.rl)-(x.rw-x.rl)||y.rw-x.rw||team(x.id).short.localeCompare(team(y.id).short)));
   rows.forEach((r,i)=>r.pos=i+1); return rows;
@@ -455,7 +459,7 @@ function ring(v,label){ const C=2*Math.PI*46; return `<div class="ring"><svg wid
 function meter(l,s,v,txt,cls=''){ return `<div class="meter"><span>${l}<small>${s}</small></span><span class="bar"><i class="${cls}" data-w="${v==null?0:Math.round(Math.max(0,Math.min(1,v))*100)}"></i></span><b>${txt}</b></div>`; }
 function standingsTable(rows,compact=false){
   return `<div class="tscroll"><table><thead><tr><th>Equipo</th><th>PJ</th>${compact?'':'<th>G</th><th>P</th><th>Partidos</th><th class="l">Forma</th>'}<th>Pts</th></tr></thead><tbody class="stagger">
-  ${rows.map(r=>`<tr class="${r.id===POLO?'us':''}"><td><span class="pos">${r.pos}</span>${esc(compact? team(r.id).short : team(r.id).name)}</td><td>${r.pj}</td>${compact?'':`<td>${r.g}</td><td>${r.p}</td><td>${r.rw}-${r.rl}</td><td class="l">${formStrip(r.form,4)}</td>`}<td><b>${r.pts}</b></td></tr>`).join('')}</tbody></table></div>`;
+  ${rows.map(r=>`<tr class="${r.id===POLO?'us':''}"><td><span class="pos">${r.pos}</span>${esc(compact? team(r.id).short : team(r.id).name)}</td><td>${r.stale?'–':r.pj}</td>${compact?'':(r.stale? '<td>–</td><td>–</td><td>–</td><td class="l"></td>' : `<td>${r.g}</td><td>${r.p}</td><td>${r.rw}-${r.rl}</td><td class="l">${formStrip(r.form,4)}</td>`)}<td><b>${r.pts}</b></td></tr>`).join('')}</tbody></table></div>`;
 }
 
 /* Carteles de partido */
@@ -655,7 +659,7 @@ function vInicio(){
   if(last){ const c=cronica(last.j);
     h+=`<section class="sec"><div class="sec-h"><h2>Último resultado</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${S.published[jid(last.j)]?.mvp? mvpCard(last.j) : ''}</div></div></section>`; }
-  h+=`<section class="sec"><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">${mine.pj? mine.pos+'º, '+mine.pts+' puntos' : 'Liga completa'}</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></section>`;
+  h+=`<section class="sec"><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">${(mine.pj||mine.off)? mine.pos+'º, '+mine.pts+' puntos' : 'Liga completa'}</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></section>`;
   h+=myStatsBlock()+activityBlock()+`</div>`;
   return h;
 }
@@ -665,7 +669,12 @@ function leadersBlock(){
   return `<section class="sec"><div class="sec-h"><h2>Líderes en individuales</h2><a href="#stats" data-act="stats-go" data-v="jugadores">Todas las estadísticas</a></div><div class="leaders stagger">${rows.map((x,i)=>`<button class="leader press" data-player="${esc(x.p.id)}"><span class="lp">${i+1}</span>${avatar(x.p)}<span class="ln">${esc(x.p.name)}<small>${x.st.pj} ${x.st.pj===1?'individual':'individuales'}</small></span><span class="lw">${pct(x.st.w,x.st.pj)}%<small>${x.st.w}-${x.st.l}</small></span></button>`).join('')}</div>
     <p class="source">Solo individuales. El orden tiene en cuenta el número de partidos jugados.</p></section>`;
 }
-function standingsSource(){ return S.official && S.official.asOf===Math.max(0,...playedJornadas())? `Orden oficial FCT tras la jornada ${S.official.asOf}. Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.` : `Calculada con los resultados introducidos. Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.`; }
+function standingsSource(){ const lastJ=Math.max(0,...playedJornadas()), O=S.official, rules=`Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.`;
+  if(O && Array.isArray(O.order) && O.asOf>0){
+    if(O.asOf===lastJ) return `Orden oficial FCT tras la jornada ${O.asOf}. ${rules}`;
+    if(O.asOf>lastJ) return `Clasificación oficial FCT tras la jornada ${O.asOf}. En la app solo hay resultados hasta la jornada ${lastJ||'ninguna'}: los partidos jugados, ganados y perdidos se completarán al registrar los que faltan.`;
+    return `Calculada con los resultados introducidos. La clasificación oficial subida es de la jornada ${O.asOf}, anterior a tus últimos resultados. ${rules}`; }
+  return `Calculada con los resultados introducidos. ${rules}`; }
 function pendingAction(){
   if(!(isCaptain||isAdmin) || !S.fixtures.length) return null;
   const j=adminJ(); const f=j&&poloFix(j); if(!f) return null;
@@ -1290,7 +1299,7 @@ function aJornada(){
 function aPrep(j){
   const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), topts=sel=>S.teams.filter(x=>x.id!==POLO).map(x=>`<option value="${x.id}" ${sel===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
   return `<section class="sec"><div class="split"><div><div class="sec-h"><h2>Datos de la eliminatoria</h2></div>
-    <div class="mvbox"><div><span class="hx-k3">Fecha del partido</span><b>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</b>${movedTag(f)}<p class="muted small" style="margin:4px 0 0">¿Se adelanta o se aplaza? Cambia la fecha aquí, aunque sea otra jornada en el calendario: la app se reordena sola.</p></div>
+    <div class="mvbox"><div><span class="hx-k3">Fecha del partido</span><b>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</b>${movedTag(f)}${f.fctDate&&f.fctDate!==f.date? `<p class="notice" style="margin:8px 0 0">La FCT todavía tiene este partido el ${esc(shortD(f.fctDate))}. La app mantiene tu fecha; cuando la Federació lo cambie, el aviso desaparecerá.</p>` : ''}<p class="muted small" style="margin:4px 0 0">¿Se adelanta o se aplaza? Cambia la fecha aquí, aunque sea otra jornada en el calendario: la app se reordena sola.</p></div>
       <div class="mvf"><label>Nueva fecha<input type="date" id="pp-date" value="${f.date}"></label><label>Hora<input type="time" id="pp-time" value="${f.time}"></label></div>
       <div class="row"><button class="btn brass" data-act="prep-save" data-j="${j}">Guardar fecha</button>${f.moved?.from&&f.moved.from!==f.date? `<button class="btn ghost sm" data-act="move-reset" data-j="${j}">Volver al ${esc(shortD(f.moved.from))}</button><a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📅 Cambio de fecha: la jornada ${j} contra ${clubName(p.rival)} se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'long'})} a las ${f.time} h (${p.home?'en casa':'fuera'}). Antes era el ${shortD(f.moved.from)}. Todo en la app: ${location.origin}/#jornada-${j}`)}">Avisar al equipo por WhatsApp</a>` : ''}</div></div>
     <div class="tfields">
@@ -1521,7 +1530,7 @@ const fctDefaultGroup = () => FCT_GROUPS[SEASON_PATH.split('/')[1]]||null;
 function fctAgo(){ const L=S.fctLast; return L?.at? relTime(L.at) : null; }
 function fctPanel(){ const L=S.fctLast, has=S.comp.fctGroup||fctDefaultGroup();
   return `<section class="sec"><div class="sec-h"><h2>Resultados de la FCT</h2></div><div class="panel"><p class="muted small" style="margin:0 0 10px">Cada noche la app consulta el portal de la Federació (grupo ${esc(String(has||'sin configurar'))}) y copia los resultados de toda la liga y los cambios de fecha. Acta cerrada en la FCT = oficial; si no, provisional. Los resultados del Polo que ya hayáis puesto no se cambian: si no coinciden, se avisa.</p>
-    ${L? `<p class="small" style="margin:0 0 10px">Última consulta ${esc(fctAgo())}: ${L.results||0} resultados y ${L.dates||0} fechas actualizadas${L.diffs?.length? `. <b>La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}</b>` : ''}.</p>` : ''}
+    ${L? `<p class="small" style="margin:0 0 10px">Última consulta ${esc(fctAgo())}: ${L.results||0} resultados y ${L.dates||0} fechas actualizadas${L.diffs?.length? `. <b>La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}</b>` : ''}${L.dateDiffs?.length? `. <b>La FCT tiene otra fecha en la jornada ${L.dateDiffs.map(x=>x.j).join(', ')}</b> (se mantiene la que puso el capitán)` : ''}${L.newTeams?.length? `. Clubes nuevos añadidos: ${esc(L.newTeams.join(', '))}; revisa en «Clubes» que no estén repetidos` : ''}.</p>` : ''}
     <button class="btn ghost sm" data-act="fct-sync" ${has?'':'disabled'}>Actualizar ahora desde la FCT</button></div></section>`; }
 function aCalendario(){
   const j=ui.calJ || currentJ() || 1, fs=S.fixtures.filter(f=>f.j===j), topts=sel=>S.teams.map(t=>`<option value="${t.id}" ${sel===t.id?'selected':''}>${esc(t.short)}</option>`).join('');
@@ -2037,7 +2046,7 @@ function vClubTeam(tid){
     const fx=d.fixtures.filter(f=>f.home===POLO||f.away===POLO).sort((a,b)=>a.j-b.j);
     const pend=fx.filter(f=>{ const s=tieState(d,f); return s.confirm || s.st==='pending' || (isPlayed(f) && !(tieFromRubbers(f.j)||{}).decided); });
     const last=[...fx].reverse().find(f=>isPlayed(f));
-    return head+`<section class="sec"><div class="mdkpis stagger"><div><b>${mine.pj? mine.pos+'º':'–'}</b><span>clasificación</span></div><div><b>${mine.pts||0}</b><span>puntos</span></div><div><b>${ts.tw}-${ts.tl}</b><span>eliminatorias</span></div><div><b>${ts.rw}-${ts.rl}</b><span>partidos</span></div><div><b>${d.players.length}</b><span>jugadores</span></div><div class="${pend.length?'warn':''}"><b>${pend.length}</b><span>por validar</span></div></div></section>
+    return head+`<section class="sec"><div class="mdkpis stagger"><div><b>${(mine.pj||mine.off)? mine.pos+'º':'–'}</b><span>clasificación</span></div><div><b>${mine.pts||0}</b><span>puntos</span></div><div><b>${ts.tw}-${ts.tl}</b><span>eliminatorias</span></div><div><b>${ts.rw}-${ts.rl}</b><span>partidos</span></div><div><b>${d.players.length}</b><span>jugadores</span></div><div class="${pend.length?'warn':''}"><b>${pend.length}</b><span>por validar</span></div></div></section>
     <section class="sec"><div class="split"><div><div class="sec-h"><h2>Jornadas</h2></div>${fx.length? `<div class="tscroll"><table><thead><tr><th>J</th><th class="l">Fecha</th><th class="l">Rival</th><th>Resultado</th><th class="l">Estado</th><th>Ind.</th><th>Dob.</th></tr></thead><tbody>${fx.map(f=>{ const s=tieState(d,f); return `<tr><td>${f.j}</td><td class="l">${esc(fdate(f))}</td><td class="l">${esc(s.rival)}</td><td>${s.p.played? s.p.ps+'-'+s.p.rs : '–'}</td><td class="l"><span class="ccb ${s.st}">${ST_LABEL[s.st]}</span>${s.confirm?' <span class="ccb confirm">Por confirmar</span>':''}</td><td>${s.singles}</td><td>${s.dbl}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Sin calendario.</div>'}</div>
       <div><div class="sec-h"><h2>Clasificación</h2></div>${st.length>1? standingsTable(st,true) : '<div class="empty">Sin clasificación.</div>'}</div></div></section>
     ${last? `<section class="sec"><div class="sec-h"><h2>Última eliminatoria: jornada ${last.j}</h2></div><p class="lede" style="margin:0 0 8px">Polo ${persp(last).ps}-${persp(last).rs} ${esc(clubName(persp(last).rival))}, ${esc(fdate(last,{day:'numeric',month:'long'}))}.</p>${(tie(last.j)?.rubbers||[]).map((r,i)=>((r.polo||[]).length||rubberCalc(r).res)? rubberRow(r,i,last) : '').join('') || '<div class="empty">Sin partidos introducidos.</div>'}</section>` : ''}
@@ -2071,7 +2080,7 @@ function teamWeekFacts(t,d,f,s,av){ return withS(d,()=>{
     convocados:(tt.convocados||[]).map(pname), individuales:singles, dobles:doubles,
     fin_de_semana:{individuales:`${wsw}-${wsl}`, dobles:`${wdw}-${wdl}`, jugadores_utilizados:players.size},
     temporada:{individuales:`${ssw}-${ssl}`, dobles:`${sdw}-${sdl}`, eliminatorias:`${seq.filter(x=>x==='G').length}-${seq.filter(x=>x==='P').length}`, racha: seq.length>=3? `${streak} ${seq[seq.length-1]==='G'?'victorias':'derrotas'} seguidas` : null},
-    clasificacion: mine.pj? {posicion:mine.pos, puntos:mine.pts, jugadas:mine.pj, equipos:st.length, tabla:st.slice(0,10).map(r=>({pos:r.pos,club:clubName(r.id),pts:r.pts,pj:r.pj,nuestro:r.id===POLO}))} : null,
+    clasificacion: (mine.pj||mine.off)? {posicion:mine.pos, puntos:mine.pts, jugadas:mine.pj, equipos:st.length, tabla:st.slice(0,10).map(r=>({pos:r.pos,club:clubName(r.id),pts:r.pts,pj:r.pj,nuestro:r.id===POLO}))} : null,
     evolucion: evo.length>=2? evo : [],
     informe_capitan: cr? Object.fromEntries(Object.entries(cr).filter(([k])=>!['by','at'].includes(k))) : null, informe_por: cr?.by||null,
     disponibilidad: (()=>{ const keep=avail; avail=av||{}; const a=availFor(f.j); avail=keep; const prob=[];
@@ -2541,12 +2550,28 @@ const titleCase = s => String(s||'').toLowerCase().split(/\s+/).filter(Boolean).
 const personName = raw => { const t=String(raw||'').trim(); if(t.includes(',')){ const [sur,given]=t.split(',').map(x=>x.trim()); return titleCase(given+' '+sur); } return /[a-z]/.test(t)? t : titleCase(t); };
 const shortName = full => { const t=personName(full).split(/\s+/); return t.length>=2? t[0]+' '+t[1] : t[0]||''; };
 const confBadge = c => c==null? '' : `<span class="conf ${c>=.85?'hi':c>=.6?'mid':'lo'}">${c>=.85?'Alta':c>=.6?'Media':'Baja'}</span>`;
+// Qué jornada es una clasificación y si cuadra con lo que hay en la app
+function inferClassJ(rv){ const rows=(rv.rows||[]).filter(r=>r.t&&r.points!=null&&isFinite(+r.points)); if(rows.length<3) return null;
+  for(const j of [...playedJornadas()].reverse()){ const comp=standings(j,true); if(rows.every(r=>comp.find(c=>c.id===r.t)?.pts===+r.points)) return j; } return null; }
+function classCheck(rv){ const out={block:[],warn:[]}, today=ymd(new Date()), rows=rv.rows||[], matched=rows.filter(r=>r.t), j=+rv.j||0, lastJ=Math.max(0,...playedJornadas());
+  if(!j){ const sug=Math.max(0,...S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&f.date<=today).map(f=>f.j)); out.block.push('Indica tras qué jornada es esta clasificación'+(sug? ` (la última disputada según el calendario es la jornada ${sug})` : '')); }
+  if(rows.some(r=>!r.t)) out.block.push('Hay clubes sin emparejar: elige cuál es cada uno');
+  const ts=matched.map(r=>r.t); if(ts.length!==new Set(ts).size) out.block.push('Hay clubes repetidos');
+  if(matched.length && S.teams.length && matched.length!==S.teams.length) out.warn.push(`El documento trae ${matched.length} equipos y la competición tiene ${S.teams.length}: revisa que no falte ninguno.`);
+  if(j){
+    if(lastJ<j) out.warn.push(`En la app solo hay resultados hasta la jornada ${lastJ||'ninguna'}, y esta clasificación es de la jornada ${j}. Se aplicará igualmente; los partidos jugados se completarán al registrar los resultados que faltan.`);
+    if(lastJ>j) out.warn.push(`La app ya tiene resultados de la jornada ${lastJ}, más recientes que esta clasificación (jornada ${j}). La tabla seguirá calculándose con tus resultados hasta que subas una clasificación de la jornada ${lastJ} o posterior.`);
+    const comp=standings(j,true), diffs=matched.filter(r=>r.points!=null&&isFinite(+r.points)&&comp.find(c=>c.id===r.t)&&comp.find(c=>c.id===r.t).pts!==+r.points).map(r=>`${clubName(r.t)}: el documento dice ${r.points} y la app calcula ${comp.find(c=>c.id===r.t).pts}`);
+    if(diffs.length) out.warn.push(`Los puntos no coinciden con los resultados registrados en la app (${diffs.slice(0,4).join('; ')}${diffs.length>4?'; …':''}). Prevalece el documento oficial; revisa si falta algún resultado.`); }
+  const miss=S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&f.date<today&&!isPlayed(f)&&(!j||f.j<=j));
+  if(miss.length) out.warn.push('Sin resultado en la app: '+miss.map(f=>`jornada ${f.j} contra ${clubName(persp(f).rival)} (${shortD(f.date)})`).join(', ')+'. Introdúcelo en Gestión, Jornada, Resultados.');
+  return out; }
 function initReview(id){ const d=docs[id], x=clone(d.extraction?.data||{}); const rv={id,kind:d.extraction?.kind||d.kind,x,j:x.jornada||x.after_jornada||d.j||null,force:false};
   if(d.kind==='plantilla') rv.rows=(x.players||[]).map(p=>{ const m=matchPlayer(p.name); return {...p, act: m? 'link':'new', pid:m}; });
   if(d.kind==='calendario') rv.rows=(x.fixtures||[]).map(f=>({...f, h:matchTeam(f.home), a:matchTeam(f.away), use: f.jornada!=null && !!f.date}));
   if(d.kind==='orden'){ rv.rows=[...(x.singles||[]).map(s=>({type:'S',n:s.order,names:[s.player],pids:[matchPlayer(s.player)],confidence:s.confidence})), ...(x.doubles||[]).slice(0,1).map(s=>({type:'D',n:5,names:s.players||[],pids:(s.players||[]).map(matchPlayer),confidence:s.confidence}))]; }
   if(d.kind==='acta'||d.kind==='resultados'){ let si=0; rv.rows=(x.matches||[]).map(m=>{ const isD=m.type==='D'; const n=isD?5:(m.order||++si); return {type:isD?'D':'S',n,names:m.polo_players||[],pids:(m.polo_players||[]).map(matchPlayer),score:m.score||'',winner:m.winner,confidence:m.confidence}; }); }
-  if(d.kind==='clasificacion') rv.rows=(x.rows||[]).map(r=>({...r, t:matchTeam(r.team)}));
+  if(d.kind==='clasificacion'){ rv.rows=(x.rows||[]).map(r=>({...r, t:matchTeam(r.team)})); if(!rv.j){ const inf=inferClassJ(rv); if(inf){ rv.j=inf; rv.jInferred=`Jornada ${inf}: los puntos coinciden con los resultados de la app.`; } } }
   ui.rev=rv; }
 function vDoc(id){
   ensureDocsSub(); const d=docs[id]; if(!d) return `<div class="wrap"><div class="pagehead"><a class="textlink" href="#${ui.docBack||'docs'}">← ${ui.docBack==='club-docs'?'Documentación':'Documentos'}</a><h1>Documento</h1></div><div class="empty">Cargando…</div></div>`;
@@ -2576,8 +2601,8 @@ function vDoc(id){
         if(cur && rv.kind!=='orden' && cur.score && cur.score!==r.score) warn.push(`${r.type==='D'?'Dobles':'Individual '+r.n}: en la app ya hay «${cur.score}»`);
         return `<tr><td class="l">${r.type==='D'?'Dobles':'Individual '+r.n}</td><td class="l">${esc((r.names||[]).join(' y ')||'?')}</td><td class="l">${(r.type==='D'?[0,1]:[0]).map(k=>`<select data-rev="rp" data-i="${i}" data-k="${k}" style="width:auto">${pOpts(r.pids[k])}</select>`).join(' ')}</td>${rv.kind!=='orden'?`<td><input type="text" data-rev="score" data-i="${i}" value="${esc(r.score||'')}" style="width:120px">${e.length&&r.score?`<small class="dup">${esc(e[0])}</small>`:''}</td>`:''}<td>${confBadge(r.confidence)}</td></tr>`; }).join('')}</tbody></table>
       ${rv.kind!=='orden'&&fx&&fx.status==='official'? `<label class="small" style="display:block;margin-top:10px"><input type="checkbox" data-rev="force" ${rv.force?'checked':''}> Sí, quiero sustituir el resultado oficial de esta jornada</label>`:''}`; }
-  if(rv.kind==='clasificacion'){ body=`<div class="row" style="margin-bottom:10px"><label class="small">Tras la jornada <input type="number" data-rev="j" value="${esc(rv.j||'')}" style="width:80px"></label></div><table><thead><tr><th>Pos.</th><th class="l">En el documento</th><th class="l">Club en la app</th><th>Pts</th><th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>`<tr><td>${r.pos}</td><td class="l">${esc(r.team)}</td><td class="l"><select data-rev="t" data-i="${i}" style="width:auto">${tOpts(r.t)}</select></td><td>${r.points??'–'}</td><td>${confBadge(r.confidence)}</td></tr>`).join('')}</tbody></table>`;
-    if(rv.rows.some(r=>!r.t)) warn.push('Hay clubes sin emparejar: elige cuál es cada uno'); }
+  if(rv.kind==='clasificacion'){ body=`<div class="row" style="margin-bottom:10px"><label class="small">Tras la jornada <select data-rev="j" style="width:auto"><option value="">Elegir</option>${Array.from({length:NJ()},(_,i)=>i+1).map(jj=>`<option value="${jj}" ${+rv.j===jj?'selected':''}>Jornada ${jj}${poloFix(jj)? ', '+shortD(poloFix(jj).date) : ''}</option>`).join('')}</select></label>${rv.jInferred? `<span class="muted small">${esc(rv.jInferred)}</span>` : ''}</div><table><thead><tr><th>Pos.</th><th class="l">En el documento</th><th class="l">Club en la app</th><th>Pts</th><th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>`<tr><td>${r.pos}</td><td class="l">${esc(r.team)}</td><td class="l"><select data-rev="t" data-i="${i}" style="width:auto">${tOpts(r.t)}</select></td><td>${r.points??'–'}</td><td>${confBadge(r.confidence)}</td></tr>`).join('')}</tbody></table>`;
+    { const cc=classCheck(rv); warn.push(...cc.block, ...cc.warn); } }
   const done=d.status==='completado';
   return head+`<div class="docrev ${justRead(id)?'fadein':''}">${justRead(id)? '<p class="readok" style="margin:12px 0 0">✓ Lectura completada</p>' : ''}<section class="sec"><div class="sec-h"><h2>Datos leídos</h2><span class="muted small">${esc(d.extraction.provider||'')} ${esc(d.extraction.model||'')}${d.extraction.usage?.total_tokens? ', '+d.extraction.usage.total_tokens+' tokens':''}</span></div>
       <p class="muted small" style="margin-top:-6px">La IA propone; tú decides. Revisa cada fila, corrige lo que haga falta y valida. Nada cambia en la app hasta que pulses «Validar y aplicar».</p>
@@ -2586,7 +2611,7 @@ function vDoc(id){
       <div class="tscroll">${body||'<div class="empty">La lectura no ha devuelto datos.</div>'}</div>
       ${done? `<div class="final" style="margin-top:16px"><b>✓ Aplicado${d.applied? ': '+esc(d.applied) : ''}</b><span>Ya está en la app: ${({calendario:'calendario, páginas de cada jornada, Matchday y clasificación',plantilla:'plantilla, perfiles y estadísticas',orden:'convocatoria y orden de juego de la jornada',acta:'resultados, estadísticas, clasificación y MVP',resultados:'resultados, estadísticas, clasificación y MVP',clasificacion:'clasificación oficial'})[d.kind]||'la app'}.</span>
         <div class="row" style="margin-top:8px">${d.kind==='calendario'?'<a class="btn sm brass" href="#calendario">Ver el calendario</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>':d.kind==='plantilla'?'<a class="btn sm brass" href="#equipo">Ver la plantilla</a>':d.kind==='clasificacion'?'<a class="btn sm brass" href="#clasificacion">Ver la clasificación</a>':rv.j?`<a class="btn sm brass" href="#jornada-${+rv.j}">Ver la jornada ${+rv.j}</a><a class="btn sm ghost" href="#admin">Ir a Matchday</a>`:''}</div></div>` : ''}
-      <div class="revbar">${done? '' : `<button class="btn brass" data-act="doc-apply" data-id="${esc(id)}">${({calendario:'Validar y añadir al calendario',plantilla:'Validar y actualizar la plantilla',orden:'Validar y poner la convocatoria',acta:'Validar y guardar los resultados',resultados:'Validar y guardar los resultados',clasificacion:'Validar y guardar la clasificación'})[rv.kind]||'Validar y aplicar'}</button>`}<button class="btn ghost sm" data-act="doc-read" data-id="${esc(id)}">Volver a leer</button>${!done?`<button class="btn ghost sm" data-act="doc-discard" data-id="${esc(id)}">Descartar lectura</button>`:''}</div></section>
+      <div class="revbar">${(done && rv.kind!=='clasificacion')? '' : `<button class="btn brass" data-act="doc-apply" data-id="${esc(id)}" ${rv.kind==='clasificacion'&&classCheck(rv).block.length?'disabled':''}>${({calendario:'Validar y añadir al calendario',plantilla:'Validar y actualizar la plantilla',orden:'Validar y poner la convocatoria',acta:'Validar y guardar los resultados',resultados:'Validar y guardar los resultados',clasificacion:'Validar y guardar la clasificación'})[rv.kind]||'Validar y aplicar'}</button>`}<button class="btn ghost sm" data-act="doc-read" data-id="${esc(id)}">Volver a leer</button>${!done?`<button class="btn ghost sm" data-act="doc-discard" data-id="${esc(id)}">Descartar lectura</button>`:''}</div></section>
     <section class="sec">${preview}</section></div></div>`;
 }
 async function docPreview(id){ const box=$('#docprev'); if(!box) return; box.innerHTML='<p class="muted small">Cargando…</p>';
@@ -2618,7 +2643,9 @@ function applyReview(){
     if(kind!=='orden'){ const c=tieFromRubbers(j); if(c.complete){ const home=f.home===POLO; f.hs=home?c.w:c.l; f.as=home?c.l:c.w; f.src='rubbers'; f.status='provisional'; }
       if(!S.mvp[jid(j)] && isPlayed(f)) S.mvp[jid(j)]={open:true,openedAt:Date.now(),deadline:Date.now()+(+S.rules.mvpHours||48)*3600e3}; }
     summary=kind==='orden'? `orden de juego de la jornada ${j}` : `resultados de la jornada ${j}`; }
-  if(kind==='clasificacion'){ const order=rv.rows.sort((a,b)=>a.pos-b.pos).map(r=>r.t).filter(Boolean); if(order.length!==new Set(order).size) return toast('Hay clubes repetidos'); S.official={asOf:+rv.j||0,order}; summary='clasificación oficial'; }
+  if(kind==='clasificacion'){ const cc=classCheck(rv); if(cc.block.length) return toast(cc.block[0]);
+    const order=rv.rows.slice().sort((a,b)=>a.pos-b.pos).map(r=>r.t).filter(Boolean), pts={}; rv.rows.forEach(r=>{ if(r.t&&r.points!=null&&isFinite(+r.points)) pts[r.t]=+r.points; });
+    S.official={asOf:+rv.j, order, pts, at:Date.now(), by:(me&&player(me)?.name)||authUser?.email||'', doc:rv.id}; summary=`clasificación oficial tras la jornada ${rv.j}`; }
   S.audit=[{at:Date.now(), by:(me&&player(me)?.name)||authUser?.name||authUser?.email||'?', what:['Documento validado: '+d.name+' ('+summary+')']}, ...(S.audit||[])].slice(0,60);
   saveState('Aplicado: '+summary);
   B.update(`${SEASON_PATH}/docs/${rv.id}`,{status:'completado', validatedBy:(me&&player(me)?.name)||authUser?.email||'', validatedAt:Date.now(), applied:summary}).catch(()=>{});
