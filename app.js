@@ -644,7 +644,7 @@ function vInicio(){
     ${nx? scoreboard(nx) : ''}</div></section><div class="wrap">`;
   // 1) capitán: centro de operaciones  2) tareas del jugador  3) su próxima jornada  4) resultados  5) clasificación  6) sus números  7) actividad
   ui.homeMyj=true; const co=callouts(nx); ui.homeMyj=false;
-  h+=opsCard()+myJornadaBlock(nx)+(co? `<section class="sec"><div class="sec-h"><h2>Tienes pendiente</h2></div><div class="tasks">${co}</div></section>` : '');
+  h+=appsNudge()+opsCard()+myJornadaBlock(nx)+(co? `<section class="sec"><div class="sec-h"><h2>Tienes pendiente</h2></div><div class="tasks">${co}</div></section>` : '');
   if(last){ const c=cronica(last.j);
     h+=`<section class="sec"><div class="sec-h"><h2>Último resultado</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${S.published[jid(last.j)]?.mvp? mvpCard(last.j) : ''}</div></div></section>`; }
@@ -2671,7 +2671,7 @@ function onbRoles(){ return [...(me? [['player','Jugador','Consulta tu jornada, 
 function onbSave(){ try{ const o=ui.onb; localStorage.setItem(onbKey(), JSON.stringify({stage:o.stage,i:o.i,step:o.step,roles:o.roles})); }catch(e){} }
 function startOnb(opts={}){ ensureOnbCss(); let st=null; try{ st=JSON.parse(localStorage.getItem(onbKey())||'null'); }catch(e){}
   const roles=onbRoles().map(r=>r[0]);
-  ui.onb = (!opts.force && st && st.stage)? {...st, roles:(st.roles||roles).filter(r=>roles.includes(r))} : {stage:'welcome', i:0, step:0, roles};
+  ui.onb = (!opts.force && st && st.stage && st.stage!=='tour')? {...st, roles:(st.roles||roles).filter(r=>roles.includes(r))} : {stage:'welcome', i:0, step:0, roles};
   drawOnb(); }
 const startTour = force => startOnb({force:true});
 function onbSlides(){ const R=ui.onb.roles||[]; return [...(R.includes('player')? slidesPlayer() : []), ...(R.includes('captain')? slidesCaptain() : []), ...(R.includes('manager')? slidesManager() : [])]; }
@@ -2687,6 +2687,7 @@ function profileStep(s){ const d=ui.fe.draft, p=player(me), ph=photos[me]?.d;
   return `<label class="ob-f"><span>Unas líneas sobre ti (opcional)</span><textarea rows="3" maxlength="200" data-onb-k="bio" placeholder="Cómo vives el tenis, qué te gusta del equipo…">${esc(d.bio||'')}</textarea></label>
     <label class="ob-f"><span>Jugador favorito</span><input type="text" data-onb-k="idol" maxlength="60" value="${esc(d.idol||'')}" placeholder="Nadal, Alcaraz, Federer…"></label><label class="ob-f"><span>Grito de guerra</span><input type="text" data-onb-k="motto" maxlength="60" value="${esc(d.motto||'')}" placeholder="¡Vamos!"></label>`; }
 function drawOnb(){ const O=ui.onb; let el=document.getElementById('onb');
+  if(O && O.stage==='spot'){ if(el) el.remove(); document.body.classList.remove('tour-on'); onbSave(); return spotShow(O.i||0); }
   if(!O){ clearInterval(ui.cycT); if(el){ el.classList.add('out'); setTimeout(()=>el.remove(),280); } document.body.classList.remove('tour-on'); return; }
   if(!el){ el=document.createElement('div'); el.id='onb'; el.setAttribute('role','dialog'); el.setAttribute('aria-modal','true'); document.body.appendChild(el); document.body.classList.add('tour-on');
     el.addEventListener('click',onbClick); el.addEventListener('input',onbInput);
@@ -2707,6 +2708,7 @@ function drawOnb(){ const O=ui.onb; let el=document.getElementById('onb');
       <div class="ob-txt" style="padding-top:14px"><span class="ob-n">Tu perfil, paso ${k+1} de ${PSTEPS.length}</span><h2>${k===0?'Ahora, vamos a completar tu perfil':esc(sl)}</h2><p>${k===0? 'Así tendrás una ficha deportiva completa y personal dentro de tu equipo. Empezamos por tu foto.' : 'Toca lo que encaje contigo. Todo es opcional y se guarda solo.'}</p></div>
       <div class="ob-form">${profileStep(sk)}</div>
       <div class="ob-nav"><button class="btn ghost" data-onb="pprev" ${k? '' : 'disabled'}>Atrás</button><span class="ob-saved">${ui.fe?.dirty? 'Guardando…' : 'Guardado'}</span><button class="btn brass" data-onb="pnext">${k===PSTEPS.length-1? 'Terminar' : 'Siguiente'}</button></div></div>`; }
+  else if(O.stage==='apps'){ h=appsStage(); }
   else if(O.stage==='done'){ const p=player(me);
     h=`<div class="ob-card ob-done"><div class="ob-wbg"></div><div class="ob-burst">${photos[me]?.d? `<img src="${esc(photos[me].d)}" alt="">` : `<b>${esc((p?.name||'?').split(' ').map(x=>x[0]).slice(0,2).join(''))}</b>`}</div><h1>¡Tu perfil está listo!</h1><p>Ya formas parte de tu equipo. Ahora puedes empezar a utilizar Lliga Catalana.</p><button class="btn brass big ob-cta" data-onb="enter">Entrar en mi equipo ${svgi('arrow',16)}</button></div>`; }
   el.innerHTML=h; el.querySelector('.ob-cta, [data-onb="next"], [data-onb="pnext"]')?.focus({preventScroll:true});
@@ -2721,10 +2723,11 @@ function onbClick(e){ const O=ui.onb; if(!O) return; const r=e.target.closest('[
   const cy=e.target.closest('[data-cyc]'); if(cy){ clearInterval(ui.cycT); onbCycle(+cy.dataset.cyc); return; }
   const ch=e.target.closest('[data-onb-chip]'); if(ch){ initFe(); const k=ch.dataset.onbChip, v=ch.dataset.v; ui.fe.draft[k]= ui.fe.draft[k]===v? '' : v; ch.parentElement.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===ui.fe.draft[k]))); feQueue(); onbSavedLabel(); return; }
   const b=e.target.closest('[data-onb]'); if(!b) return; const a=b.dataset.onb;
-  if(a==='discover'){ O.stage='tour'; O.i=0; drawOnb(); } else if(a==='skipall'){ ui.onb=null; ui.tourSeen=true; drawOnb(); try{ localStorage.setItem(onbKey(), JSON.stringify({stage:'welcome',i:0,step:0,roles:O.roles,later:Date.now()})); }catch(e){} toast('Puedes ver la introducción cuando quieras desde Yo'); }
+  if(a==='discover'){ O.stage='spot'; O.i=0; drawOnb(); }
+  else if(a==='appsnext'||a==='appslater'){ if(a==='appslater'){ try{ localStorage.setItem('polo-nudge',String(Date.now()-4*864e5)); }catch(e){} } O.stage='done'; drawOnb(); } else if(a==='skipall'){ ui.onb=null; ui.tourSeen=true; drawOnb(); try{ localStorage.setItem(onbKey(), JSON.stringify({stage:'welcome',i:0,step:0,roles:O.roles,later:Date.now()})); }catch(e){} toast('Puedes ver la introducción cuando quieras desde Yo'); }
   else if(a==='next') onbGo(1); else if(a==='prev') onbGo(-1); else if(a==='skiptour') onbToProfile();
-  else if(a==='pnext'){ if(O.step>=PSTEPS.length-1){ if(ui.fe?.dirty) feFlush(); O.stage='done'; drawOnb(); } else { O.step++; drawOnb(); } }
-  else if(a==='pprev'){ if(O.step>0){ O.step--; drawOnb(); } } else if(a==='pskip'){ if(ui.fe?.dirty) feFlush(); O.stage='done'; drawOnb(); } else if(a==='enter') onbFinish(); }
+  else if(a==='pnext'){ if(O.step>=PSTEPS.length-1){ if(ui.fe?.dirty) feFlush(); O.stage='apps'; drawOnb(); } else { O.step++; drawOnb(); } }
+  else if(a==='pprev'){ if(O.step>0){ O.step--; drawOnb(); } } else if(a==='pskip'){ if(ui.fe?.dirty) feFlush(); O.stage='apps'; drawOnb(); } else if(a==='enter') onbFinish(); }
 function onbInput(e){ const el=e.target; if(!el.dataset?.onbK) return; initFe(); ui.fe.draft[el.dataset.onbK]=el.value; feQueue(); onbSavedLabel(); }
 function onbSavedLabel(){ const s=document.querySelector('#onb .ob-saved'); if(s){ s.textContent='Guardando…'; clearTimeout(ui.obsT); ui.obsT=setTimeout(()=>{ if(s.isConnected) s.textContent='Guardado'; },1300); } }
 function maybeTour(){ if(ui.onb || ui.tourSeen || !authReady || !authUser) return; try{ if(localStorage.getItem('polo-tour-off')) return; }catch(e){} if(!me && !isManager) return; if(me && !profilesLoaded) return;
@@ -2832,10 +2835,106 @@ body.tour-on{overflow:hidden}
 @media (max-width:420px){.ob-mock{min-height:280px}.dm-phone{width:236px}}
 @media (prefers-reduced-motion: reduce){#onb,.ob-card,.ob-mock,.ob-crest,.ob-burst,.dm-ring .fg,.dm-bars i,.dm-laser,.dm-gest,.dm-osteps i.now,.dm-in{animation:none!important}}
 `;
-function ensureOnbCss(){ if(document.getElementById('onb-css')) return; const s=document.createElement('style'); s.id='onb-css'; s.textContent=ONB_CSS; document.head.appendChild(s); }
+function ensureOnbCss(){ if(document.getElementById('onb-css')) return; const s=document.createElement('style'); s.id='onb-css'; s.textContent=ONB_CSS+(typeof SPOT_CSS!=='undefined'? SPOT_CSS : ''); document.head.appendChild(s); }
 const ensureTourCss = ensureOnbCss;
 
 document.addEventListener('keydown',e=>{ if(!ui.onb||ui.onb.stage!=='tour') return; if(e.key==='ArrowRight') onbGo(1); else if(e.key==='ArrowLeft') onbGo(-1); });
+/* ---------- Tour guiado sobre la app real: foco en cada elemento + explicación ---------- */
+const navSel = k => `.tabbar a[data-nav="${k}"], .topnav a[data-nav="${k}"]`;
+function spotSteps(){ const R=ui.onb?.roles||[], st=[];
+  if(R.includes('player')){
+    st.push({r:'inicio', sel:'.hero .board', t:'Tu próxima jornada', d:'Rival, fecha y hora. El día del partido, el marcador se actualiza en directo.'});
+    st.push({r:'inicio', sel:'.hx-my', t:'Tu estado en la jornada', d:'Si estás disponible y si estás convocado. Un toque para responder.', ex:`<div class="dm-tiles"><div class="ok">${svgi('check',14,2.4)}<span>Disponible</span></div><div class="ok">${svgi('list',14,2.2)}<span>Individual 2</span></div></div>`});
+    st.push({r:'inicio', sel:'.hx-stats, .hx-empty', t:'Tus números y la actividad', d:'Tu win rate, tu racha y lo último del equipo: resultados, convocatorias y MVP.', ex:`<div class="dm-st"><div class="dm-ring" style="width:64px;height:64px"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="bg"/><circle cx="50" cy="50" r="42" class="fg" stroke-dasharray="264" stroke-dashoffset="77"/></svg><b style="font-size:1.1rem">71%</b></div><div class="dm-sg"><div><b>5-2</b><span>individuales</span></div><div><b>3-1</b><span>dobles</span></div></div></div>`});
+    st.push({r:'clasificacion', sel:navSel('clasificacion'), t:'Clasificación', d:'La tabla de la liga y cómo evoluciona el equipo jornada a jornada.'});
+    st.push({r:'calendario', sel:navSel('calendario'), t:'Calendario', d:'Todas las jornadas, jugadas y por jugar. Toca una para ver la convocatoria y los partidos.', ex:`<div class="dm-cal">${DEMO.results.slice(1).map(r=>`<div><span class="j">${r[0]}</span><b>${r[1]}</b><em class="${r[3]==='W'?'w':'l'}">${r[3]==='W'?'G':'P'} ${r[2]}</em></div>`).join('')}<div class="nx"><span class="j">4</span><b>CT Mirador</b><em>Sáb 15:00</em></div></div>`});
+    st.push({r:'equipo', sel:navSel('equipo'), t:'Equipo', d:'La plantilla con fotos. Toca a un compañero para ver su perfil y sus estadísticas.', ex:`<div class="dm-grid">${[0,1,2,3].map(i=>`<div>${demoFace(i,38)}<b>${DEMO.players[i][0].split(' ')[0]}</b></div>`).join('')}</div>`});
+    st.push({r:'stats', sel:navSel('stats'), t:'Estadísticas', d:'Rankings de individuales y dobles, MVP de la temporada y récords del equipo.'});
+    st.push({r:'yo', sel:navSel('yo'), t:'Yo', d:'Tu ficha, tus avisos pendientes, instalar la app y las notificaciones. Y esta introducción, por si quieres repetirla.'}); }
+  if(R.includes('captain')){
+    st.push({r:'inicio', sel:'.hx-ops', t:'Tu centro de operaciones', d:'Como capitán ves aquí el estado de la jornada y el siguiente paso, con su botón.'});
+    st.push({r:'inicio', sel:'.adminlink', t:'Gestión', d:'Todo lo del capitán está aquí. Si hay algo pendiente, verás un punto rojo.'});
+    st.push({r:'admin', sel:'.mdtabs', t:'Las fases de cada jornada', d:'Preparar (disponibilidad), Convocar (orden de juego y cartel), Resultados (con el acta y la IA) y Postpartido (informe y MVP).'}); }
+  if(R.includes('manager')){
+    st.push({r:me?'inicio':'club', sel:'.clublink', t:'Gestión deportiva', d:'El icono de la casa abre la vista de todo el club, separada de la de tu equipo.'});
+    st.push({r:'club', sel:'.attn, .attn-ok', t:'Lo que requiere atención', d:'Resultados sin poner, por validar y documentos por revisar de todos los equipos, lo primero.'});
+    st.push({r:'club-resumen', sel:'[data-act=mail-toggle]', t:'Informe del fin de semana', d:'Genera el PDF profesional y lo envía por correo a los gestores, con un botón.'}); }
+  return st; }
+function visibleEl(sel){ return [...document.querySelectorAll(sel)].find(e=>{ const r=e.getBoundingClientRect(); const cs=getComputedStyle(e); return r.width>0 && r.height>0 && cs.visibility!=='hidden' && cs.display!=='none'; }); }
+function spotShow(i){ ensureOnbCss(); const S_=spotSteps(); if(!S_.length) return onbAfterSpot(); i=Math.max(0,Math.min(i,S_.length-1)); ui.onb.i=i; onbSave();
+  const s=S_[i]; let el=document.getElementById('spot');
+  if(!el){ el=document.createElement('div'); el.id='spot'; el.innerHTML='<div class="sp-hole"></div><div class="sp-tip" role="dialog" aria-live="polite"></div>'; document.body.appendChild(el);
+    el.addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(!b) return; const a=b.dataset.sp; if(a==='next') spotGo(1); else if(a==='prev') spotGo(-1); else if(a==='skip') onbAfterSpot(); });
+    ui.spotRe=()=>{ clearTimeout(ui.spotT); ui.spotT=setTimeout(()=>spotPlace(false),60); }; addEventListener('resize',ui.spotRe); addEventListener('scroll',ui.spotRe,{passive:true}); }
+  const tip=el.querySelector('.sp-tip'); const n=S_.length;
+  tip.innerHTML=`<div class="sp-head"><span>${i+1} de ${n}</span><button class="sp-skip" data-sp="skip">Saltar</button></div><div class="sp-bar"><i style="width:${Math.round((i+1)*100/n)}%"></i></div>
+    <h3>${esc(s.t)}</h3><p>${esc(s.d)}</p>${s.ex? `<div class="sp-ex"><span class="tm-ej">Ejemplo</span>${s.ex}</div>` : ''}
+    <div class="sp-nav"><button class="btn ghost sm" data-sp="prev" ${i?'':'disabled'}>Atrás</button><button class="btn brass" data-sp="next">${i===n-1? 'Continuar' : 'Siguiente'}</button></div>`;
+  tip.classList.remove('in'); void tip.offsetWidth; tip.classList.add('in');
+  if(route()!==s.r){ location.hash=s.r; setTimeout(()=>spotPlace(true),480); } else setTimeout(()=>spotPlace(true),60); }
+function spotPlace(scroll){ const el=document.getElementById('spot'); if(!el||!ui.onb||ui.onb.stage!=='spot') return; const s=spotSteps()[ui.onb.i]; if(!s) return;
+  const t=visibleEl(s.sel), hole=el.querySelector('.sp-hole'), tip=el.querySelector('.sp-tip');
+  if(t && scroll){ const r0=t.getBoundingClientRect(); if(r0.top<70 || r0.bottom>innerHeight-90) { t.scrollIntoView({block:'center'}); return setTimeout(()=>spotPlace(false),120); } }
+  const W=innerWidth, H=innerHeight, mob=W<700;
+  if(!t){ hole.style.cssText='left:50%;top:40%;width:0;height:0;'; tip.style.cssText= mob? 'left:12px;right:12px;bottom:16px;' : `left:${Math.round(W/2-190)}px;top:${Math.round(H/2-120)}px;width:380px`; return; }
+  let r=t.getBoundingClientRect(); const pad=6, th=tip.offsetHeight||240; let side=null;
+  if(r.height+th+pad*2+44 <= H){            // cabe con la tarjeta: arriba o abajo, desplazando si hace falta
+    if(H-r.bottom-pad-14 >= th) side='below'; else if(r.top-pad-14 >= th) side='above';
+    else if(scroll){ scrollBy(0, r.top-pad-16); return setTimeout(()=>spotPlace(false),140); }
+    else { side='below'; const tipTop=H-th-10; if(r.bottom+pad+12>tipTop){ r={left:r.left, top:r.top, width:r.width, height:Math.max(60, tipTop-12-pad-r.top)}; r.bottom=r.top+r.height; } }
+  } else {                                   // más alto que la pantalla: su parte superior, y la tarjeta debajo
+    if(scroll && Math.abs(r.top-64)>8){ scrollBy(0, r.top-64); return setTimeout(()=>spotPlace(false),140); }
+    r={left:r.left, top:r.top, width:r.width, height:Math.max(80, H-th-48-r.top-pad)}; r.bottom=r.top+r.height; side='below'; }
+  hole.style.cssText=`left:${r.left-pad}px;top:${r.top-pad}px;width:${r.width+pad*2}px;height:${r.height+pad*2}px;border-radius:${Math.min(22,Math.max(10,r.height/2))}px`;
+  const top = side==='below'? Math.min(H-th-10, r.bottom+pad+12) : Math.max(10, r.top-pad-12-th);
+  if(mob) tip.style.cssText=`left:12px;right:12px;top:${top}px`;
+  else { const w=360, left=Math.max(12,Math.min(W-w-12, r.left+r.width/2-w/2)); tip.style.cssText=`left:${left}px;top:${top}px;width:${w}px`; } }
+function spotGo(d){ const n=spotSteps().length, i=ui.onb.i+d; if(i<0) return; if(i>=n) return onbAfterSpot(); spotShow(i); }
+function spotEnd(){ const el=document.getElementById('spot'); if(el){ el.classList.add('out'); setTimeout(()=>el.remove(),250); } if(ui.spotRe){ removeEventListener('resize',ui.spotRe); removeEventListener('scroll',ui.spotRe); ui.spotRe=null; } }
+function onbAfterSpot(){ spotEnd(); scrollTo(0,0); if(me){ ui.onb.stage='perfil'; ui.onb.step=0; } else ui.onb.stage='apps'; location.hash= me? 'inicio' : 'club'; setTimeout(drawOnb,120); }
+// ---- instalar la app y activar avisos
+function appsStage(){ const inst=isStandalone(), push=pushState;
+  const instBox = inst? `<div class="ob-app ok"><i>${svgi('check',20,2.4)}</i><div><b>App instalada</b><span>Ya la tienes en la pantalla de inicio.</span></div></div>`
+    : installEvt? `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>Acceso directo, pantalla completa y más rápida.</span></div><button class="btn brass sm" data-act="install">Instalar</button></div>`
+    : isIOS()? `<div class="ob-app"><i>📲</i><div><b>Instálala en el iPhone</b><span>En Safari pulsa <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</span></div></div>`
+    : `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>En el menú del navegador, elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</span></div></div>`;
+  const pushBox = push==='on'? `<div class="ob-app ok"><i>${svgi('check',20,2.4)}</i><div><b>Notificaciones activadas</b><span>Te avisaremos de disponibilidad, convocatoria, encuesta y MVP.</span></div></div>`
+    : push==='denied'? `<div class="ob-app"><i>🔕</i><div><b>Notificaciones bloqueadas</b><span>Actívalas en los ajustes del navegador para esta web.</span></div><button class="btn ghost sm" data-act="push-on">Reintentar</button></div>`
+    : `<div class="ob-app"><i>🔔</i><div><b>Activa las notificaciones</b><span>Disponibilidad, convocatoria, encuesta y MVP, directas al móvil.${isIOS()&&!inst? ' En iPhone, primero instala la app.' : ''}</span></div><button class="btn brass sm" data-act="push-on">Activar</button></div>`;
+  return `<div class="ob-card"><div class="ob-txt" style="padding-top:22px"><span class="ob-n">Casi listo</span><h2>Llévala en el móvil</h2><p>Instálala y activa los avisos para no perderte ninguna convocatoria.</p></div><div class="ob-form" style="gap:10px">${instBox}${pushBox}</div>
+    <div class="ob-nav"><button class="btn ghost" data-onb="appslater">Más tarde</button><span></span><button class="btn brass" data-onb="appsnext">Siguiente</button></div></div>`; }
+// ---- recordatorio en Inicio si quedó pendiente (se puede cerrar)
+function appsNudge(){ if(!me || ui.onb) return ''; const needI=!isStandalone(), needP=pushState!=='on'; if(!needI && !needP) return '';
+  try{ const d=+localStorage.getItem('polo-nudge')||0; if(Date.now()-d<5*864e5) return ''; }catch(e){}
+  return `<section class="sec"><div class="nudge"><i>${needI? '📲' : '🔔'}</i><div><b>${needI&&needP? 'Instala la app y activa los avisos' : needI? 'Instala la app' : 'Activa las notificaciones'}</b><span>Para enterarte al momento de la convocatoria y la disponibilidad.</span></div><div class="row">${needI&&installEvt? '<button class="btn brass sm" data-act="install">Instalar</button>' : ''}${needP? '<button class="btn brass sm" data-act="push-on">Activar avisos</button>' : ''}${needI&&!installEvt? '<a class="btn ghost sm" href="#yo">Cómo instalar</a>' : ''}<button class="btn ghost sm" data-act="nudge-off" aria-label="Cerrar">✕</button></div></div></section>`; }
+const SPOT_CSS=`
+#spot{position:fixed;inset:0;z-index:240;pointer-events:auto}
+#spot.out{opacity:0;transition:opacity .25s}
+.sp-hole{position:fixed;border-radius:16px;box-shadow:0 0 0 2px #E2C47C,0 0 0 9999px rgba(5,20,15,.74);transition:all .45s cubic-bezier(.2,.8,.2,1);pointer-events:none;animation:sppulse 2.2s ease-out infinite}
+@keyframes sppulse{0%{box-shadow:0 0 0 2px #E2C47C,0 0 0 2px rgba(226,196,124,.5),0 0 0 9999px rgba(5,20,15,.74)}100%{box-shadow:0 0 0 2px #E2C47C,0 0 0 14px rgba(226,196,124,0),0 0 0 9999px rgba(5,20,15,.74)}}
+.sp-tip{position:fixed;z-index:2;padding:16px 16px 14px;border-radius:22px;background:var(--surface,#fff);color:var(--ink,#13261F);box-shadow:0 26px 60px -24px rgba(0,0,0,.75);transition:top .4s cubic-bezier(.2,.8,.2,1),left .4s cubic-bezier(.2,.8,.2,1)}
+.sp-tip.in{animation:spin .35s cubic-bezier(.2,.8,.2,1)}@keyframes spin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sp-head{display:flex;justify-content:space-between;align-items:center}.sp-head span{font-size:.7rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#94722A}
+.sp-skip{border:0;background:none;color:var(--muted,#5b6b63);font-weight:700;font-size:.82rem;cursor:pointer}
+.sp-bar{height:3px;border-radius:3px;background:var(--surface2,#eef0eb);margin:8px 0 10px;overflow:hidden}.sp-bar i{display:block;height:100%;background:linear-gradient(90deg,#94722A,#E2C47C);transition:width .4s}
+.sp-tip h3{margin:0 0 4px;font-stretch:72%;font-weight:750;font-size:1.35rem;line-height:1.1}
+.sp-tip p{margin:0;color:var(--muted,#5b6b63);font-size:.92rem;line-height:1.4}
+.sp-ex{position:relative;margin-top:10px;padding:12px;border-radius:14px;background:var(--bg,#f4f5f1)}
+.sp-ex .tm-ej{top:6px;right:6px}
+.sp-nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.ob-app{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:14px;border-radius:18px;background:var(--bg,#f4f5f1);border:1px solid var(--line,#e3e6df)}
+.ob-app>i{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--surface,#fff);font-style:normal;font-size:1.3rem}
+.ob-app b{display:block;font-size:1rem}.ob-app span{display:block;font-size:.82rem;color:var(--muted,#5b6b63);line-height:1.35;margin-top:2px}.ob-app span b{display:inline;font-size:inherit;color:var(--ink,#13261F)}
+.ob-app.ok{background:#EAF6EF;border-color:#bfe3cf}.ob-app.ok>i{background:#1F7A4D;color:#fff}
+@media (max-width:420px){.ob-app{grid-template-columns:40px 1fr}.ob-app .btn{grid-column:1 / -1;justify-content:center}}
+.nudge{display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-radius:18px;background:linear-gradient(135deg,#FBF6E8,#F3EAD3);border:1px solid #E8D9AE}
+.nudge>i{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#fff;font-style:normal;font-size:1.2rem}
+.nudge b{display:block;font-size:.95rem}.nudge span{display:block;font-size:.8rem;color:#6b5a2e}
+.nudge .row{gap:6px;flex-wrap:nowrap}
+@media (max-width:560px){.nudge{grid-template-columns:42px 1fr}.nudge .row{grid-column:1 / -1;flex-wrap:wrap}}
+@media (prefers-reduced-motion: reduce){.sp-hole{animation:none;transition:none}.sp-tip,.sp-tip.in{animation:none;transition:none}}
+`;
+
 /* ===================== ROUTER Y RENDER ===================== */
 const route = () => (location.hash||'#inicio').slice(1)||'inicio';
 function render(){
@@ -2875,7 +2974,8 @@ function render(){
   let cl=$('.clublink'); if(!cl){ cl=document.createElement('a'); cl.className='clublink'; cl.href='#club'; cl.title='Gestión deportiva'; cl.setAttribute('aria-label','Gestión deportiva'); cl.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>'; $('.topicons').prepend(cl); }
   cl.classList.toggle('on',canClub()); if(nav==='club') cl.setAttribute('aria-current','page'); else cl.removeAttribute('aria-current');
   document.body.classList.toggle('clubmode', nav==='club');
-  setNavMode(nav==='club'); if(authReady&&authUser){ checkCssVersion(); if(!gate) maybeTour(); if(ui.onb?.stage==='perfil' && ui.onb.step===0 && !document.querySelector('.cropper.on')) drawOnb(); } document.body.classList.toggle('noplayer', !me);
+  setNavMode(nav==='club'); if(authReady&&authUser&&!gate&&route()==='intro'&&!ui.onb){ history.replaceState(null,'','#inicio'); startOnb({force:true}); }
+  if(authReady&&authUser){ checkCssVersion(); if(!gate) maybeTour(); if(ui.onb?.stage==='perfil' && ui.onb.step===0 && !document.querySelector('.cropper.on')) drawOnb(); if(ui.onb?.stage==='apps') drawOnb(); if(ui.onb?.stage==='spot' && document.getElementById('spot')) setTimeout(()=>spotPlace(false),30); } document.body.classList.toggle('noplayer', !me);
   const mb=$('.mebtn'); if(mb) mb.innerHTML = me? avatar(player(me)) : (authUser? `<span class="av">${esc((authUser.email||'?')[0].toUpperCase())}</span>`:'');
   const dot=document.querySelector('.tabbar [data-nav="yo"]'); if(dot){ dot.querySelector('.dot')?.remove(); const nx=nextPoloFix(); if(pendingSurveys().length || pendingMvp().length || (nx&&me&&availOpen(nx)&&!avOf(me,nx.j))) dot.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
   afterRender(app);
@@ -2990,6 +3090,7 @@ document.addEventListener('click', async e=>{
   else if(a==='club-print'){ window.print(); }
   else if(a==='ob-finish'){ if(ui.fe?.dirty) await feFlush(); ui.onboard=false; location.hash='inicio'; setTimeout(()=>{ confetti(innerWidth/2,innerHeight/3,90); toast('¡Bienvenido al equipo! Ya está todo listo.'); },300); }
   else if(a==='tour-again'){ startOnb({force:true}); }
+  else if(a==='nudge-off'){ try{ localStorage.setItem('polo-nudge',String(Date.now())); }catch(e){} renderQuiet(); }
   else if(a==='club-doc-team-go'){ if(el.dataset.t) switchTeam(el.dataset.t); }
   else if(a==='capr-save'){ const j=+el.dataset.j, t=ensureTie(j), r={}; document.querySelectorAll('[data-capr]').forEach(x=>{ const v=x.value.trim(); if(v) r[x.dataset.capr]= x.dataset.capr==='nota'? +v : v.slice(0,2000); });
     if(!Object.keys(r).length) return toast('Escribe algo antes de guardar'); t.captainReport={...r, by:(me&&player(me)?.name)||authUser?.email||'', at:Date.now()}; saveState('Informe del capitán guardado'); }
