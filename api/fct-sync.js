@@ -47,6 +47,7 @@ function teamFor(S, code, name, added) {
 function syncSeason(S, partidos) {
   S.teams = Array.isArray(S.teams) ? S.teams : []; S.fixtures = Array.isArray(S.fixtures) ? S.fixtures : [];
   if (!S.teams.some(t => t.id === POLO)) S.teams.unshift({ id: POLO, name: 'RC de Polo', short: 'Polo', abbr: 'RCP' });
+  const note = (f, what) => { f.hist = [...(f.hist || []), { at: Date.now(), by: 'FCT', what }].slice(-6); f.srcAt = Date.now(); };
   const out = { results: 0, official: 0, dates: 0, created: 0, newTeams: [], diffs: [], dateDiffs: [] };
   for (const p of partidos) {
     const j = +p.jornada; if (!j) continue;
@@ -63,7 +64,7 @@ function syncSeason(S, partidos) {
       if (isPolo && f.moved && f.moved.by !== 'FCT') { if (f.fctDate !== date) { f.fctDate = date; out.dateDiffs.push({ j, app: f.date, fct: date }); } }
       else {
         if (isPolo) { const orig = (f.moved && f.moved.from) || f.date; if (date === orig) delete f.moved; else f.moved = { from: orig, at: Date.now(), by: 'FCT' }; }
-        f.date = date; if (!isPolo || f.time === '15:00' || !f.time) f.time = time; out.dates++;
+        note(f, `Fecha ${f.date} → ${date}`); f.date = date; if (!isPolo || f.time === '15:00' || !f.time) f.time = time; out.dates++;
       }
     } else { if (f.fctDate) delete f.fctDate; if (!isPolo && time && f.time !== time) f.time = time; }
     // Marcador: la FCT lo da como r1 (equipo) y c1 (contrario)
@@ -72,12 +73,12 @@ function syncSeason(S, partidos) {
     let hs = eqIsLoc ? +p.r1 : +p.c1, as = eqIsLoc ? +p.c1 : +p.r1; if (swapped) [hs, as] = [as, hs];
     const closed = String(p.estadoActa || '').toUpperCase() === 'CRR';
     if (isPolo && f.hs != null && f.as != null) {
-      if (+f.hs === hs && +f.as === as) { if (closed && f.status !== 'official') { f.status = 'official'; out.official++; } delete f.fctScore; }
-      else if (f.fctScore !== `${hs}-${as}`) { f.fctScore = `${hs}-${as}`; out.diffs.push({ j, app: `${f.hs}-${f.as}`, fct: `${hs}-${as}` }); }
+      if (+f.hs === hs && +f.as === as) { if (closed && f.status !== 'official') { f.status = 'official'; out.official++; note(f, 'Resultado confirmado como oficial por la FCT'); } delete f.fctScore; }
+      else if (f.fctScore !== `${hs}-${as}`) { f.fctScore = `${hs}-${as}`; out.diffs.push({ j, app: `${f.hs}-${f.as}`, fct: `${hs}-${as}` }); note(f, `La FCT tiene ${hs}-${as}; en la app ${f.hs}-${f.as}`); }
       continue;
     }
     const st = closed ? 'official' : 'provisional';
-    if (f.hs !== hs || f.as !== as || f.status !== st) { if (f.status !== 'official' || closed) { f.hs = hs; f.as = as; f.status = st; f.src = 'fct'; out.results++; if (closed) out.official++; } }
+    if (f.hs !== hs || f.as !== as || f.status !== st) { if (f.status !== 'official' || closed) { note(f, f.hs != null && (f.hs !== hs || f.as !== as) ? `Resultado cambiado de ${f.hs}-${f.as} a ${hs}-${as}` : `Resultado ${hs}-${as} ${closed ? '(oficial)' : '(provisional)'}`); f.hs = hs; f.as = as; f.status = st; f.src = 'fct'; out.results++; if (closed) out.official++; } }
   }
   S.fixtures.sort((a, b) => a.j - b.j || String(a.date).localeCompare(String(b.date)));
   return out;
