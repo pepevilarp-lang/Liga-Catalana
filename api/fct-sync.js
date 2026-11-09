@@ -47,7 +47,7 @@ function teamFor(S, code, name, added) {
 function syncSeason(S, partidos) {
   S.teams = Array.isArray(S.teams) ? S.teams : []; S.fixtures = Array.isArray(S.fixtures) ? S.fixtures : [];
   if (!S.teams.some(t => t.id === POLO)) S.teams.unshift({ id: POLO, name: 'RC de Polo', short: 'Polo', abbr: 'RCP' });
-  const out = { results: 0, official: 0, dates: 0, created: 0, newTeams: [], diffs: [] };
+  const out = { results: 0, official: 0, dates: 0, created: 0, newTeams: [], diffs: [], dateDiffs: [] };
   for (const p of partidos) {
     const j = +p.jornada; if (!j) continue;
     const locCode = p.equipoLocal || p.codigoEquipo, visCode = p.equipoVisitante || p.codigoContrario;
@@ -58,8 +58,14 @@ function syncSeason(S, partidos) {
     let f = S.fixtures.find(x => +x.j === j && ((x.home === home && x.away === away) || (x.home === away && x.away === home)));
     if (!f) { if (!date) continue; f = { j, date, time, home, away, hs: null, as: null, status: null }; S.fixtures.push(f); out.created++; }
     const swapped = f.home !== home, isPolo = home === POLO || away === POLO;
-    if (date && f.date !== date) { f.date = date; if (!isPolo || f.time === '15:00' || !f.time) f.time = time; out.dates++; }
-    else if (!isPolo && time && f.time !== time) f.time = time;
+    if (date && f.date !== date) {
+      // Si el capitán adelantó o aplazó este partido en la app, su fecha manda: la de la FCT queda como aviso
+      if (isPolo && f.moved && f.moved.by !== 'FCT') { if (f.fctDate !== date) { f.fctDate = date; out.dateDiffs.push({ j, app: f.date, fct: date }); } }
+      else {
+        if (isPolo) { const orig = (f.moved && f.moved.from) || f.date; if (date === orig) delete f.moved; else f.moved = { from: orig, at: Date.now(), by: 'FCT' }; }
+        f.date = date; if (!isPolo || f.time === '15:00' || !f.time) f.time = time; out.dates++;
+      }
+    } else { if (f.fctDate) delete f.fctDate; if (!isPolo && time && f.time !== time) f.time = time; }
     // Marcador: la FCT lo da como r1 (equipo) y c1 (contrario)
     const hasResult = (+p.codigoActa > 0) || (+p.r1 + +p.c1) > 0; if (!hasResult) continue;
     const eqIsLoc = +p.codigoEquipo === +locCode;
