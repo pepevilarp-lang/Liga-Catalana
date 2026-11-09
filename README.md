@@ -76,3 +76,17 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
 - Si el PDF no se puede generar, no se envía el correo y se muestra el error para reintentar.
 - Las conclusiones y recomendaciones las redacta la IA (función `api/write-report.js`, mismas variables que la lectura de documentos) solo con datos registrados; si la IA no responde, el informe se genera igual con textos sacados directamente de los datos.
 - El informe del capitán se rellena en Matchday → Postpartido. Si no está, el PDF lo indica.
+
+## Mi presentación: vídeo de salida a pista con IA (Higgsfield)
+- En **Yo → Mi ficha** y en el propio perfil, cada jugador puede crear un vídeo vertical de unos 5 segundos entrando en pista, a partir de una foto suya. Es opcional: no se genera nada hasta que elige la foto, marca el consentimiento y pulsa «Generar mi vídeo».
+- Flujo: foto → recorte 9:16 → consentimiento → `api/presentation.js` sube la foto a Higgsfield y crea el trabajo → estados *pendiente*, *generando*, *completado* o *error* → el vídeo se guarda en Firestore (colección `presentations`, troceado) y aparece en el perfil. Mientras tanto la app sigue funcionando y consulta el estado cada 10 segundos.
+- El vídeo lo ve el equipo en el perfil del jugador. El jugador puede compartirlo, descargarlo, volver a generarlo o eliminarlo. Un administrador puede eliminar cualquiera. La foto de perfil no cambia.
+- Privacidad: cuando el vídeo queda guardado en el club, se borran en Higgsfield la foto, el prompt y el vídeo (`DELETE /requests/{id}`). Se guarda quién dio el consentimiento y cuándo.
+- Coste: máximo `PRESENTATION_MONTHLY_LIMIT` vídeos por jugador y mes (por defecto 2) y `PRESENTATION_GLOBAL_MONTHLY_LIMIT` para todo el club (por defecto 25). Un solo vídeo en curso por jugador. Si Higgsfield rechaza el trabajo, no cuenta.
+- La colección `presentations` no necesita reglas nuevas: solo la escribe y la lee el servidor.
+- Variables de entorno en Vercel:
+  - `HF_API_KEY_ID` y `HF_API_KEY_SECRET`: la clave de la API de Higgsfield (console.higgsfield.ai → API keys). Solo en Vercel, nunca en GitHub.
+  - `FIREBASE_SERVICE_ACCOUNT`: la misma de las notificaciones.
+  - Opcional `HF_WEBHOOK_SECRET` (Higgsfield Console → Settings, empieza por `whsec_`): Higgsfield avisa a `/api/presentation?hook=1` al terminar y el vídeo se guarda aunque el jugador haya cerrado la app.
+  - Opcional `HF_VIDEO_ENDPOINT`: modelo de vídeo. Por defecto `/kling-video/v2.5-turbo/pro/image-to-video` (Kling 2.5 Turbo Pro). También admite `/minimax/hailuo-2.3/standard/image-to-video`.
+- El modelo es de imagen a vídeo: el clip arranca desde la foto. Sale mejor con fotos de cuerpo entero o medio cuerpo, de pie, con buena luz y la cara visible.

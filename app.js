@@ -915,7 +915,7 @@ function vJugador(id){
       <p class="hlab">Individuales${a.pos&&a.pos!=='DOB'?`, posición habitual: individual ${a.pos.replace('IND ','')}`:''}</p>
       <div class="hfigs five stagger"><div><b>${count(st.pj)}</b><span>partidos</span></div><div><b>${count(st.w)}</b><span>victorias</span></div><div><b>${count(st.l)}</b><span>derrotas</span></div><div><b>${st.pj? count(pct(st.w,st.pj),'%') : '–'}</b><span>win rate</span></div><div><b>${st.streak.n? (st.streak.t==='W'?'+':'−')+st.streak.n : '–'}</b><span>racha</span></div></div></div></div></section>
   <div class="wrap">
-  ${fichaDisplay(id, own)}${introBlock(id, own)}
+  ${fichaDisplay(id, own)}${presCard(id, own, 'sec')}${introBlock(id, own)}
   <section class="sec"><div class="split cardsplit"><div class="cardcol">${playerCard(id)}<p class="source" style="text-align:center">Índice Polo: se calcula solo con sus resultados, su disponibilidad y los votos publicados. Se recalcula cada jornada. No es un ranking oficial.</p></div>
     <div><div class="sec-h"><h2>Atributos</h2></div>${radar(id)}<ul class="attrlist">${ATTRS.map(([k,l,d])=>`<li><b>${k}</b> ${l}<small>${d}</small></li>`).join('')}</ul></div></div></section>
   <section class="sec"><div class="split"><div><div class="sec-h"><h2>Victorias y derrotas por jornada</h2><span class="muted small">Individuales</span></div>${wlBars(id)}</div>
@@ -1143,6 +1143,7 @@ function vMiFicha(){
         <div class="fe-photo"><div class="fe-ph">${ph? `<img src="${esc(ph)}" alt="Tu foto">` : `<span>${esc(p.name.split(' ').map(x=>x[0]).slice(0,2).join(''))}</span>`}</div>
           <div class="fe-phbtns"><button class="btn brass" data-act="crop" data-target="${esc(me)}" data-pick="1">${ph?'Subir otra foto':'Subir mi foto'}</button>${ph? `<button class="btn ghost" data-act="crop" data-target="${esc(me)}">Reencuadrar</button><button class="btn ghost sm" data-act="photo-del" data-target="${esc(me)}">Quitar</button>` : ''}
             <p class="muted small">Desde el móvil puedes hacerte una foto en el momento.</p></div></div></section>
+      ${presCard(me,true,'fe-card')}
       ${FICHA.map(s=>`<section class="fe-card"><h2>${s.sec}</h2><p class="muted small">${s.sub}</p>${s.fields.map(field).join('')}</section>`).join('')}
       <section class="fe-card"><h2>Tu teléfono</h2><p class="muted small">Privado: solo lo usa el equipo para avisarte por WhatsApp si falta tu respuesta. No se muestra en tu perfil.</p>
         <div class="fe-f"><label class="fe-l" for="fe-phone"><span>📱</span>Móvil</label><input id="fe-phone" data-fe-phone type="tel" value="${esc(ui.fe.phone)}" placeholder="+34 600 000 000"></div></section>
@@ -1649,35 +1650,40 @@ function stageClose(){ stageTimers.forEach(clearTimeout); const st=$('.stage'); 
 
 /* ===================== FOTOS: subir, recortar y encuadrar ===================== */
 let crop=null;
-function openCropper(target, pick){
-  const team=target==='_team', aspect=team? 16/9 : 3/4, outW=team? 1600 : 600, outH=Math.round(outW/aspect);
+function openCropper(target, pick, opt){   // opt (opcional): {aspect,outW,title,hint,save,onSave,minSrc} para recortes que no son la foto de perfil
+  const team=target==='_team', aspect=opt?.aspect||(team? 16/9 : 3/4), outW=opt?.outW||(team? 1600 : 600), outH=Math.round(outW/aspect);
   let m=$('.cropper'); if(!m){ m=document.createElement('div'); m.className='cropper'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); document.body.appendChild(m); }
-  m.innerHTML=`<div class="cbox"><div class="row" style="justify-content:space-between"><b>${team?'Foto del equipo':'Foto de '+esc(pname(target))}</b><button class="iconbtn" data-act="crop-close" aria-label="Cerrar">✕</button></div>
-    <div class="cview" style="aspect-ratio:${aspect}"><canvas></canvas>${team?'':'<span class="cguide"></span>'}<p class="chint">Elige una imagen</p></div>
+  m.innerHTML=`<div class="cbox"><div class="row" style="justify-content:space-between"><b>${opt? esc(opt.title) : team?'Foto del equipo':'Foto de '+esc(pname(target))}</b><button class="iconbtn" data-act="crop-close" aria-label="Cerrar">✕</button></div>
+    <div class="cview" style="aspect-ratio:${aspect}${opt?`;width:min(100%,calc(58dvh*${aspect}));margin-inline:auto`:''}"><canvas></canvas>${team||opt?'':'<span class="cguide"></span>'}<p class="chint">Elige una imagen</p></div>
     <label class="f">Zoom</label><input type="range" min="1" max="4" step="0.01" value="1" class="czoom">
-    <p class="muted small" style="margin:6px 0 0">Arrastra para encuadrar. ${team?'Formato 16:9.':'Formato vertical 3:4: deja la cara en el tercio superior; los círculos usan esa zona.'}</p>
-    <div class="row" style="margin-top:14px"><label class="btn ghost sm">Elegir imagen<input type="file" accept="image/*" class="cfile" hidden></label><span style="flex:1"></span><button class="btn ghost sm" data-act="crop-close">Cancelar</button><button class="btn brass" data-act="crop-save" disabled>Guardar foto</button></div></div>`;
+    <p class="muted small" style="margin:6px 0 0">Arrastra para encuadrar. ${opt? esc(opt.hint) : team?'Formato 16:9.':'Formato vertical 3:4: deja la cara en el tercio superior; los círculos usan esa zona.'}</p>
+    <div class="row" style="margin-top:14px"><label class="btn ghost sm">Elegir imagen<input type="file" accept="${opt?'image/jpeg,image/png,image/webp,image/heic,image/heif':'image/*'}" class="cfile" hidden></label><span style="flex:1"></span><button class="btn ghost sm" data-act="crop-close">Cancelar</button><button class="btn brass" data-act="crop-save" disabled>${opt? esc(opt.save) : 'Guardar foto'}</button></div></div>`;
   m.classList.add('on'); document.body.style.overflow='hidden';
   const cv=m.querySelector('canvas'), view=m.querySelector('.cview'), zoom=m.querySelector('.czoom'), file=m.querySelector('.cfile'), save=m.querySelector('[data-act=crop-save]');
-  crop={target,aspect,outW,outH,img:null,z:1,ox:0,oy:0,cv,view};
+  crop={target,aspect,outW,outH,img:null,z:1,ox:0,oy:0,cv,view,opt};
   const fit=()=>{ const r=view.getBoundingClientRect(), dpr=devicePixelRatio||1; cv.width=r.width*dpr; cv.height=r.height*dpr; crop.vw=r.width; crop.vh=r.height; };
   const base=()=>Math.max(crop.vw/crop.img.width, crop.vh/crop.img.height);
   const clamp=()=>{ const s=base()*crop.z, w=crop.img.width*s, h=crop.img.height*s; crop.ox=Math.min(0,Math.max(crop.vw-w,crop.ox)); crop.oy=Math.min(0,Math.max(crop.vh-h,crop.oy)); };
   const draw=()=>{ if(!crop?.img) return; clamp(); const g=cv.getContext('2d'), dpr=devicePixelRatio||1, s=base()*crop.z; g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,crop.vw,crop.vh); g.drawImage(crop.img,crop.ox,crop.oy,crop.img.width*s,crop.img.height*s);
     g.strokeStyle='rgba(255,255,255,.35)'; g.lineWidth=1; for(let i=1;i<3;i++){ g.beginPath(); g.moveTo(crop.vw*i/3,0); g.lineTo(crop.vw*i/3,crop.vh); g.moveTo(0,crop.vh*i/3); g.lineTo(crop.vw,crop.vh*i/3); g.stroke(); } };
-  const load=src=>{ const im=new Image(); im.onload=()=>{ crop.img=im; crop.z=1; zoom.value=1; fit(); const s=base(); crop.ox=(crop.vw-im.width*s)/2; crop.oy=team? (crop.vh-im.height*s)/2 : 0; view.querySelector('.chint').hidden=true; save.disabled=false; draw(); }; im.src=src; };
+  const load=src=>{ const im=new Image(); im.onload=()=>{ if(opt?.minSrc && Math.min(im.width,im.height)<opt.minSrc){ toast('La foto tiene poca resolución: usa una de al menos '+opt.minSrc+' píxeles de ancho'); return; } crop.img=im; crop.z=1; zoom.value=1; fit(); const s=base(); crop.ox=(crop.vw-im.width*s)/2; crop.oy=team? (crop.vh-im.height*s)/2 : 0; view.querySelector('.chint').hidden=true; save.disabled=false; draw(); };
+    im.onerror=()=>toast('No se puede leer esta imagen. Prueba con una foto JPG o PNG'); im.src=src; };
   crop.draw=draw;
-  file.onchange=()=>{ const f=file.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>load(rd.result); rd.readAsDataURL(f); };
+  file.onchange=()=>{ const f=file.files[0]; if(!f) return; if(opt && f.size>25e6) return toast('La foto pesa demasiado (máximo 25 MB)'); const rd=new FileReader(); rd.onload=()=>load(rd.result); rd.readAsDataURL(f); };
   zoom.oninput=()=>{ if(!crop.img) return; const cx=crop.vw/2, cy=crop.vh/2, s0=base()*crop.z; crop.z=+zoom.value; const s1=base()*crop.z; crop.ox=cx-(cx-crop.ox)*s1/s0; crop.oy=cy-(cy-crop.oy)*s1/s0; draw(); };
   let drag=null; cv.onpointerdown=e=>{ drag={x:e.clientX,y:e.clientY,ox:crop.ox,oy:crop.oy}; cv.setPointerCapture(e.pointerId); };
   cv.onpointermove=e=>{ if(!drag) return; crop.ox=drag.ox+e.clientX-drag.x; crop.oy=drag.oy+e.clientY-drag.y; draw(); }; cv.onpointerup=()=>drag=null;
   cv.onwheel=e=>{ e.preventDefault(); zoom.value=Math.min(4,Math.max(1,+zoom.value-e.deltaY*.002)); zoom.oninput(); };
-  if(photos[target]?.d && !pick) setTimeout(()=>load(photos[target].d),30); else file.click();
+  if(!opt && photos[target]?.d && !pick) setTimeout(()=>load(photos[target].d),30); else file.click();
 }
 function closeCropper(){ $('.cropper')?.classList.remove('on'); document.body.style.overflow=''; crop=null; }
 async function saveCrop(){
   if(!crop?.img) return; const o=document.createElement('canvas'); o.width=crop.outW; o.height=crop.outH; const g=o.getContext('2d'), k=crop.outW/crop.vw, s=Math.max(crop.vw/crop.img.width,crop.vh/crop.img.height)*crop.z;
   g.fillStyle='#0A2A20'; g.fillRect(0,0,o.width,o.height); g.imageSmoothingQuality='high'; g.drawImage(crop.img,crop.ox*k,crop.oy*k,crop.img.width*s*k,crop.img.height*s*k);
+  if(crop.opt?.onSave){ const op=crop.opt; if(crop.vw/s < (op.minCrop||0)){ toast('Con tanto zoom la foto pierde calidad: aléjala un poco'); return; }
+    let q=.9, image=o.toDataURL('image/jpeg',q); while(image.length>2.4e6 && q>.5){ q-=.1; image=o.toDataURL('image/jpeg',q); }
+    const p=document.createElement('canvas'); p.width=270; p.height=Math.round(270/crop.aspect); p.getContext('2d').drawImage(o,0,0,p.width,p.height);
+    closeCropper(); op.onSave({image, poster:p.toDataURL('image/jpeg',.72)}); return; }
   let q=.86, d=o.toDataURL('image/webp',q); if(!d.startsWith('data:image/webp')) d=o.toDataURL('image/jpeg',q);
   while(d.length>850000 && q>.4){ q-=.12; d=o.toDataURL(d.startsWith('data:image/webp')?'image/webp':'image/jpeg',q); }
   const target=crop.target; photos[target]={d,at:Date.now()}; closeCropper(); renderQuiet();
@@ -3114,6 +3120,140 @@ const FCT_CSS=`
 `;
 function ensureFctCss(){ if(document.getElementById('fct-css')) return; const s=document.createElement('style'); s.id='fct-css'; s.textContent=FCT_CSS; document.head.appendChild(s); }
 
+/* ===================== MI PRESENTACIÓN: vídeo con IA (Higgsfield, siempre a través de /api/presentation) =====================
+   El navegador nunca habla con Higgsfield ni guarda la clave. La generación solo empieza cuando el jugador elige una foto,
+   da su consentimiento y pulsa «Generar mi vídeo». El vídeo se guarda en el club y se sirve por trozos desde /api/presentation. */
+const PRES_CONSENT_V=1;
+let pres={}, presUsage=null, presCfg=null, presAt=0, presLoading=false, presPolling=false;
+const presVid={};   // pid → {gen,url,file} (vídeo ya descargado en esta sesión)
+const presActive=x=>!!x && (x.status==='pending'||x.status==='generating');
+async function presApi(action, body={}, bin=false){
+  const tok=await B.idToken(); if(!tok) throw new Error('Vuelve a entrar con Google');
+  const r=await fetch('/api/presentation',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({action,...body})});
+  if(bin && r.ok) return r.arrayBuffer();
+  let j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok) throw Object.assign(new Error(j.error||('Error '+r.status)),{status:r.status,code:j.code});
+  return j; }
+async function presLoad(){
+  if(B.mode!=='firebase' || !authUser || presLoading) return; presLoading=true;
+  try{ const j=await presApi('list'); pres=j.items||{}; presUsage=j.usage||null; presCfg={configured:true}; }
+  catch(e){ presCfg= (e.status===501||e.status===404||e.status===405)? {configured:false} : (presCfg||{configured:true, offline:true}); }
+  finally{ presAt=Date.now(); presLoading=false; softRender(); } }
+// Mientras el vídeo propio se prepara, se consulta cada 10 s sin bloquear nada (solo con la app visible)
+setInterval(async()=>{ if(presPolling||document.hidden||!me||!presActive(pres[me])) return; presPolling=true;
+  try{ const j=await presApi('status'), was=pres[me]?.status; if(j.item) pres[me]=j.item; else delete pres[me]; presUsage=j.usage||presUsage;
+    if(j.item?.status!==was){ if(j.item?.status==='completed') toast('Tu presentación está lista'); else if(j.item?.status==='error') toast('No se ha podido generar tu vídeo'); softRender(); } }
+  catch(e){} finally{ presPolling=false; } }, 10000);
+async function presFile(pid){ const v=pres[pid]?.video; if(!v) throw new Error('Sin vídeo'); const c=presVid[pid]; if(c&&c.gen===v.gen) return c;
+  const parts=await Promise.all(Array.from({length:v.chunks},(_,i)=>presApi('chunk',{pid,gen:v.gen,i},true)));
+  const blob=new Blob(parts,{type:v.mime||'video/mp4'}), ext=(v.mime||'').includes('webm')? 'webm' : 'mp4';
+  const name='presentacion-'+(pname(pid)||'jugador').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'.'+ext;
+  if(c?.url) URL.revokeObjectURL(c.url);
+  return presVid[pid]={gen:v.gen, url:URL.createObjectURL(blob), file:new File([blob],name,{type:blob.type})}; }
+function presPlayer(pid){ const x=pres[pid], v=x?.video, poster=v?.poster||x?.poster||'', c=presVid[pid];
+  if(v && c && c.gen===v.gen && ui.presPlay===pid){ const auto=ui.presAuto===pid; ui.presAuto=null;
+    return `<div class="pres-frame"><video src="${c.url}" ${poster?`poster="${esc(poster)}"`:''} controls playsinline loop preload="auto" ${auto?'autoplay':''}></video></div>`; }
+  return `<div class="pres-frame">${poster?`<img src="${esc(poster)}" alt="">`:''}<span class="pres-shade"></span><button class="pres-playbtn press" data-act="pres-play" data-id="${esc(pid)}" aria-label="Reproducir la presentación de ${esc(pname(pid))}">${ui.presLoadingVid===pid? '<span class="pres-spin"></span>' : '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>'}</button></div>`; }
+const presLeft=()=> presUsage? (presUsage.left? `Te ${presUsage.left===1?'queda 1 vídeo':'quedan '+presUsage.left+' vídeos'} este mes.` : 'Ya has generado los vídeos de este mes. Podrás crear otro el mes que viene.') : '';
+function presCard(pid, own, wrap){
+  if(B.mode==='firebase' && !presLoading && authUser && (!presCfg || Date.now()-presAt>120000)) setTimeout(presLoad,0);
+  if(!own && !pres[pid]?.video) return '';
+  if(B.mode!=='firebase'){ return own? `<section class="${wrap} pres"><div class="pres-h"><div><h2>Mi presentación</h2><p class="muted small">Tu salida a pista en vídeo, generada con IA.</p></div></div><p class="muted small">Disponible en la app conectada al equipo, no en la vista previa.</p></section>` : ''; }
+  ensurePresCss(); const x=pres[pid];
+  if(!own) return `<section class="sec pres"><div class="sec-h"><h2>Presentación</h2><span class="muted small">Salida a pista, vídeo con IA</span></div><div class="pres-solo">${presPlayer(pid)}</div>${isAdmin? `<div class="row" style="justify-content:center;margin-top:10px"><button class="btn ghost sm pres-danger" data-act="pres-del" data-id="${esc(pid)}">Eliminar vídeo (administrador)</button></div>` : ''}</section>`;
+  const head=`<div class="pres-h"><div><h2>Mi presentación</h2><p class="muted small">Tu salida a pista en vídeo, al estilo de la Copa Davis, generada con IA a partir de una foto tuya.</p></div><span class="pres-tag">Vídeo IA</span></div>`;
+  const ph=photos[pid]?.d, first=(pname(pid)||'').split(' ')[0], d=ui.presDraft;
+  let body;
+  if(presCfg && !presCfg.configured) body=`<p class="notice">Esta función aún no está activada.${isAdmin? ' Para activarla, añade en Vercel las variables HF_API_KEY_ID y HF_API_KEY_SECRET (clave de la API de Higgsfield) y vuelve a desplegar.' : ' Cuando el club la active, podrás crear tu vídeo desde aquí.'}</p>`;
+  else if(!presCfg) body='<div class="pres-skel" aria-label="Cargando"></div>';
+  else if(d) body=`<div class="pres-hero"><div class="pres-frame"><img src="${esc(d.image)}" alt="Foto elegida"></div><div class="pres-copy"><h3>¿Usamos esta foto?</h3>
+      <p class="muted small">El vídeo arranca desde esta imagen y la IA te lleva a la pista. Cuanto más se te vea el cuerpo, mejor sale.</p>
+      <label class="pres-consent"><input type="checkbox" data-act="pres-consent" ${d.consent?'checked':''}><span>Acepto que esta foto se envíe a <b>Higgsfield</b>, un servicio externo de inteligencia artificial, para generar un vídeo con mi imagen. Cuando el vídeo queda guardado en la app, se borran en Higgsfield la foto y el vídeo. El vídeo lo verá el equipo en mi perfil y puedo eliminarlo cuando quiera.</span></label>
+      <div class="row pres-actions"><button class="btn brass" data-act="pres-go" ${d.consent&&!d.busy?'':'disabled'}>${d.busy?'Enviando…':'Generar mi vídeo'}</button><button class="btn ghost sm" data-act="pres-start" ${d.busy?'disabled':''}>Cambiar foto</button><button class="btn ghost sm" data-act="pres-cancel" ${d.busy?'disabled':''}>Cancelar</button></div>
+      <p class="muted small">${presLeft()}</p></div></div>`;
+  else if(presActive(x)) body=`<div class="pres-hero"><div class="pres-frame pres-wait">${x.poster?`<img src="${esc(x.poster)}" alt="">`:''}<span class="pres-scan"></span><span class="pres-ball"></span><span class="pres-ballsh"></span></div>
+      <div class="pres-copy" role="status" aria-live="polite"><h3>Estamos preparando tu presentación</h3><p class="muted">Puede tardar unos minutos. Puedes seguir usando la app: el vídeo aparecerá aquí cuando esté listo.</p>
+      <div class="pres-steps"><span class="${x.status==='pending'?'on':'done'}">En cola</span><span class="${x.status==='generating'?'on':''}">Generando</span><span>Listo</span></div>
+      ${x.startedAt? `<p class="muted small">Pedido ${esc(relTime(x.startedAt))}.</p>` : ''}${x.video? '<p class="muted small">Mientras tanto, en tu perfil sigue el vídeo anterior.</p>' : ''}</div></div>`;
+  else if(x?.video) body=`<div class="pres-hero"><div class="pres-view">${presPlayer(pid)}</div><div class="pres-copy"><h3>Tu presentación está lista</h3>
+      <p class="muted small">Creada ${esc(relTime(x.video.at))}. La ve el equipo en tu perfil. Tu foto de perfil no cambia.</p>
+      ${x.status==='error'&&x.error? `<p class="notice small">El último intento no salió: ${esc(x.error)}</p>` : ''}
+      <div class="row pres-actions"><button class="btn brass sm" data-act="pres-share">Compartir</button><button class="btn ghost sm" data-act="pres-dl">Descargar</button><button class="btn ghost sm" data-act="pres-start" ${presUsage&&!presUsage.left?'disabled':''}>Volver a generar</button><button class="btn ghost sm pres-danger" data-act="pres-del" data-id="${esc(pid)}">Eliminar</button></div>
+      <p class="muted small">${presLeft()}</p></div></div>`;
+  else if(x?.status==='error') body=`<div class="pres-hero"><div class="pres-frame">${x.poster?`<img src="${esc(x.poster)}" alt="">`:''}<span class="pres-shade"></span></div><div class="pres-copy"><h3>No se ha podido generar</h3>
+      <p class="muted">${esc(x.error||'Algo ha fallado al crear el vídeo.')}</p><div class="row pres-actions"><button class="btn brass" data-act="pres-start" ${presUsage&&!presUsage.left?'disabled':''}>Probar con otra foto</button></div><p class="muted small">${presLeft()}</p></div></div>`;
+  else body=`<div class="pres-hero"><div class="pres-frame pres-concept" aria-hidden="true">${ph?`<img src="${esc(ph)}" alt="">`:''}<span class="pres-beam l"></span><span class="pres-beam r"></span><span class="pres-court"></span><span class="pres-shade"></span><span class="pres-cap"><b>${esc(first)}</b><em>Salida a pista</em></span></div>
+      <div class="pres-copy"><h3>Crea tu presentación como jugador</h3><p class="muted">Sube una foto y la IA te convierte en un jugador profesional entrando en pista: equipación, raqueta, luces y público. 5 segundos en vertical, listo para compartir.</p>
+      <ul class="pres-tips"><li>Mejor de cuerpo entero o de medio cuerpo, de pie</li><li>Cara visible, buena luz y sin gafas de sol</li><li>Solo tú en la foto</li></ul>
+      <div class="row pres-actions"><button class="btn brass" data-act="pres-start" ${presUsage&&!presUsage.left?'disabled':''}>Generar mi vídeo</button></div><p class="muted small">${presLeft()||'Opcional. Nada se genera hasta que lo confirmes.'}</p></div></div>`;
+  return `<section class="${wrap} pres" id="pres-card">${head}${body}</section>`; }
+async function presAct(a, el){
+  if(a==='pres-start'){ if(presUsage && !presUsage.left) return toast(presLeft());
+    openCropper(me, true, {aspect:9/16, outW:720, title:'Foto para tu presentación', save:'Usar esta foto', minSrc:600, minCrop:400,
+      hint:'Formato vertical 9:16. Encuadra el cuerpo entero o de cintura para arriba, con la cabeza en la parte de arriba.',
+      onSave:d=>{ ui.presDraft={...d, consent:false}; renderQuiet(); setTimeout(()=>document.getElementById('pres-card')?.scrollIntoView({behavior:'smooth',block:'center'}),80); }}); }
+  else if(a==='pres-cancel'){ ui.presDraft=null; renderQuiet(); }
+  else if(a==='pres-consent'){ if(!ui.presDraft) return; ui.presDraft.consent=el.checked; const b=document.querySelector('[data-act="pres-go"]'); if(b) b.disabled=!el.checked; }
+  else if(a==='pres-go'){ const d=ui.presDraft; if(!d||!d.consent||d.busy) return; d.busy=true; renderQuiet();
+    try{ const j=await presApi('create',{image:d.image, poster:d.poster, consent:true, consentV:PRES_CONSENT_V}); pres[me]=j.item; presUsage=j.usage||presUsage; ui.presDraft=null; toast('Generando tu presentación'); }
+    catch(e){ d.busy=false; toast(e.message||'No se ha podido enviar'); if(e.status===409) presLoad(); }
+    renderQuiet(); }
+  else if(a==='pres-play'){ const id=el.dataset.id; if(ui.presLoadingVid) return; ui.presLoadingVid=id; renderQuiet();
+    try{ await presFile(id); ui.presPlay=id; ui.presAuto=id; }catch(e){ toast('No se ha podido cargar el vídeo'); }
+    ui.presLoadingVid=null; renderQuiet(); }
+  else if(a==='pres-share'||a==='pres-dl'){ let f; try{ el.disabled=true; f=(await presFile(me)).file; }catch(e){ el.disabled=false; return toast('No se ha podido cargar el vídeo'); } el.disabled=false;
+    if(a==='pres-share' && navigator.canShare && navigator.canShare({files:[f]})){ try{ await navigator.share({files:[f], title:'Mi presentación, '+teamLabel()}); }catch(e){} return; }
+    const l=document.createElement('a'); l.href=presVid[me].url; l.download=f.name; document.body.appendChild(l); l.click(); l.remove(); if(a==='pres-share') toast('Vídeo descargado: compártelo desde tu galería'); }
+  else if(a==='pres-del'){ const id=el.dataset.id||me, own=id===me;
+    if(!confirm(own? '¿Eliminar tu vídeo de presentación? No se puede deshacer.' : '¿Eliminar el vídeo de presentación de '+pname(id)+'?')) return;
+    try{ await presApi('delete',{pid:id}); delete pres[id]; if(presVid[id]){ URL.revokeObjectURL(presVid[id].url); delete presVid[id]; } if(ui.presPlay===id) ui.presPlay=null; toast('Vídeo eliminado'); }
+    catch(e){ toast(e.message||'No se ha podido eliminar'); }
+    renderQuiet(); } }
+const PRES_CSS=`
+.pres{display:grid;gap:16px}
+.pres-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.pres-h h2{margin:0 0 4px}.pres-h p{margin:0}
+.pres-tag{flex:none;font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--brass);border:1px solid var(--brassLine);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.pres-hero{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:22px;align-items:center}
+.pres-copy h3{margin:0 0 6px;font-size:1.3rem;font-weight:800;font-stretch:80%;letter-spacing:-.01em;line-height:1.1}.pres-copy p{margin:0 0 8px}
+.pres-actions{gap:8px;margin-top:12px;flex-wrap:wrap}
+.pres-frame{position:relative;width:100%;max-width:220px;aspect-ratio:9/16;border-radius:20px;overflow:hidden;isolation:isolate;background:radial-gradient(120% 80% at 50% 28%,#1d5a45,#0a2a20 62%,#04120d);box-shadow:0 26px 50px -26px rgba(0,0,0,.65),inset 0 0 0 1px rgba(226,196,124,.28)}
+.pres-frame>img,.pres-frame>video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.pres-frame>video{background:#000;z-index:2}
+.pres-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,18,13,0) 45%,rgba(4,18,13,.82));pointer-events:none}
+.pres-view,.pres-solo{display:grid;justify-items:center;width:100%}.pres-solo .pres-frame{max-width:260px}
+.pres-playbtn{position:absolute;left:50%;top:50%;translate:-50% -50%;width:62px;height:62px;border-radius:50%;border:0;display:grid;place-items:center;background:var(--gold,#E2C47C);color:#0D2A22;box-shadow:0 10px 30px -6px rgba(0,0,0,.55),0 0 0 8px rgba(226,196,124,.22);cursor:pointer;transition:transform .2s var(--ease)}
+.pres-playbtn:hover{transform:scale(1.06)}.pres-playbtn svg{margin-left:3px}
+.pres-concept img{filter:saturate(.8) brightness(.62) contrast(1.05);transform:scale(1.04)}
+.pres-court{position:absolute;left:-35%;right:-35%;bottom:-4%;height:42%;transform:perspective(200px) rotateX(55deg);transform-origin:bottom;border:2px solid rgba(241,244,239,.55);border-bottom:0;background:linear-gradient(90deg,transparent calc(50% - 1px),rgba(241,244,239,.55) 0 calc(50% + 1px),transparent 0),linear-gradient(transparent 38%,rgba(241,244,239,.55) 0 calc(38% + 2px),transparent 0),linear-gradient(rgba(31,122,77,.0),rgba(16,70,52,.65))}
+.pres-beam{position:absolute;top:-12%;width:70%;height:95%;background:linear-gradient(rgba(255,248,225,.42),rgba(255,248,225,0) 85%);clip-path:polygon(46% 0,54% 0,100% 100%,0 100%);mix-blend-mode:screen;animation:presBeam 4.5s ease-in-out infinite alternate}
+.pres-beam.l{left:-22%;rotate:24deg}.pres-beam.r{right:-22%;rotate:-24deg;animation-delay:-2.2s}
+.pres-cap{position:absolute;left:0;right:0;bottom:16px;display:grid;justify-items:center;color:#F4F6F2;text-align:center;z-index:1}
+.pres-cap b{font-size:1.55rem;font-weight:800;font-stretch:62%;letter-spacing:.06em;text-transform:uppercase;line-height:1}.pres-cap em{font-style:normal;font-size:.62rem;font-weight:800;letter-spacing:.24em;text-transform:uppercase;color:var(--gold,#E2C47C);margin-top:4px}
+.pres-tips{margin:4px 0 0;padding-left:18px;font-size:.86rem;color:var(--muted)}.pres-tips li{margin:2px 0}
+.pres-wait img{filter:blur(7px) brightness(.5) saturate(.7);transform:scale(1.12)}
+.pres-scan{position:absolute;inset:0;background:linear-gradient(180deg,transparent 0 42%,rgba(226,196,124,.32) 50%,transparent 58%);background-size:100% 240%;animation:presScan 2.6s linear infinite}
+.pres-ball{position:absolute;left:50%;bottom:24%;width:22px;height:22px;margin-left:-11px;border-radius:50%;background:radial-gradient(circle at 34% 32%,#f6ff8c,#cddc2c 58%,#93a316);box-shadow:inset -2px -3px 4px rgba(0,0,0,.25);animation:presBounce .9s cubic-bezier(.33,0,.66,0) infinite alternate}
+.pres-ballsh{position:absolute;left:50%;bottom:calc(24% - 6px);width:26px;height:6px;margin-left:-13px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(2px);animation:presShadow .9s cubic-bezier(.33,0,.66,0) infinite alternate}
+.pres-steps{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.pres-steps span{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:var(--surface2);color:var(--muted)}
+.pres-steps .done{background:var(--winSoft);color:var(--win)}.pres-steps .on{background:#F3EAD3;color:#7a5c1e;animation:presPulse 1.6s ease-in-out infinite}
+.pres-consent{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:14px;background:var(--surface2);font-size:.84rem;line-height:1.45;margin:10px 0;text-align:left;cursor:pointer}
+.pres-consent input{flex:none;width:20px;height:20px;margin-top:1px;accent-color:var(--brass)}
+.pres-danger{color:var(--loss)!important}
+.cropper .chint[hidden]{display:none}
+.pres-skel{height:140px;border-radius:16px;background:linear-gradient(90deg,var(--surface2),var(--surface),var(--surface2));background-size:200% 100%;animation:presSk 1.3s linear infinite}
+.pres-spin{width:24px;height:24px;border:3px solid rgba(13,42,34,.25);border-top-color:#0D2A22;border-radius:50%;animation:presRot .8s linear infinite}
+@keyframes presScan{from{background-position:0 130%}to{background-position:0 -130%}}
+@keyframes presBounce{from{transform:translateY(0) scale(1.12,.86)}to{transform:translateY(-96px) scale(1)}}
+@keyframes presShadow{from{transform:scale(1);opacity:.9}to{transform:scale(.45);opacity:.35}}
+@keyframes presBeam{from{opacity:.55}to{opacity:1}}
+@keyframes presPulse{50%{opacity:.6}}
+@keyframes presSk{to{background-position:-200% 0}}
+@keyframes presRot{to{transform:rotate(360deg)}}
+@media (max-width:600px){.pres-hero{grid-template-columns:1fr;justify-items:center;text-align:center}.pres-actions{justify-content:center}.pres-tips{text-align:left;display:inline-block}.pres-steps{justify-content:center}}
+@media (prefers-reduced-motion:reduce){.pres-scan,.pres-ball,.pres-ballsh,.pres-beam,.pres-steps .on,.pres-skel,.pres-spin{animation:none}}
+`;
+function ensurePresCss(){ if(document.getElementById('pres-css')) return; const s=document.createElement('style'); s.id='pres-css'; s.textContent=PRES_CSS; document.head.appendChild(s); }
+
 /* ===================== PRESENTACIÓN DE JUGADOR (gratis: se genera en la app, sin proveedores externos) ===================== */
 const INTRO_W=720, INTRO_H=1280, INTRO_T=7.2;
 const iz={ out:t=>1-Math.pow(1-t,3), inout:t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2, back:t=>{ const c1=1.70158,c3=c1+1; return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2); } };
@@ -3371,6 +3511,7 @@ document.addEventListener('click', async e=>{
   else if(a==='club-print'){ window.print(); }
   else if(a==='msg-open'){ msgOpen(+el.dataset.j); }
   else if(a==='intro-open'){ introOpen(el.dataset.id); }
+  else if(a.startsWith('pres-')){ presAct(a, el); }
   else if(a==='fct-gedit'){ ui.fctEdit=el.dataset.tid; renderQuiet(); setTimeout(()=>document.getElementById('fct-g-'+el.dataset.tid)?.focus(),60); }
   else if(a==='fct-gsave'){ const tid=el.dataset.tid, v=+(document.getElementById('fct-g-'+tid)?.value||0); if(!(v>0&&v<1e7)) return toast('Escribe el código del grupo FCT (un número)');
     const t=clubTeams().find(x=>x.id===tid), info=fctTeamInfo(t); if(info.d) await safe(()=>B.update('seasons/'+info.sid,{comp:{...(info.d.comp||{}),fctGroup:v}}),'Grupo FCT guardado'); else { FCT_GROUPS[info.sid]=v; toast('Grupo guardado: pulsa «Crear y sincronizar»'); } ui.fctEdit=null; renderQuiet(); }
@@ -3595,6 +3736,7 @@ function subscribeData(){ // se rehace al identificarse o al cambiar de temporad
   if(!me && !isAdmin && !isManager) return;
   dataSubs.push(B.watchDoc('meta/app', d=>{ meta=d; checkManager(d); if(!ui.seasonPicked && d?.current && d.current!==viewSeason){ switchSeason(d.current,true); return; } softRender(); }));
   dataSubs.push(B.watchColl('photos', m=>{ photos=m; softRender(); }));
+  if(me){ pres={}; presCfg=null; setTimeout(presLoad,1500); }   // vídeos de presentación (y seguir el propio si se está generando)
   dataSubs.push(B.watchColl('profiles', m=>{ profiles=m; profilesLoaded=true; softRender(); }));
   dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ ui.sLoaded=SEASON_PATH; serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (teamId!=='polo-a'? emptyTeamSeed(teamId) : viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
     updRoles(); subscribePriv(); syncMvpSubs(); softRender(); }));
