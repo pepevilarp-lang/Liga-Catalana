@@ -291,8 +291,12 @@ function standings(uptoJ){
   rows.forEach((r,i)=>r.pos=i+1); return rows;
 }
 const playedJornadas = () => [...new Set(S.fixtures.filter(isPlayed).map(f=>f.j))].sort((a,b)=>a-b);
-function nextPoloFix(){ const now=Date.now(); return S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&!isPlayed(f)&&kickoff(f).getTime()>now-8*3600e3).sort((a,b)=>a.j-b.j)[0]||null; }
-function lastPoloPlayed(){ return S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&isPlayed(f)).sort((a,b)=>b.j-a.j)[0]||null; }
+function nextPoloFix(){ const now=Date.now(); return S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&!isPlayed(f)&&kickoff(f).getTime()>now-8*3600e3).sort((a,b)=>kickoff(a)-kickoff(b)||a.j-b.j)[0]||null; }
+function lastPoloPlayed(){ return S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&isPlayed(f)).sort((a,b)=>kickoff(b)-kickoff(a)||b.j-a.j)[0]||null; }
+// Partidos del Polo ordenados por fecha real (adelantos y aplazamientos incluidos)
+const poloOrder = () => S.fixtures.filter(f=>f.home===POLO||f.away===POLO).sort((a,b)=>kickoff(a)-kickoff(b)||a.j-b.j).map(f=>f.j);
+const shortD = iso => { const d=new Date(iso+'T12:00:00'); return d.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}); };
+function movedTag(f){ if(!f?.moved?.from || f.moved.from===f.date) return ''; const ad=f.date<f.moved.from; return `<span class="mvtag ${ad?'ad':'ap'}">${ad?'Adelantada':'Aplazada'}: era el ${esc(shortD(f.moved.from))}</span>`; }
 function currentJ(){ const now=Date.now(); const up=S.fixtures.filter(f=>!isPlayed(f)&&kickoff(f).getTime()>now-8*3600e3).sort((a,b)=>a.j-b.j)[0]; return up? up.j : NJ(); }
 const clubName = id => team(id).name;
 
@@ -521,6 +525,7 @@ function myStatsBlock(){
 function teamEvents(){ const ev=[];
   S.fixtures.filter(f=>f.home===POLO||f.away===POLO).forEach(f=>{ const j=f.j, t=tie(j)||{}, k=jid(j), p=persp(f), riv=clubName(p.rival);
     if(isPlayed(f)){ const w=p.ps>p.rs; ev.push({at:new Date(f.date+'T'+(f.time||'15:00')).getTime()+3*36e5, ic:w?'win':'loss', i:'score', t:`${w?'Victoria':'Derrota'} ${p.ps}-${p.rs} contra ${riv}`, s:`Jornada ${j}${f.status==='official'?'':', pendiente de validar'}`, href:'#jornada-'+j}); }
+    (t.msgLog||[]).forEach(m=>ev.push({at:m.at, ic:'info', i:'mega', t:'Mensaje del equipo: '+m.text.slice(0,70)+(m.text.length>70?'…':''), s:`Jornada ${j}, ${m.ch==='push'?'notificación':'WhatsApp'}`, href:'#jornada-'+j}));
     if(t.availReq?.at) ev.push({at:t.availReq.at, ic:'info', i:'mega', t:`Disponibilidad abierta para la jornada ${j}`, s:`Contra ${riv}`, href:'#disponibilidad-'+j});
     if(t.lineupPub && t.lineupPubAt) ev.push({at:t.lineupPubAt, ic:'info', i:'team', t:`Convocatoria publicada, jornada ${j}`, s:`${(t.convocados||[]).length} convocados contra ${riv}`, href:'#jornada-'+j});
     if(S.mvp?.[k]?.openedAt) ev.push({at:S.mvp[k].openedAt, ic:'gold', i:'vote', t:`Votación del MVP abierta, jornada ${j}`, s:'Un voto por jugador', href:'#mvp-'+j});
@@ -529,6 +534,8 @@ function teamEvents(){ const ev=[];
 function activityBlock(){ const ev=teamEvents(); if(!ev.length) return '';
   return `<section class="sec"><div class="sec-h"><h2>Actividad del equipo</h2></div><ol class="hx-feed">${ev.map(e=>`<li><a href="${e.href}"><i class="${e.ic}">${e.pid? avatar(player(e.pid),'sm') : svgi(e.i,17)}</i><div><b>${esc(e.t)}</b><span>${esc(e.s)}</span></div><time>${relTime(e.at)}</time></a></li>`).join('')}</ol></section>`; }
 const HOME_CSS = `
+.mvtag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}.mvtag.ad{background:#E7EEF6;color:#3c5f86}.mvtag.ap{background:#F3EAD3;color:#94722A}
+.mvbox{display:grid;gap:12px;padding:14px 16px;border-radius:18px;border:1px solid var(--line,#e3e6df);background:var(--surface,#fff);margin-bottom:14px}.mvbox b{display:block;font-stretch:72%;font-size:1.3rem;line-height:1.15;margin:2px 0}.mvf{display:grid;grid-template-columns:1fr 140px;gap:10px}
 .hx-k{font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gold,#E2C47C)}
 .hx-k2{display:block;font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--brass,#94722A)}
 .hx-k3{display:block;font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--brass,#94722A)}
@@ -549,7 +556,7 @@ const HOME_CSS = `
 .hx-date{display:flex;align-items:center;justify-content:center;gap:6px;margin:-4px 0 0;font-size:.86rem;color:rgba(242,245,240,.75)}
 .hx-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,1fr);position:relative}
 .hx-steps::before{content:"";position:absolute;left:8%;right:8%;top:15px;height:2px;background:rgba(255,255,255,.12)}
-.hx-steps li{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.hx-steps li{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;padding:0!important;text-align:center}
 .hx-steps i{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#0b2a21;border:2px solid rgba(255,255,255,.18);color:rgba(242,245,240,.55);transition:all .3s}
 .hx-steps .done i{background:var(--gold,#E2C47C);border-color:var(--gold,#E2C47C);color:#0b2a21}
 .hx-steps .doing i{border-color:rgba(226,196,124,.6);color:var(--gold,#E2C47C)}
@@ -735,9 +742,10 @@ function ligaLede(){
 }
 function ligaCalendar(){
   const nx=nextPoloFix(); let h=`<section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el ${esc(teamLabel())}</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
-  for(let j=1;j<=NJ();j++){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=fs[0];
+  const jOrder = ui.ligaAll? Array.from({length:NJ()},(_,i)=>i+1) : Array.from({length:NJ()},(_,i)=>i+1).sort((a,b)=>{ const fa=poloFix(a)||S.fixtures.find(f=>f.j===a), fb=poloFix(b)||S.fixtures.find(f=>f.j===b); return (fa&&fb? kickoff(fa)-kickoff(fb) : 0)||a-b; });
+  for(const j of jOrder){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=pf||fs[0]; if(!d) continue;
     if(!ui.ligaAll){ if(pf){ const p=persp(pf);
-        h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
+        h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h ${movedTag(pf)}</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
       } else h+=`<li><a class="jrow rest" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span class="vs">Descansa el Polo</span><span></span></a></li>`;
     } else h+=`<li style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="#jornada-${j}" style="text-decoration:none;display:flex;justify-content:space-between"><b>Jornada ${j}</b><span class="muted small">${esc(fdate(d,{weekday:'long',day:'numeric',month:'long'}))}</span></a>
       <table style="margin-top:4px"><tbody>${fs.map(f=>`<tr class="${f===pf?'us':''}"><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}${pf?'':'<tr><td class="muted">Descansa: Polo</td><td></td></tr>'}</tbody></table></li>`; }
@@ -758,7 +766,7 @@ function vJornada(j){
   if(!(j>=1&&j<=NJ())) return vNotFound();
   const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO);
   let h=`<div class="wrap"><div class="pagehead"><div class="row" style="justify-content:space-between"><a class="textlink" href="#calendario">Calendario</a><span class="row">${j>1?`<a class="chip" href="#jornada-${j-1}">J${j-1}</a>`:''}${j<NJ()?`<a class="chip" href="#jornada-${j+1}">J${j+1}</a>`:''}</span></div>
-    <h1 style="margin-top:14px">Jornada ${j}</h1><p class="lede">${esc(fdate(fs[0],{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}, ${esc(fs[0].time)} h</p></div>`;
+    <h1 style="margin-top:14px">Jornada ${j}</h1><p class="lede">${esc(fdate(poloFix(j)||fs[0],{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}, ${esc((poloFix(j)||fs[0]).time)} h ${movedTag(poloFix(j))}</p></div>`;
   if(!pf) h+=`<section class="sec"><div class="empty">El Polo descansa en esta jornada.</div></section>`;
   else { const p=persp(pf), c=cronica(j), t=tie(j);
     h+=`<section class="sec">${scoreboard(pf,true)}${c?`<p class="cronica">${esc(c.txt)}<small>Crónica generada a partir de los resultados confirmados.${c.partial?' Faltan los resultados individuales.':''}</small></p>`:''}</section>`;
@@ -1141,6 +1149,7 @@ function installCard(){
   return `<div class="mcard"><span class="mi">📲</span><div><b>Instala la app</b><small>En el menú del navegador elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</small></div></div>`;
 }
 function pushCard(){
+  if(!CFG.vapidKey) return isAdmin? `<div class="mcard"><span class="mi">🔔</span><div><b>Notificaciones sin configurar</b><small>Falta la clave vapidKey en config.js (Firebase, Cloud Messaging). Solo lo ves tú.</small></div></div>` : '';
   const st=pushState;
   if(st==='on') return `<div class="mcard ok"><span class="mi">🔔</span><div><b>Notificaciones activadas</b><small>Te avisaremos de la disponibilidad, la convocatoria y tu encuesta.</small></div><button class="btn ghost sm" data-act="push-test">Probar</button></div>`;
   if(st==='denied') return `<div class="mcard"><span class="mi">🔕</span><div><b>Notificaciones bloqueadas</b><small>Actívalas en los ajustes del navegador para esta web y vuelve a intentarlo.</small></div><button class="btn ghost sm" data-act="push-on">Reintentar</button></div>`;
@@ -1176,7 +1185,7 @@ function vYo(){
   <section class="sec"><div class="row" style="justify-content:flex-end;margin-bottom:-6px"><button class="btn sm ghost" data-act="tour-again">Ver la introducción</button></div><div class="roles"><span class="op-k">Tus perfiles</span><div class="role-list">
     <span class="role">Jugador${me&&player(me)? ' del '+esc(teamLabel()) : ''}</span>
     ${canManage? `<a class="role cap" href="#admin">Capitán${!isCaptain&&!isAdmin&&teamMode()? ' (todo el equipo gestiona)' : ''} <em>Gestión ›</em></a>` : ''}
-    ${canClub()? `<a class="role mgr" href="#club">Gestor deportivo <em>Gestión deportiva ›</em></a>` : ''}</div></div></section>
+    ${canClub()? `<a class="role mgr" href="#club">${isManager? 'Gestor deportivo' : 'Administrador'} <em>Gestión deportiva ›</em></a>` : ''}</div></div></section>
   <section class="sec"><a class="fcta big press" href="#mi-ficha">${avatar(p,'lg')}<span><b>Mi ficha de jugador</b><small>${(()=>{ const pc=fichaPct(me); return pc? pc+'% completada. ' : ''; })()}Foto, golpe favorito, jugador favorito, grito de guerra, ritual…</small><span class="fbar"><i style="width:${fichaPct(me)}%"></i></span></span><span class="btn brass sm">${fichaPct(me)?'Editar':'Empezar'}</span></a></section>
   <section class="sec"><div class="sec-h"><h2>Pendiente</h2></div>${tasks.length? `<div class="tasks stagger">${tasks.join('')}</div>` : '<div class="empty">Todo al día. Cuando haya disponibilidad que responder o una encuesta tuya, aparecerá aquí.</div>'}</section>
   <section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>
@@ -1235,7 +1244,7 @@ function vAdmin(){
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
     ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():t==='preguntas'?aPreguntas():aTemporadas()+`<div class="sec-h" style="margin-top:28px"><h2>Encuesta postpartido</h2></div>`+aPreguntas()}</div>`;
 }
-function jSelect(act,cur,onlyPolo=true){ return `<select data-act="${act}" style="max-width:360px">${Array.from({length:NJ()},(_,i)=>i+1).filter(j=>!onlyPolo||poloFix(j)).map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?'Polo contra '+team(f.away).short:team(f.home).short+' contra Polo')+', '+fdate(f):''}</option>`; }).join('')}</select>`; }
+function jSelect(act,cur,onlyPolo=true){ const js= onlyPolo? poloOrder() : Array.from({length:NJ()},(_,i)=>i+1); return `<select data-act="${act}" style="max-width:380px">${js.map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?'Polo contra '+team(f.away).short:team(f.home).short+' contra Polo')+', '+fdate(f)+(f.moved?.from&&f.moved.from!==f.date? (f.date<f.moved.from?' (adelantada)':' (aplazada)') : ''):''}</option>`; }).join('')}</select>`; }
 function adminJ(){ if(ui.adminJ && poloFix(ui.adminJ)) return ui.adminJ; const nx=nextPoloFix(); if(nx) return nx.j; const l=lastPoloPlayed(); if(l) return l.j; const f=S.fixtures.find(x=>x.home===POLO||x.away===POLO); return f? f.j : null; }
 /* ===================== MATCHDAY MANAGEMENT ===================== */
 function phases(j){
@@ -1271,6 +1280,7 @@ function aJornada(){
   const tabs=[['prep','Preparar'],['conv','Convocar'],['res','Resultados'],['post','Postpartido']], jt=ui.jTab==='disp'?'prep':ui.jTab;
   return `<section class="sec" style="padding-top:6px">
     <div class="mdhead"><div>${jSelect('admin-j',j)}<p class="mdtitle">${crest(p.rival)}<span>Polo contra ${esc(clubName(p.rival))}</span></p><p class="muted small" style="margin:0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'}. ${isPlayed(f)? 'Resultado: Polo '+p.ps+'-'+p.rs+(f.status==='official'?' (oficial)':' (provisional)') : countdown(f)}</p></div></div>
+    <div class="row" style="margin:12px 0 0"><button class="btn ghost" data-act="msg-open" data-j="${j}">${svgi('mega',16)} Mensaje al equipo</button></div>
     <div class="mdkpis stagger"><div><b>${a.yes.length}</b><span>disponibles</span></div><div class="${a.none.length?'warn':''}"><b>${a.none.length}</b><span>sin responder</span></div><div><b>${(t.convocados||[]).length}</b><span>convocados</span></div><div class="${pendRes&&(t.lineupPub||isPlayed(f))?'warn':''}"><b>${pendRes}</b><span>partidos sin resultado</span></div><div><b>${isPlayed(f)? agg.n+'/'+parts.length : '–'}</b><span>encuestas</span></div><div><b>${mvpState(j)? mvpVoteCount(jid(j)) : '–'}</b><span>votos MVP</span></div></div>
     <ol class="steps">${ph.map((x,i)=>`<li class="${x.st}"><button data-act="jtab" data-v="${x.k}"><span class="sn">${stIcon[x.st]||i+1}</span><span class="sl"><b>${x.l}</b><small>${stTxt[x.st]}. ${esc(x.d)}</small></span></button></li>`).join('')}</ol>
     <div class="nextcard"><div><span class="nk">Siguiente paso</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${na.b}</div></div>
@@ -1280,7 +1290,10 @@ function aJornada(){
 function aPrep(j){
   const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), topts=sel=>S.teams.filter(x=>x.id!==POLO).map(x=>`<option value="${x.id}" ${sel===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
   return `<section class="sec"><div class="split"><div><div class="sec-h"><h2>Datos de la eliminatoria</h2></div>
-    <div class="tfields"><label>Fecha<input type="date" id="pp-date" value="${f.date}"></label><label>Hora<input type="time" id="pp-time" value="${f.time}"></label>
+    <div class="mvbox"><div><span class="hx-k3">Fecha del partido</span><b>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</b>${movedTag(f)}<p class="muted small" style="margin:4px 0 0">¿Se adelanta o se aplaza? Cambia la fecha aquí, aunque sea otra jornada en el calendario: la app se reordena sola.</p></div>
+      <div class="mvf"><label>Nueva fecha<input type="date" id="pp-date" value="${f.date}"></label><label>Hora<input type="time" id="pp-time" value="${f.time}"></label></div>
+      <div class="row"><button class="btn brass" data-act="prep-save" data-j="${j}">Guardar fecha</button>${f.moved?.from&&f.moved.from!==f.date? `<button class="btn ghost sm" data-act="move-reset" data-j="${j}">Volver al ${esc(shortD(f.moved.from))}</button><a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📅 Cambio de fecha: la jornada ${j} contra ${clubName(p.rival)} se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'long'})} a las ${f.time} h (${p.home?'en casa':'fuera'}). Antes era el ${shortD(f.moved.from)}. Todo en la app: ${location.origin}/#jornada-${j}`)}">Avisar al equipo por WhatsApp</a>` : ''}</div></div>
+    <div class="tfields">
       <label>Rival<select id="pp-rival">${topts(p.rival)}</select></label><label>Dónde<select id="pp-home"><option value="1" ${p.home?'selected':''}>En casa</option><option value="0" ${!p.home?'selected':''}>Fuera</option></select></label></div>
     <div class="row" style="margin-top:14px"><button class="btn" data-act="prep-save" data-j="${j}">Guardar cambios</button>${t.calOk? '<span class="okmark">✓ Calendario confirmado</span>' : `<button class="btn brass" data-act="cal-ok" data-j="${j}">Confirmar calendario</button>`}</div>
     <p class="muted small">Al cambiar fecha u hora se actualizan solos el calendario, la portada, la página de la jornada, el plazo de disponibilidad y los mensajes. El resto de enfrentamientos de la liga se editan en «Liga y calendario».</p></div>
@@ -1529,7 +1542,7 @@ const teamCat = t => [t?.cat, (t?.gender||'').toLowerCase()].filter(Boolean).joi
 function aTemporadas(){
   const list=meta?.seasons?.length? meta.seasons : [SEASON_ID];
   const vars='{rival} {fecha} {hora} {lugar} {limite} {enlace} {enlaceJornada} {jornada} {pendientes} {nombre} {lista} {resultado} {jugadores} {enlaceEncuesta} {enlaceMvp} {limiteMvp} {cronica} {partidos}';
-  return `${isAdmin? `<section class="sec"><div class="sec-h"><h2>Quién gestiona</h2></div><div class="panel"><label class="row" style="gap:10px;flex-wrap:nowrap"><input type="checkbox" id="team-manage" ${teamMode()?'checked':''}> <span><b>Todo el equipo</b> puede gestionar jornadas, convocatorias, resultados, MVP, calendario, plantilla y fotos.<br><span class="muted small">Si lo desactivas, solo los capitanes marcados y los administradores. Las respuestas individuales de la encuesta y quién votó a quién siguen siendo privadas en ambos casos.</span></span></label><div class="row" style="margin-top:10px"><button class="btn sm" data-act="team-save">Guardar</button></div></div></section>` : ''}
+  return `${autoRemindPanel()}${isAdmin? `<section class="sec"><div class="sec-h"><h2>Quién gestiona</h2></div><div class="panel"><label class="row" style="gap:10px;flex-wrap:nowrap"><input type="checkbox" id="team-manage" ${teamMode()?'checked':''}> <span><b>Todo el equipo</b> puede gestionar jornadas, convocatorias, resultados, MVP, calendario, plantilla y fotos.<br><span class="muted small">Si lo desactivas, solo los capitanes marcados y los administradores. Las respuestas individuales de la encuesta y quién votó a quién siguen siendo privadas en ambos casos.</span></span></label><div class="row" style="margin-top:10px"><button class="btn sm" data-act="team-save">Guardar</button></div></div></section>` : ''}
   ${isAdmin? '' : '<!--'}<section class="sec"><div class="sec-h"><h2>Temporadas</h2></div>
     <table><tbody>${list.map(id=>`<tr><td><b>${esc(id)}</b>${id===currentSeason()?' <span class="tag">actual</span>':''}${id===viewSeason?' <span class="tag">viendo</span>':''}</td><td>${id!==viewSeason?`<button class="btn sm ghost" data-act="season-view" data-id="${esc(id)}">Ver</button>`:''} ${id!==currentSeason()?`<button class="btn sm ghost" data-act="season-current" data-id="${esc(id)}">Hacer actual</button>`:''}</td></tr>`).join('')}</tbody></table>
     <div class="panel" style="margin-top:16px"><b>Nueva temporada</b><p class="muted small" style="margin:4px 0 10px">Las temporadas anteriores se conservan enteras: resultados, disponibilidad, encuestas y MVP. La nueva copia plantilla y clubes; el calendario empieza vacío.</p>
@@ -1761,13 +1774,14 @@ function logSend(kind,j,extra){ const t=ensureTie(j), now=Date.now();
   saveState(kind==='req'?'Solicitud registrada':kind==='lineup'?'Anuncio registrado':'Recordatorio registrado'); }
 
 /* ===================== NOTIFICACIONES E INSTALACIÓN ===================== */
-async function notify(type,j){
+async function notify(type,j,extra){
   if(B.mode!=='firebase') return;
   try{ const tok=await B.idToken(); if(!tok) return;
-    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({type,season:viewSeason,j,origin:location.origin})});
-    if(r.status===501||r.status===404){ toast('Notificaciones aún no configuradas en Vercel: usa WhatsApp'); return; }
-    const d=await r.json().catch(()=>({})); if(r.ok) toast(d.recipients? `Notificación enviada: ${d.reached} de ${d.recipients} la tienen activada` : 'No hay destinatarios'); else toast('No se ha podido notificar: '+(d.error||r.status));
-  }catch(e){ console.warn('notify',e); }
+    const r=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({type,season:viewSeason,j,origin:location.origin,...(extra||{})})});
+    if(r.status===501||r.status===404){ toast('Notificaciones aún no configuradas en Vercel: usa WhatsApp'); return null; }
+    if(r.status===429){ toast('Espera unos segundos antes de enviar otro mensaje'); return null; }
+    const d=await r.json().catch(()=>({})); if(r.ok){ toast(d.recipients? `Notificación enviada: ${d.reached} de ${d.recipients} la tienen activada` : 'No hay destinatarios'); return d; } toast('No se ha podido notificar: '+(d.error||r.status)); return null;
+  }catch(e){ console.warn('notify',e); return null; }
 }
 function initPushState(){ try{ if(!('Notification' in window)) { pushState='off'; return; } pushState = Notification.permission==='denied'? 'denied' : (Notification.permission==='granted' && localStorage.getItem('polo-push')? 'on' : 'off'); }catch(e){ pushState='off'; } }
 async function enablePush(){
@@ -2667,11 +2681,11 @@ function slidesManager(){ return [
   {t:'Equipos y resultados', d:'Todos los equipos en tarjetas o en tabla, con su clasificación y próxima jornada.', w:'Gestión deportiva, Equipos', m:`<div class="dm-club">${EJ}${[['Absoluto Masculino A','2º','J4 vs CT Mirador'],['Absoluto Masculino B','5º','J4 vs Club Brisamar'],['Absoluto Femenino A','1º','J4 vs Tennis Atalaya'],['Veteranos +35','3º','J4 vs CT Sant Roc']].map(r=>`<div class="dm-team"><b>${r[0]}</b><em>${r[1]}</em><span>${r[2]}</span></div>`).join('')}</div>`},
   {t:'Documentación con IA', d:'Elige equipo, sube actas o listados, la IA los lee y tú validas.', w:'Gestión deportiva, Documentación', m:`<div class="dm-club">${EJ}${[['Acta jornada 3.pdf','Incorporado','ok'],['Listado jugadores.xlsx','Por revisar','mid'],['Orden de juego J4.jpg','Leyendo…','scan']].map(r=>`<div class="dm-docrow"><i>${svgi('list',14)}</i><b>${r[0]}</b><em class="${r[2]}">${r[1]}</em></div>`).join('')}</div>`},
   {t:'Informe del fin de semana', d:'Un botón genera el PDF profesional y lo envía por correo a los gestores.', w:'Gestión deportiva, Resumen', m:`<div class="dm-pdf">${EJ}<div class="dm-cover"><img src="${ASSET.crestSm}" alt=""><b>WEEKEND SPORTS REPORT</b><span>7–8 noviembre 2026</span></div><div class="dm-sent">${svgi('check',14,2.6)} Enviado a Albert con el PDF adjunto</div></div>`} ]; }
-function onbRoles(){ return [...(me? [['player','Jugador','Consulta tu jornada, tus estadísticas y tu equipo']] : []), ...(me&&canManage? [['captain','Capitán','Gestiona convocatorias, resultados y actas']] : []), ...(canClub()? [['manager','Gestor deportivo','Supervisa todos los equipos del club']] : [])]; }
+function onbRoles(){ return [...(me? [['player','Jugador','Consulta tu jornada, tus estadísticas y tu equipo']] : []), ...(me&&canManage? [['captain','Capitán','Gestiona convocatorias, resultados y actas']] : []), ...(canClub()? [['manager', isManager? 'Gestor deportivo' : 'Administrador', isManager? 'Supervisa todos los equipos del club' : 'Acceso completo, también a la gestión deportiva']] : [])]; }
 function onbSave(){ try{ const o=ui.onb; localStorage.setItem(onbKey(), JSON.stringify({stage:o.stage,i:o.i,step:o.step,roles:o.roles})); }catch(e){} }
 function startOnb(opts={}){ ensureOnbCss(); let st=null; try{ st=JSON.parse(localStorage.getItem(onbKey())||'null'); }catch(e){}
   const roles=onbRoles().map(r=>r[0]);
-  ui.onb = (!opts.force && st && st.stage && st.stage!=='tour')? {...st, roles:(st.roles||roles).filter(r=>roles.includes(r))} : {stage:'welcome', i:0, step:0, roles};
+  ui.onb = (!opts.force && st && st.stage && st.stage!=='tour')? {...st, roles} : {stage:'welcome', i:0, step:0, roles};
   drawOnb(); }
 const startTour = force => startOnb({force:true});
 function onbSlides(){ const R=ui.onb.roles||[]; return [...(R.includes('player')? slidesPlayer() : []), ...(R.includes('captain')? slidesCaptain() : []), ...(R.includes('manager')? slidesManager() : [])]; }
@@ -2696,7 +2710,7 @@ function drawOnb(){ const O=ui.onb; let el=document.getElementById('onb');
   let h='';
   if(O.stage==='welcome'){ const R=onbRoles();
     h=`<div class="ob-card ob-welcome"><div class="ob-wbg"></div><img class="ob-crest" src="${ASSET.crestSm}" alt=""><span class="hx-k">Real Club de Polo de Barcelona</span><h1>¡Bienvenido a Lliga Catalana${nm? ', '+esc(nm) : ''}!</h1><p>Todo lo que necesitas para vivir y gestionar la competición de tu equipo, en un solo lugar.</p>
-      ${R.length>1? `<div class="ob-roles"><span>Te enseñamos lo que puedes hacer como:</span>${R.map(([k,l,dd])=>`<button data-onb-role="${k}" aria-pressed="${O.roles.includes(k)}"><b>${l}</b><em>${dd}</em><i>${svgi('check',13,2.6)}</i></button>`).join('')}</div>` : R.length? `<div class="ob-roles one"><button aria-pressed="true" disabled><b>${R[0][1]}</b><em>${R[0][2]}</em></button></div>` : ''}
+      ${R.length? `<div class="ob-access"><span>Tu acceso</span><div>${R.map(([k,l])=>`<i class="${k}">${l}</i>`).join('')}</div></div>` : ''}
       <button class="btn brass big ob-cta" data-onb="discover">Descubrir la plataforma ${svgi('arrow',16)}</button><button class="ob-later" data-onb="skipall">Ahora no</button></div>`; }
   else if(O.stage==='tour'){ const S_=onbSlides(), n=S_.length, s=S_[Math.min(O.i,n-1)];
     h=`<div class="ob-card"><div class="ob-top"><div class="ob-prog"><i style="width:${Math.round((O.i+1)*100/n)}%"></i></div><button class="ob-skip" data-onb="skiptour">Saltar</button></div>
@@ -2709,13 +2723,15 @@ function drawOnb(){ const O=ui.onb; let el=document.getElementById('onb');
       <div class="ob-form">${profileStep(sk)}</div>
       <div class="ob-nav"><button class="btn ghost" data-onb="pprev" ${k? '' : 'disabled'}>Atrás</button><span class="ob-saved">${ui.fe?.dirty? 'Guardando…' : 'Guardado'}</span><button class="btn brass" data-onb="pnext">${k===PSTEPS.length-1? 'Terminar' : 'Siguiente'}</button></div></div>`; }
   else if(O.stage==='apps'){ h=appsStage(); }
-  else if(O.stage==='done'){ const p=player(me);
+  else if(O.stage==='done'){ onbMarkDone(); const p=player(me);
     h=`<div class="ob-card ob-done"><div class="ob-wbg"></div><div class="ob-burst">${photos[me]?.d? `<img src="${esc(photos[me].d)}" alt="">` : `<b>${esc((p?.name||'?').split(' ').map(x=>x[0]).slice(0,2).join(''))}</b>`}</div><h1>¡Tu perfil está listo!</h1><p>Ya formas parte de tu equipo. Ahora puedes empezar a utilizar Lliga Catalana.</p><button class="btn brass big ob-cta" data-onb="enter">Entrar en mi equipo ${svgi('arrow',16)}</button></div>`; }
   el.innerHTML=h; el.querySelector('.ob-cta, [data-onb="next"], [data-onb="pnext"]')?.focus({preventScroll:true});
 }
 function onbCycle(c){ const box=document.getElementById('dm-cycle'); if(!box) return; box.querySelectorAll('[data-cyc]').forEach(b=>b.classList.toggle('on',+b.dataset.cyc===c)); const body=box.querySelector('.dm-cbody'); body.innerHTML=cyclePane(c); body.classList.remove('dm-in'); void body.offsetWidth; body.classList.add('dm-in'); }
 function onbGo(d){ const O=ui.onb; if(!O||O.stage!=='tour') return; const n=onbSlides().length, i=O.i+d; if(i<0) return; if(i>=n){ return onbToProfile(); } O.i=i; drawOnb(); }
 function onbToProfile(){ const O=ui.onb; if(!me){ return onbFinish(); } O.stage='perfil'; O.step=0; drawOnb(); }
+function onbMarkDone(){ try{ localStorage.setItem(tourKey(), String(Date.now())); localStorage.removeItem(onbKey()); }catch(e){}
+  if(me && !profiles[me]?.tourAt){ const at=Date.now(); const ex=profiles[me]&&Object.keys(profiles[me]).length; (profiles[me] ||= {}).tourAt=at; (ex? B.update('profiles/'+me,{tourAt:at}) : B.set('profiles/'+me,{...profiles[me]})).catch(()=>{}); } }
 async function onbFinish(){ try{ if(ui.fe?.dirty) await feFlush(); }catch(e){} try{ localStorage.setItem(tourKey(), String(Date.now())); localStorage.removeItem(onbKey()); }catch(e){}
   if(me){ const at=Date.now(); const ex=profiles[me]&&Object.keys(profiles[me]).length; (profiles[me] ||= {}).tourAt=at; (ex? B.update('profiles/'+me,{tourAt:at}) : B.set('profiles/'+me,{...profiles[me]})).catch(()=>{}); }
   ui.onb=null; ui.tourSeen=true; drawOnb(); location.hash= me? 'inicio' : 'club'; setTimeout(()=>{ confetti(innerWidth/2,innerHeight/3,100); },350); }
@@ -2724,7 +2740,8 @@ function onbClick(e){ const O=ui.onb; if(!O) return; const r=e.target.closest('[
   const ch=e.target.closest('[data-onb-chip]'); if(ch){ initFe(); const k=ch.dataset.onbChip, v=ch.dataset.v; ui.fe.draft[k]= ui.fe.draft[k]===v? '' : v; ch.parentElement.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===ui.fe.draft[k]))); feQueue(); onbSavedLabel(); return; }
   const b=e.target.closest('[data-onb]'); if(!b) return; const a=b.dataset.onb;
   if(a==='discover'){ O.stage='spot'; O.i=0; drawOnb(); }
-  else if(a==='appsnext'||a==='appslater'){ if(a==='appslater'){ try{ localStorage.setItem('polo-nudge',String(Date.now()-4*864e5)); }catch(e){} } O.stage='done'; drawOnb(); } else if(a==='skipall'){ ui.onb=null; ui.tourSeen=true; drawOnb(); try{ localStorage.setItem(onbKey(), JSON.stringify({stage:'welcome',i:0,step:0,roles:O.roles,later:Date.now()})); }catch(e){} toast('Puedes ver la introducción cuando quieras desde Yo'); }
+  else if(a==='skipall'){ ui.onb=null; ui.tourSeen=true; drawOnb(); onbMarkDone(); toast('Puedes ver la introducción cuando quieras desde Yo'); }
+  else if(a==='appsnext'||a==='appslater'){ if(a==='appslater'){ try{ localStorage.setItem('polo-nudge',String(Date.now()-4*864e5)); }catch(e){} } O.stage='done'; drawOnb(); }
   else if(a==='next') onbGo(1); else if(a==='prev') onbGo(-1); else if(a==='skiptour') onbToProfile();
   else if(a==='pnext'){ if(O.step>=PSTEPS.length-1){ if(ui.fe?.dirty) feFlush(); O.stage='apps'; drawOnb(); } else { O.step++; drawOnb(); } }
   else if(a==='pprev'){ if(O.step>0){ O.step--; drawOnb(); } } else if(a==='pskip'){ if(ui.fe?.dirty) feFlush(); O.stage='apps'; drawOnb(); } else if(a==='enter') onbFinish(); }
@@ -2756,6 +2773,7 @@ body.tour-on{overflow:hidden}
 .ob-roles button i{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:2px solid rgba(255,255,255,.3);color:transparent}
 .ob-roles button[aria-pressed="true"]{border-color:#E2C47C;background:rgba(226,196,124,.12)}.ob-roles button[aria-pressed="true"] i{background:#E2C47C;border-color:#E2C47C;color:#0b2a21}
 .ob-roles.one button{padding-right:14px;cursor:default}
+.ob-access{position:relative;display:grid;gap:8px;justify-items:center;margin:0 0 20px}.ob-access>span{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:rgba(242,245,240,.6)}.ob-access div{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}.ob-access i{font-style:normal;font-weight:700;font-size:.86rem;padding:7px 13px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18)}.ob-access i.manager{background:rgba(226,196,124,.16);border-color:rgba(226,196,124,.5);color:#E2C47C}
 .ob-cta{position:relative;width:100%;justify-content:center;gap:8px;background:linear-gradient(180deg,#C9A24D,#94722A)!important;border-color:#94722A!important;color:#fff!important;box-shadow:0 14px 28px -14px rgba(201,162,77,.9)}
 .ob-later{position:relative;margin-top:10px;border:0;background:none;color:rgba(242,245,240,.6);font-weight:600;cursor:pointer}
 .ob-top{display:flex;align-items:center;gap:12px;padding:16px 18px 0}
@@ -2898,13 +2916,15 @@ function appsStage(){ const inst=isStandalone(), push=pushState;
     : installEvt? `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>Acceso directo, pantalla completa y más rápida.</span></div><button class="btn brass sm" data-act="install">Instalar</button></div>`
     : isIOS()? `<div class="ob-app"><i>📲</i><div><b>Instálala en el iPhone</b><span>En Safari pulsa <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</span></div></div>`
     : `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>En el menú del navegador, elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</span></div></div>`;
-  const pushBox = push==='on'? `<div class="ob-app ok"><i>${svgi('check',20,2.4)}</i><div><b>Notificaciones activadas</b><span>Te avisaremos de disponibilidad, convocatoria, encuesta y MVP.</span></div></div>`
+  const pushBox = !pushReady()? (isAdmin? `<div class="ob-app"><i>🔔</i><div><b>Notificaciones sin configurar</b><span>Solo lo ves tú (administrador): falta la clave vapidKey en config.js. Mientras tanto, el resto del equipo no verá esta opción.</span></div></div>` : '')
+    : push==='on'? `<div class="ob-app ok"><i>${svgi('check',20,2.4)}</i><div><b>Notificaciones activadas</b><span>Te avisaremos de disponibilidad, convocatoria, encuesta y MVP.</span></div></div>`
     : push==='denied'? `<div class="ob-app"><i>🔕</i><div><b>Notificaciones bloqueadas</b><span>Actívalas en los ajustes del navegador para esta web.</span></div><button class="btn ghost sm" data-act="push-on">Reintentar</button></div>`
     : `<div class="ob-app"><i>🔔</i><div><b>Activa las notificaciones</b><span>Disponibilidad, convocatoria, encuesta y MVP, directas al móvil.${isIOS()&&!inst? ' En iPhone, primero instala la app.' : ''}</span></div><button class="btn brass sm" data-act="push-on">Activar</button></div>`;
   return `<div class="ob-card"><div class="ob-txt" style="padding-top:22px"><span class="ob-n">Casi listo</span><h2>Llévala en el móvil</h2><p>Instálala y activa los avisos para no perderte ninguna convocatoria.</p></div><div class="ob-form" style="gap:10px">${instBox}${pushBox}</div>
     <div class="ob-nav"><button class="btn ghost" data-onb="appslater">Más tarde</button><span></span><button class="btn brass" data-onb="appsnext">Siguiente</button></div></div>`; }
 // ---- recordatorio en Inicio si quedó pendiente (se puede cerrar)
-function appsNudge(){ if(!me || ui.onb) return ''; const needI=!isStandalone(), needP=pushState!=='on'; if(!needI && !needP) return '';
+const pushReady = () => !!CFG.vapidKey;
+function appsNudge(){ if(!me || ui.onb) return ''; const needI=!isStandalone(), needP=pushState!=='on' && pushReady(); if(!needI && !needP) return '';
   try{ const d=+localStorage.getItem('polo-nudge')||0; if(Date.now()-d<5*864e5) return ''; }catch(e){}
   return `<section class="sec"><div class="nudge"><i>${needI? '📲' : '🔔'}</i><div><b>${needI&&needP? 'Instala la app y activa los avisos' : needI? 'Instala la app' : 'Activa las notificaciones'}</b><span>Para enterarte al momento de la convocatoria y la disponibilidad.</span></div><div class="row">${needI&&installEvt? '<button class="btn brass sm" data-act="install">Instalar</button>' : ''}${needP? '<button class="btn brass sm" data-act="push-on">Activar avisos</button>' : ''}${needI&&!installEvt? '<a class="btn ghost sm" href="#yo">Cómo instalar</a>' : ''}<button class="btn ghost sm" data-act="nudge-off" aria-label="Cerrar">✕</button></div></div></section>`; }
 const SPOT_CSS=`
@@ -2934,6 +2954,86 @@ const SPOT_CSS=`
 @media (max-width:560px){.nudge{grid-template-columns:42px 1fr}.nudge .row{grid-column:1 / -1;flex-wrap:wrap}}
 @media (prefers-reduced-motion: reduce){.sp-hole{animation:none;transition:none}.sp-tip,.sp-tip.in{animation:none;transition:none}}
 `;
+
+/* ===================== MENSAJE AL EQUIPO + RECORDATORIOS AUTOMÁTICOS ===================== */
+const MSG_AUD = {all:'Todos', pending:'Sin responder', convoked:'Convocados'};
+function msgAudience(j){ const t=tie(j)||blankTie(), a=availFor(j);
+  return { all:S.players.filter(p=>p.active!==false).map(p=>p.id), pending:a.none, convoked:[...new Set([...(t.convocados||[]),...(t.subs||[]),...(t.rubbers||[]).flatMap(r=>r.polo||[])])] }; }
+function msgTemplates(j){ const f=poloFix(j), p=persp(f), riv=clubName(p.rival), fd=fdate(f,{weekday:'long',day:'numeric',month:'long'}), where=p.home?'en casa':'fuera', mv=!!(f.moved?.from&&f.moved.from!==f.date);
+  return [
+    {k:'avail', l:'Pedir disponibilidad', aud:'pending', title:'Falta tu disponibilidad', text:`Falta tu respuesta para la jornada ${j} contra ${riv} (${fd}). Responde en la app, es un toque.`},
+    {k:'lineup', l:'Convocatoria', aud:'convoked', title:`Convocatoria, jornada ${j}`, text:`Convocatoria publicada para la jornada ${j} contra ${riv}. Mira tu partido en la app.`},
+    {k:'date', l: mv? 'Cambio de fecha' : 'Fecha y hora', aud:'all', title: mv? 'Cambio de fecha' : `Jornada ${j}: ${fd}`, text: mv? `Cambio de fecha: la jornada ${j} contra ${riv} ahora es el ${fd} a las ${f.time} h (${where}). Antes era el ${shortD(f.moved.from)}.` : `Jornada ${j} contra ${riv}: ${fd} a las ${f.time} h (${where}).`},
+    {k:'day', l:'Recordatorio del partido', aud:'convoked', title:`Jugamos contra ${riv}`, text:`Recordatorio: ${fd} a las ${f.time} h contra ${riv} (${where}). Llegad con tiempo para calentar.`},
+    {k:'free', l:'Mensaje libre', aud:'all', title:`Jornada ${j}: mensaje del capitán`, text:''} ]; }
+function msgOpen(j){ ensureMsgCss(); const T=msgTemplates(j), a=availFor(j); const first=(a.none.length && !deadlinePassed(j))? T[0] : T[4];
+  ui.msg={j, tpl:first.k, aud:first.aud, title:first.title, text:first.text, busy:false}; drawMsg(); }
+function msgClose(){ ui.msg=null; drawMsg(); }
+function drawMsg(){ const M=ui.msg; let el=document.getElementById('msgm');
+  if(!M){ if(el){ el.classList.add('out'); setTimeout(()=>el.remove(),220); } document.body.classList.remove('msg-on'); return; }
+  if(!el){ el=document.createElement('div'); el.id='msgm'; document.body.appendChild(el); document.body.classList.add('msg-on'); el.addEventListener('click',msgClick);
+    el.addEventListener('input',e=>{ if(e.target.id!=='mg-text'||!ui.msg) return; ui.msg.text=e.target.value; const c=el.querySelector('.mg-cnt'); if(c) c.textContent=e.target.value.length+'/220'; msgBtns(); }); }
+  const T=msgTemplates(M.j), au=msgAudience(M.j), p=persp(poloFix(M.j)), log=((tie(M.j)||{}).msgLog||[]).slice(-3).reverse();
+  el.innerHTML=`<div class="mg-back" data-mg="close"></div><div class="mg-sheet" role="dialog" aria-modal="true" aria-label="Mensaje al equipo">
+    <div class="mg-h"><div><b>Mensaje al equipo</b><span>Jornada ${M.j}, Polo contra ${esc(clubName(p.rival))}</span></div><button class="mg-x" data-mg="close" aria-label="Cerrar">✕</button></div>
+    <div class="mg-chips">${T.map(t=>`<button data-mg="tpl" data-k="${t.k}" aria-pressed="${t.k===M.tpl}">${esc(t.l)}</button>`).join('')}</div>
+    <div class="mg-aud"><span>Para</span>${Object.entries(MSG_AUD).map(([k,l])=>`<button data-mg="aud" data-k="${k}" aria-pressed="${k===M.aud}">${l}<em>${au[k].length}</em></button>`).join('')}</div>
+    <label class="mg-f"><span>Mensaje <i class="mg-cnt">${M.text.length}/220</i></span><textarea id="mg-text" rows="4" maxlength="220" placeholder="Escribe el mensaje para el equipo">${esc(M.text)}</textarea></label>
+    <div class="mg-btns"><button class="btn brass big" data-mg="push">${svgi('mega',17)} Enviar notificación a la app</button><button class="btn" data-mg="wa">Enviar por WhatsApp</button><button class="btn ghost" data-mg="copy">Copiar</button></div>
+    <p class="mg-note"><b>Notificación:</b> llega al móvil de quien la tenga activada. <b>WhatsApp:</b> se abre con el mensaje listo para que elijas el grupo y pulses enviar; WhatsApp no permite que una app escriba sola en un grupo.</p>
+    ${log.length? `<div class="mg-log"><span>Últimos mensajes</span>${log.map(m=>`<div><b>${esc(m.text.slice(0,80))}${m.text.length>80?'…':''}</b><small>${esc(MSG_AUD[m.aud]||'')}, ${m.ch==='push'? 'notificación'+(m.reached!=null? ' ('+m.reached+' de '+m.n+')' : '') : 'WhatsApp'}, ${relTime(m.at)}</small></div>`).join('')}</div>` : ''}</div>`;
+  msgBtns(); }
+function msgBtns(){ const M=ui.msg, el=document.getElementById('msgm'); if(!M||!el) return; const n=msgAudience(M.j)[M.aud].length, ok=M.text.trim().length>=3;
+  const b=el.querySelector('[data-mg=push]'); if(b){ b.disabled=M.busy||!ok||!n; b.title= !n? 'No hay nadie en este grupo' : !ok? 'Escribe el mensaje' : ''; }
+  ['wa','copy'].forEach(k=>{ const x=el.querySelector(`[data-mg=${k}]`); if(x) x.disabled=!ok; }); }
+function msgLogAdd(ch,d){ const M=ui.msg, t=ensureTie(M.j);
+  t.msgLog=[...(t.msgLog||[]),{at:Date.now(), by:(me&&player(me)?.name)||authUser?.email||'', aud:M.aud, ch, text:M.text.replace(/\s+/g,' ').trim().slice(0,220), n:msgAudience(M.j)[M.aud].length, ...(d&&d.reached!=null? {reached:d.reached} : {})}].slice(-30);
+  saveState(ch==='push'? 'Mensaje enviado' : 'Mensaje preparado'); }
+async function msgClick(e){ const M=ui.msg; if(!M) return; const b=e.target.closest('[data-mg]'); if(!b) return; const a=b.dataset.mg;
+  if(a==='close') return msgClose();
+  if(a==='tpl'){ const t=msgTemplates(M.j).find(x=>x.k===b.dataset.k); if(t){ Object.assign(M,{tpl:t.k,aud:t.aud,title:t.title,text:t.text}); drawMsg(); if(t.k==='free') document.getElementById('mg-text')?.focus(); } return; }
+  if(a==='aud'){ M.aud=b.dataset.k; drawMsg(); return; }
+  const text=M.text.trim(); if(text.length<3) return toast('Escribe el mensaje');
+  if(a==='copy'){ try{ await navigator.clipboard.writeText(text+'\n'+location.origin+'/#jornada-'+M.j); toast('Copiado'); }catch(err){ toast('No se ha podido copiar'); } return; }
+  if(a==='wa'){ waOpen(text+'\n\n'+location.origin+'/#jornada-'+M.j); msgLogAdd('wa'); msgClose(); return; }
+  if(a==='push'){ if(B.mode!=='firebase') return toast('En la vista previa no se envían notificaciones; funcionan en la app publicada. Para probar, usa WhatsApp.');
+    if(!msgAudience(M.j)[M.aud].length) return toast('No hay nadie en ese grupo');
+    M.busy=true; msgBtns(); const d=await notify('custom',M.j,{aud:M.aud,title:M.title,text:text.replace(/\s+/g,' ')}); if(!ui.msg) return; M.busy=false;
+    if(d){ msgLogAdd('push',d); msgClose(); } else msgBtns(); } }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && ui.msg) msgClose(); });
+function autoRemindPanel(){ ensureMsgCss(); const ar=S.rules.autoRemind||{}, on=!!ar.on, every=+ar.every||1, day=ar.dayBefore!==false;
+  return `<section class="sec"><div class="sec-h"><h2>Recordatorios automáticos</h2></div><div class="panel ar">
+    <div class="ar-top"><div><b>La app avisa sola al equipo</b><span class="muted small">Notificación al móvil, sin que el capitán tenga que acordarse.</span></div><label class="sw" aria-label="Activar recordatorios automáticos"><input type="checkbox" data-ar="on" ${on?'checked':''}><i></i></label></div>
+    <div class="ar-opts ${on?'':'off'}"><label class="ar-r"><span>Disponibilidad pendiente</span><select data-ar="every" ${on?'':'disabled'}>${[1,2,3].map(n=>`<option value="${n}" ${every===n?'selected':''}>${n===1?'Cada día':'Cada '+n+' días'}</option>`).join('')}</select></label>
+      <p class="muted small" style="margin:0 0 8px">Solo a quien no ha respondido, desde que se pide la disponibilidad hasta que se cierra o vence el plazo.</p>
+      <label class="ar-c"><input type="checkbox" data-ar="day" ${day?'checked':''} ${on?'':'disabled'}> Recordar a los convocados el día antes del partido</label></div>
+    <p class="muted small">Se envía una vez al día, a media tarde. Llega a quien tenga las notificaciones activadas; para el resto usa «Mensaje al equipo» por WhatsApp.</p>
+    ${CFG.vapidKey? '' : '<p class="notice">Faltan por configurar las notificaciones (clave vapidKey en config.js y FIREBASE_SERVICE_ACCOUNT en Vercel). Mientras tanto, esta opción no enviará nada.</p>'}
+    <div class="row"><button class="btn ghost sm" data-act="ar-now">Enviar ahora los recordatorios pendientes</button></div></div></section>`; }
+const MSG_CSS=`
+body.msg-on{overflow:hidden}
+#msgm{position:fixed;inset:0;z-index:230;display:grid;align-items:end;justify-items:center}
+#msgm.out{opacity:0;transition:opacity .22s}
+.mg-back{position:absolute;inset:0;background:rgba(5,20,15,.6);backdrop-filter:blur(4px);animation:mgfade .2s ease}
+.mg-sheet{position:relative;width:min(560px,100%);max-height:92dvh;overflow:auto;background:var(--surface,#fff);color:var(--ink,#13261F);border-radius:26px 26px 0 0;padding:18px 18px 22px;box-shadow:0 -24px 60px -30px rgba(0,0,0,.7);animation:mgup .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes mgup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}@keyframes mgfade{from{opacity:0}to{opacity:1}}
+@media (min-width:700px){#msgm{align-items:center}.mg-sheet{border-radius:26px}}
+.mg-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.mg-h b{display:block;font-stretch:72%;font-weight:750;font-size:1.45rem;line-height:1.05}.mg-h span{font-size:.82rem;color:var(--muted,#5b6b63)}
+.mg-x{border:0;background:var(--surface2,#eef0eb);width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:.9rem}
+.mg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.mg-chips button,.mg-aud button{border:1.5px solid var(--line,#e3e6df);background:var(--bg,#f4f5f1);border-radius:999px;padding:8px 13px;font-weight:600;font-size:.85rem;min-height:38px;cursor:pointer;color:inherit}
+.mg-chips button[aria-pressed="true"],.mg-aud button[aria-pressed="true"]{background:#13261F;border-color:#13261F;color:#fff;box-shadow:inset 0 0 0 2px #E2C47C}
+.mg-aud{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:12px}.mg-aud>span{font-size:.78rem;font-weight:700;color:var(--muted,#5b6b63);margin-right:2px}
+.mg-aud em{font-style:normal;font-size:.72rem;font-weight:800;margin-left:6px;opacity:.75}
+.mg-f{display:grid;gap:6px;margin-bottom:12px}.mg-f>span{display:flex;justify-content:space-between;font-size:.8rem;font-weight:700}.mg-f i{font-style:normal;font-weight:600;color:var(--muted,#5b6b63)}.mg-f textarea{font-size:1rem;width:100%}
+.mg-btns{display:grid;gap:8px;grid-template-columns:1fr 1fr}.mg-btns .big{grid-column:1 / -1;justify-content:center;gap:8px}.mg-btns .btn{justify-content:center}.mg-btns button:disabled{opacity:.45;cursor:not-allowed}
+.mg-note{font-size:.78rem;color:var(--muted,#5b6b63);line-height:1.45;margin:12px 0 0}
+.mg-log{margin-top:14px;border-top:1px solid var(--line,#e3e6df);padding-top:10px;display:grid;gap:8px}.mg-log>span{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#94722A}.mg-log b{display:block;font-size:.88rem;font-weight:600}.mg-log small{color:var(--muted,#5b6b63);font-size:.76rem}
+.ar-top{display:flex;justify-content:space-between;gap:14px;align-items:center}.ar-top b{display:block}
+.sw{position:relative;flex:none;width:52px;height:30px}.sw input{position:absolute;inset:0;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}.sw i{position:absolute;inset:0;border-radius:999px;background:#cfd6d1;transition:background .2s}.sw i::after{content:"";position:absolute;left:3px;top:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .2s}.sw input:checked+i{background:#1F7A4D}.sw input:checked+i::after{transform:translateX(22px)}
+.ar-opts{margin:14px 0 6px;padding-top:12px;border-top:1px solid var(--line,#e3e6df)}.ar-opts.off{opacity:.5}.ar-r{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;font-weight:600}.ar-r select{max-width:180px}.ar-c{display:flex;gap:8px;align-items:center;font-weight:600;font-size:.92rem}
+@media (prefers-reduced-motion: reduce){.mg-sheet,.mg-back{animation:none}}
+`;
+function ensureMsgCss(){ if(document.getElementById('msg-css')) return; const s=document.createElement('style'); s.id='msg-css'; s.textContent=MSG_CSS; document.head.appendChild(s); }
 
 /* ===================== ROUTER Y RENDER ===================== */
 const route = () => (location.hash||'#inicio').slice(1)||'inicio';
@@ -3088,6 +3188,13 @@ document.addEventListener('click', async e=>{
   else if(a==='team-open'){ switchTeam(el.dataset.t); location.hash='inicio'; }
   else if(a==='club-wk'){ const dd=+el.dataset.d; const base=ui.clubSat||ymd(weekendSat()); const x=new Date(base+'T12:00:00'); if(dd) x.setDate(x.getDate()+dd); ui.clubSat= dd? ymd(x) : ymd(weekendSat()); renderQuiet(); }
   else if(a==='club-print'){ window.print(); }
+  else if(a==='msg-open'){ msgOpen(+el.dataset.j); }
+  else if(a==='ar-now'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); el.disabled=true;
+    try{ const tok=await B.idToken(); const r=await fetch('/api/remind',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({season:viewSeason,origin:location.origin})});
+      if(r.status===501||r.status===404) toast('Aún no está configurado en Vercel (FIREBASE_SERVICE_ACCOUNT y CRON_SECRET)');
+      else { const d=await r.json().catch(()=>({})); if(!r.ok) toast('No se ha podido enviar: '+(d.error||r.status)); else { const rs=(d.results||[])[0]||{}, aa=(rs.availability||[]).map(x=>`J${x.j}: ${x.reached} de ${x.recipients}`), dd=(rs.dayBefore||[]).map(x=>`J${x.j}: ${x.reached} de ${x.recipients}`);
+        toast(d.avisos? `Enviado. Disponibilidad: ${aa.join(', ')||'nada pendiente'}. Día antes: ${dd.join(', ')||'nada que avisar'}.` : 'No había nada pendiente que recordar'); } }
+    }catch(err){ toast('No se ha podido enviar'); } el.disabled=false; }
   else if(a==='ob-finish'){ if(ui.fe?.dirty) await feFlush(); ui.onboard=false; location.hash='inicio'; setTimeout(()=>{ confetti(innerWidth/2,innerHeight/3,90); toast('¡Bienvenido al equipo! Ya está todo listo.'); },300); }
   else if(a==='tour-again'){ startOnb({force:true}); }
   else if(a==='nudge-off'){ try{ localStorage.setItem('polo-nudge',String(Date.now())); }catch(e){} renderQuiet(); }
@@ -3123,7 +3230,10 @@ document.addEventListener('click', async e=>{
   else if(a==='cal-ok'){ const t=ensureTie(+el.dataset.j); t.calOk=true; saveState('Calendario confirmado'); }
   else if(a==='prep-save'){ const j=+el.dataset.j, f=poloFix(j), rv=$('#pp-rival').value, home=$('#pp-home').value==='1', d=$('#pp-date').value, tm=$('#pp-time').value;
     const clash=S.fixtures.find(x=>x!==f && x.j===j && (x.home===rv||x.away===rv)); if(clash) return toast(clubName(rv)+' ya juega otro enfrentamiento en esta jornada');
-    f.home=home? POLO : rv; f.away=home? rv : POLO; if(d) f.date=d; if(tm) f.time=tm; saveState('Eliminatoria actualizada'); }
+    const old=f.date; f.home=home? POLO : rv; f.away=home? rv : POLO; if(tm) f.time=tm;
+    if(d && d!==old){ const orig=f.moved?.from||old; f.date=d; if(d===orig) delete f.moved; else f.moved={from:orig, at:Date.now(), by:(me&&player(me)?.name)||authUser?.email||''}; ui.adminJ=j; saveState(d<orig? 'Partido adelantado: la app se ha reordenado' : d>orig? 'Partido aplazado: la app se ha reordenado' : 'Vuelve a su fecha original'); }
+    else saveState('Eliminatoria actualizada'); }
+  else if(a==='move-reset'){ const f=poloFix(+el.dataset.j); if(f?.moved?.from){ f.date=f.moved.from; delete f.moved; saveState('Vuelve a su fecha original'); } }
   else if(a==='avail-close'){ const t=ensureTie(+el.dataset.j); if(availFor(+el.dataset.j).none.length && !confirm('Aún falta gente por responder. ¿Cerrar la disponibilidad igualmente?')) return; t.availClosed=true; t.availClosedAt=Date.now(); ui.jTab='disp'; saveState('Disponibilidad cerrada'); }
   else if(a==='avail-reopen'){ const t=ensureTie(+el.dataset.j); t.availClosed=false; saveState('Disponibilidad reabierta'); }
   else if(a==='go-compose'){ const j=+el.dataset.j, kind=el.dataset.kind; if(route()!=='admin'){ ui.adminTab='jornada'; ui.adminJ=j; ui.jTabSet=true; ui.jTabFor=j; ui.jTab='disp'; ui.composeAfter={kind,j,text:composeText(kind,j)}; location.hash='admin'; return; } ui.jTab='disp'; ui.compose={kind,j,text:composeText(kind,j)}; render(); setTimeout(()=>$('#compose-text')?.scrollIntoView({behavior:'smooth',block:'center'}),80); }
@@ -3234,6 +3344,7 @@ document.addEventListener('click', async e=>{
   else if(a==='demo-reset'){ if(confirm('¿Borrar todos los datos de la vista previa?')){ await B.reset(); location.reload(); } }
 });
 document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
+  if(el.dataset?.ar){ const ar={...(S.rules.autoRemind||{})}; if(el.dataset.ar==='on') ar.on=el.checked; else if(el.dataset.ar==='every') ar.every=+el.value; else if(el.dataset.ar==='day') ar.dayBefore=el.checked; S.rules={...S.rules,autoRemind:ar}; saveState(el.dataset.ar==='on'? (ar.on? 'Recordatorios automáticos activados' : 'Recordatorios automáticos desactivados') : 'Recordatorios actualizados'); return; }
   if(el.dataset?.actaFile){ const j=+el.dataset.actaFile, fl=el.files?.[0]; el.value=''; if(fl){ if(!/image|pdf/.test(fl.type) && !/\.(pdf|jpe?g|png|heic|webp)$/i.test(fl.name)) return toast('Sube una foto o un PDF del acta'); ui.acta=null; uploadDocs([fl],{kind:'acta', j}).then(()=>renderQuiet()); } return; }
   if(el.dataset?.actaRow!==undefined && ui.acta){ const r=ui.acta.rows[+el.dataset.actaRow], k=el.dataset.k; if(!r) return;
     if(k==='score'){ r.score=el.value.trim().replace(/\s+/g,' '); const c=rubberCalc({score:r.score}); if(c.res) r.winner=c.res==='W'?'polo':'rival'; }
