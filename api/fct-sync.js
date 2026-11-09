@@ -51,12 +51,10 @@ function syncRoster(S, list) {
   S.players = Array.isArray(S.players) ? S.players : []; S.comp = S.comp || {};
   const out = { added: 0, updated: 0 };
   const fromFct = !S.players.length || S.comp.fctRoster === true;
-  const byLic = l => S.players.find(p => p.lic && String(p.lic) === String(l));
-  const byName = n => { const a = norm(n); return S.players.find(p => norm(p.full) === a || (p.full && norm(p.full).split(' ').length >= 2 && a.startsWith(norm(p.full) + ' '))); };
   list.slice().sort((a, b) => (+a.posicion || 99) - (+b.posicion || 99)).forEach((x, i) => {
     const full = titleCase(x.nombreCompleto || ''); if (!full) return;
     const cat = String(x.codigoCategoriaNombre || '').trim(), pts = +x.puntos || 0, order = +x.posicion || i + 1;
-    let p = byLic(x.licencia) || byName(full);
+    let p = matchPlayer(S, x.licencia, full);
     if (p) { const before = JSON.stringify(p); if (x.licencia) p.lic = String(x.licencia); if (cat) p.cat = cat; p.pts = pts; if (fromFct) p.order = order; if (JSON.stringify(p) !== before) out.updated++; return; }
     if (!fromFct) return;
     const name = shortOf(full); let id = slug(name) || 'jugador'; while (S.players.some(q => q.id === id)) id += '-2';
@@ -67,6 +65,15 @@ function syncRoster(S, list) {
   return out;
 }
 
+// Reconoce a un jugador de la app: por licencia; por nombre completo; por nombre y primer apellido
+// («Pepe Vilar Prat» ↔ «Pepe Vilar»); o porque todas las palabras del nombre de la app están en el de la FCT
+function matchPlayer(S, lic, full) {
+  const ps = S.players || [], a = norm(full), at = a.split(' ');
+  return (lic && ps.find(x => x.lic && String(x.lic) === String(lic)))
+    || ps.find(x => norm(x.full) === a)
+    || ps.find(x => { const f = norm(x.full); return f && f.split(' ').length >= 2 && a.startsWith(f + ' '); })
+    || (() => { const c = ps.filter(x => { const w = norm(x.full || x.name).split(' ').filter(t => t.length > 1); return w.length >= 2 && w.every(t => at.includes(t)); }); return c.length === 1 ? c[0] : null; })();
+}
 // Acta de un partido: quién jugó cada individual y el dobles, con su marcador
 async function fctActa(partidoCode) {
   const r = await fetch(FCT_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'recuperarActaPartido', data: { codigo: +partidoCode } }) });
@@ -78,10 +85,10 @@ async function fctActa(partidoCode) {
 // Busca (o da de alta, si la plantilla viene de la FCT) al jugador del Polo que aparece en el acta
 function pidForFct(S, pl) {
   if (!pl || !pl.nombreCuadro) return null;
-  const lic = pl.licencia ? String(pl.licencia) : '', full = titleCase(pl.nombreCuadro), a = norm(full);
-  let p = (lic && S.players.find(x => x.lic && String(x.lic) === lic)) || S.players.find(x => norm(x.full) === a);
+  const lic = pl.licencia ? String(pl.licencia) : '', full = titleCase(pl.nombreCuadro);
+  const p = matchPlayer(S, lic, full);
   if (p) { if (lic && !p.lic) p.lic = lic; return p.id; }
-  if (!(S.comp && S.comp.fctRoster === true)) return null;
+  if (!(S.comp && S.comp.fctRoster === true)) { (S.__unmatched = S.__unmatched || new Set()).add(full); return null; }
   const name = shortOf(full); let id = slug(name) || 'jugador'; while (S.players.some(q => q.id === id)) id += '-2';
   S.players.push({ id, name, full, cat: String(pl.nombreCategoria || ''), pts: +pl.puntos || 0, order: S.players.length + 1, lic, captain: false, active: true, src: 'fct' });
   return id;
@@ -119,11 +126,19 @@ function syncActa(S, j, acta, poloCode) {
 }
 
 // Busca el equipo de la app que corresponde a un equipo de la FCT (por código guardado o por nombre)
-function teamFor(S, code, name, added) {
+function teamFor(S, code, name, added, poloCode) {
+  if (poloCode && +code === +poloCode) { const p = S.teams.find(x => x.id === POLO); if (p) { p.fct = code; return POLO; } }
   let t = S.teams.find(x => +x.fct === +code); if (t) return t.id;
-  if (/\bpolo\b/.test(norm(name))) { t = S.teams.find(x => x.id === POLO); if (t) { t.fct = code; return POLO; } }
+  if (!poloCode && /\bpolo\b/.test(norm(name))) { t = S.teams.find(x => x.id === POLO); if (t) { t.fct = code; return POLO; } }
+  // Otro equipo del Polo en el mismo grupo (p. ej. el B cuando este es el A): es un rival más
+  if (/\bpolo\b/.test(norm(name))) {
+    const L = (/-\s*([A-Z])\s*$/.exec(String(name)) || [])[1] || '';
+    let id = 'polo-' + (L.toLowerCase() || 'otro'); while (S.teams.some(x => x.id === id)) id += '-2';
+    S.teams.push({ id, name: ('RC de Polo ' + L).trim(), short: ('Polo ' + L).trim(), abbr: 'RCP' + L, fct: code }); added.push(('RC de Polo ' + L).trim());
+    return id;
+  }
   const a = toks(name); let best = null, bs = 0;
-  S.teams.forEach(x => { if (x.fct && +x.fct !== +code) return; const b = new Set([...toks(x.name), ...toks(x.short)]); const hit = a.filter(w => b.has(w)).length; const sc = hit / Math.max(a.length, 1); if (sc > bs) { bs = sc; best = x; } });
+  S.teams.forEach(x => { if (x.id === POLO || (x.fct && +x.fct !== +code)) return; const b = new Set([...toks(x.name), ...toks(x.short)]); const hit = a.filter(w => b.has(w)).length; const sc = hit / Math.max(a.length, 1); if (sc > bs) { bs = sc; best = x; } });
   if (best && bs >= 0.5) { best.fct = code; return best.id; }
   // Equipo nuevo: «Mas-Ram, CE» → «CE Mas-Ram»
   const [base, pre] = String(name).split(/,\s*/); const full = pre ? `${pre} ${base}` : base;
@@ -133,7 +148,7 @@ function teamFor(S, code, name, added) {
   return id;
 }
 
-function syncSeason(S, partidos) {
+function syncSeason(S, partidos, poloCode) {
   S.teams = Array.isArray(S.teams) ? S.teams : []; S.fixtures = Array.isArray(S.fixtures) ? S.fixtures : [];
   if (!S.teams.some(t => t.id === POLO)) S.teams.unshift({ id: POLO, name: 'RC de Polo', short: 'Polo', abbr: 'RCP' });
   const note = (f, what) => { f.hist = [...(f.hist || []), { at: Date.now(), by: 'FCT', what }].slice(-6); f.srcAt = Date.now(); };
@@ -143,7 +158,7 @@ function syncSeason(S, partidos) {
     const locCode = p.equipoLocal || p.codigoEquipo, visCode = p.equipoVisitante || p.codigoContrario;
     const locName = (+p.codigoEquipo === +locCode ? p.equipo : p.contrario)?.nombreCuadro || '';
     const visName = (+p.codigoEquipo === +locCode ? p.contrario : p.equipo)?.nombreCuadro || '';
-    const home = teamFor(S, locCode, locName, out.newTeams), away = teamFor(S, visCode, visName, out.newTeams);
+    const home = teamFor(S, locCode, locName, out.newTeams, poloCode), away = teamFor(S, visCode, visName, out.newTeams, poloCode);
     const date = ymd(p.fecha), time = /^\d{1,2}:\d{2}$/.test(p.hora || '') ? p.hora.padStart(5, '0') : '15:00';
     let f = S.fixtures.find(x => +x.j === j && ((x.home === home && x.away === away) || (x.home === away && x.away === home)));
     if (!f) { if (!date) continue; f = { j, date, time, home, away, hs: null, as: null, status: null }; S.fixtures.push(f); out.created++; }
@@ -178,6 +193,18 @@ function syncSeason(S, partidos) {
   return out;
 }
 
+// Código FCT del equipo del Polo en el grupo. Si hay varios (p. ej. +60 A y B en el mismo grupo),
+// manda comp.fctTeam; si no, la letra final del nombre del equipo en la app («… B» → «Polo, RC de - B»).
+function pickPoloCode(S, partidos) {
+  const seen = new Map();
+  partidos.forEach(p => { [[p.equipoLocal, p.equipoLocal === p.codigoEquipo ? p.equipo : p.contrario], [p.equipoVisitante, p.equipoVisitante === p.codigoEquipo ? p.equipo : p.contrario]].forEach(([c, e]) => { const n = (e && e.nombreCuadro) || ''; if (c && /\bpolo\b/.test(norm(n))) seen.set(+c, n); }); });
+  const comp = S.comp || {};
+  if (comp.fctTeam && seen.has(+comp.fctTeam)) return +comp.fctTeam;
+  if (seen.size <= 1) return seen.size ? [...seen.keys()][0] : null;
+  const m = /\b([A-Z])\s*$/.exec(String(comp.name || '').trim()), L = m ? m[1] : 'A';
+  for (const [c, n] of seen) if (new RegExp('-\\s*' + L + '\\s*$').test(n)) return c;
+  return null;
+}
 async function runSeason(db, id) {
   const ref = db.doc('seasons/' + id), snap = await ref.get(); if (!snap.exists) return { season: id, skipped: 'no-existe' };
   const S = snap.data(), group = +((S.comp || {}).fctGroup || KNOWN_GROUPS[id] || 0);
@@ -186,9 +213,10 @@ async function runSeason(db, id) {
   const partidos = await fctMatches(group);
   if (!partidos.length) return { season: id, group, skipped: 'grupo-vacio' };
   const before = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} });
-  const out = syncSeason(S, partidos);
+  const pc = pickPoloCode(S, partidos);
+  const out = syncSeason(S, partidos, pc);
   // Plantilla: con el código FCT del equipo del Polo en este grupo
-  const poloCode = (S.teams.find(t => t.id === POLO) || {}).fct;
+  const poloCode = pc || (S.teams.find(t => t.id === POLO) || {}).fct;
   if (poloCode && (S.comp || {}).fctRosterSync !== false) {
     try { out.roster = syncRoster(S, await fctRoster(poloCode)); } catch (e) { out.rosterError = e.message; }
   }
@@ -197,6 +225,8 @@ async function runSeason(db, id) {
     const mine = partidos.filter(p => (+p.equipoLocal === +poloCode || +p.equipoVisitante === +poloCode) && +p.codigoActa > 0);
     const acts = { loaded: [], manual: [] };
     for (const p of mine) { try { const st = syncActa(S, +p.jornada, await fctActa(p.codigo), poloCode); if (st === 'loaded') acts.loaded.push(+p.jornada); if (st === 'manual') acts.manual.push(+p.jornada); } catch (e) { (acts.errors = acts.errors || []).push(+p.jornada); } }
+    if (S.__unmatched && S.__unmatched.size) acts.unmatched = [...S.__unmatched].slice(0, 30);
+    delete S.__unmatched;
     out.actas = acts;
   }
   const changed = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} }) !== before;
@@ -235,4 +265,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports._test = { syncRoster, shortOf, syncSeason, syncActa, rubberFromFct };
+module.exports._test = { syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer };
