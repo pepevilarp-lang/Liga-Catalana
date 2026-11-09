@@ -749,7 +749,7 @@ function ligaCalendar(){
       } else h+=`<li><a class="jrow rest" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span class="vs">Descansa el Polo</span><span></span></a></li>`;
     } else h+=`<li style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="#jornada-${j}" style="text-decoration:none;display:flex;justify-content:space-between"><b>Jornada ${j}</b><span class="muted small">${esc(fdate(d,{weekday:'long',day:'numeric',month:'long'}))}</span></a>
       <table style="margin-top:4px"><tbody>${fs.map(f=>`<tr class="${f===pf?'us':''}"><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}${pf?'':'<tr><td class="muted">Descansa: Polo</td><td></td></tr>'}</tbody></table></li>`; }
-  return h+`</ul><p class="source">Fuente: calendario oficial FCT.</p></section>`;
+  return h+`</ul><p class="source">Fuente: calendario oficial FCT${fctAgo()? `, resultados actualizados ${esc(fctAgo())}` : ''}.</p></section>`;
 }
 function ligaTable(){
   const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos}));
@@ -1414,7 +1414,8 @@ function aResultadosManual(j){
   const popts=sel=>`<option value="">Elegir</option>`+order.map(id=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(pname(id))}</option>`).join('');
   const v=validateTie(t), tr=tieFromRubbers(j)||{}, fx=poloFix(j);
   const status = isPlayed(fx)? (fx.status==='official'? '<span class="badge ok">Oficial</span>' : '<span class="badge prov">Provisional, pendiente de validar</span>') : '<span class="badge">Sin resultado</span>';
-  return `<section class="sec"><div class="resbar"><div><span class="muted small">Eliminatoria</span><b>Polo ${tr.decided? tr.w+'-'+tr.l : (p.ps??'–')+'-'+(p.rs??'–')}</b></div><div>${status}</div></div>
+  const fctWarn = fx?.fctScore? `<div class="vbox warn" style="margin-bottom:12px">La FCT tiene un resultado distinto para esta jornada: <b>${esc(fx.home===POLO? fx.fctScore : fx.fctScore.split('-').reverse().join('-'))}</b> (marcador del Polo primero). Revisa el acta o avisa a la Federació.</div>` : '';
+  return `<section class="sec"><div class="resbar"><div><span class="muted small">Eliminatoria</span><b>Polo ${tr.decided? tr.w+'-'+tr.l : (p.ps??'–')+'-'+(p.rs??'–')}</b></div><div>${status}</div></div>${fctWarn}
     ${v.errors.length? `<div class="vbox err"><b>Corrige antes de guardar</b><ul>${v.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}${v.warnings.length? `<div class="vbox warn"><ul>${v.warnings.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
     <p class="muted small">Marcador desde el punto de vista del Polo, sets separados por espacios: <b>6-4 3-6 6-3</b>. El resultado se calcula solo; fuerza uno a mano para W.O. o abandono. Los jugadores vienen de la convocatoria; cámbialos si hubo cambios de última hora.</p>
     ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span>
@@ -1515,12 +1516,21 @@ function aPlantilla(){
     <div class="row" style="margin-top:14px"><button class="btn brass" data-act="players-save">Guardar plantilla</button></div>
     <div class="panel" style="margin-top:24px"><b>Añadir jugador</b><div class="row" style="margin-top:10px"><input type="text" id="np-name" placeholder="Nombre corto" style="max-width:200px"><input type="text" id="np-full" placeholder="Nombre completo" style="max-width:240px"><input type="text" id="np-cat" placeholder="Categoría" style="max-width:140px"><button class="btn sm" data-act="player-add">Añadir</button></div></div></section>`;
 }
+const FCT_GROUPS={'2026-27':4622,'2026-27-polo-a':4622,'2026-27-polo-b':4621,'2026-27-fem-a':4599};
+const fctDefaultGroup = () => FCT_GROUPS[SEASON_PATH.split('/')[1]]||null;
+function fctAgo(){ const L=S.fctLast; return L?.at? relTime(L.at) : null; }
+function fctPanel(){ const L=S.fctLast, has=S.comp.fctGroup||fctDefaultGroup();
+  return `<section class="sec"><div class="sec-h"><h2>Resultados de la FCT</h2></div><div class="panel"><p class="muted small" style="margin:0 0 10px">Cada noche la app consulta el portal de la Federació (grupo ${esc(String(has||'sin configurar'))}) y copia los resultados de toda la liga y los cambios de fecha. Acta cerrada en la FCT = oficial; si no, provisional. Los resultados del Polo que ya hayáis puesto no se cambian: si no coinciden, se avisa.</p>
+    ${L? `<p class="small" style="margin:0 0 10px">Última consulta ${esc(fctAgo())}: ${L.results||0} resultados y ${L.dates||0} fechas actualizadas${L.diffs?.length? `. <b>La FCT tiene otro resultado en la jornada ${L.diffs.map(x=>x.j).join(', ')}</b>` : ''}.</p>` : ''}
+    <button class="btn ghost sm" data-act="fct-sync" ${has?'':'disabled'}>Actualizar ahora desde la FCT</button></div></section>`; }
 function aCalendario(){
   const j=ui.calJ || currentJ() || 1, fs=S.fixtures.filter(f=>f.j===j), topts=sel=>S.teams.map(t=>`<option value="${t.id}" ${sel===t.id?'selected':''}>${esc(t.short)}</option>`).join('');
   const js=[...new Set(S.fixtures.map(f=>f.j))].sort((a,b)=>a-b);
   return `<section class="sec"><div class="sec-h"><h2>Competición</h2></div>
     <label class="f">Nombre</label><input type="text" id="c-name" value="${esc(S.comp.name)}"><label class="f">Grupo</label><input type="text" id="c-group" value="${esc(S.comp.group)}"><label class="f">Memorial o subtítulo</label><input type="text" id="c-mem" value="${esc(S.comp.memorial||'')}">
+    <label class="f">Código del grupo en la FCT</label><input type="text" inputmode="numeric" id="c-fct" value="${esc(String(S.comp.fctGroup||fctDefaultGroup()||''))}" placeholder="Por ejemplo, 4622" style="max-width:160px">
     <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="comp-save">Guardar competición</button></div></section>
+  ${fctPanel()}
   <section class="sec"><div class="sec-h"><h2>Clubes</h2></div><div id="tlist">${S.teams.map(t=>`<div class="qedit" data-id="${t.id}" style="grid-template-columns:1fr 1fr 90px 40px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre del club"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="abbr" value="${esc(t.abbr)}" aria-label="Siglas">${t.id===POLO?'<span></span>':`<button class="iconbtn" data-act="team-del" data-id="${t.id}" aria-label="Quitar club">✕</button>`}</div>`).join('')}</div>
     <div class="row" style="margin-top:12px"><button class="btn brass sm" data-act="teams-save">Guardar clubes</button><input type="text" id="nt-name" placeholder="Nuevo club" style="max-width:220px"><button class="btn sm ghost" data-act="team-add">Añadir club</button></div></section>
   <section class="sec"><div class="sec-h"><h2>Calendario y resultados</h2></div>
@@ -3309,7 +3319,14 @@ document.addEventListener('click', async e=>{
   else if(a==='crop-close') closeCropper();
   else if(a==='crop-save') saveCrop();
   else if(a==='photo-del'){ const t=el.dataset.target; if(!confirm('¿Quitar la foto?')) return; delete photos[t]; renderQuiet(); await safe(()=>B.del('photos/'+t),'Foto quitada'); }
-  else if(a==='comp-save'){ S.comp={name:$('#c-name').value.trim()||S.comp.name, group:$('#c-group').value.trim(), memorial:$('#c-mem').value.trim()}; saveState('Competición guardada'); }
+  else if(a==='comp-save'){ const g=$('#c-fct')?.value.replace(/\D/g,''); S.comp={...S.comp, name:$('#c-name').value.trim()||S.comp.name, group:$('#c-group').value.trim(), memorial:$('#c-mem').value.trim(), fctGroup: g? +g : null}; saveState('Competición guardada'); }
+  else if(a==='fct-sync'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); el.disabled=true; const t0=el.textContent; el.textContent='Consultando la FCT…';
+    try{ const tok=await B.idToken(); const r=await fetch('/api/fct-sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({season:SEASON_PATH.split('/')[1]})});
+      if(r.status===501) toast('Falta configurar FIREBASE_SERVICE_ACCOUNT en Vercel');
+      else { const d=await r.json().catch(()=>({})); const x=(d.results||[])[0]||{};
+        if(!r.ok) toast('No se ha podido actualizar: '+(d.error||r.status)); else if(x.error) toast('FCT: '+x.error); else if(x.skipped==='sin-grupo-fct') toast('Pon primero el código del grupo FCT y guarda');
+        else toast(x.changed? `Actualizado: ${x.results} resultados, ${x.dates} cambios de fecha${x.created? ', '+x.created+' partidos nuevos':''}${x.diffs?.length? '. Ojo: '+x.diffs.length+' diferencia con tu resultado':''}` : 'Todo al día: no había nada nuevo en la FCT'); } }
+    catch(e){ toast('No se ha podido actualizar'); } el.disabled=false; el.textContent=t0; }
   else if(a==='team-add'){ const n=$('#nt-name').value.trim(); if(!n) return toast('Escribe el nombre del club'); let id=slug(n); while(S.teams.find(t=>t.id===id)) id+='-2'; S.teams.push({id,name:n,short:n,abbr:n.split(/\s+/).map(w=>w[0]).join('').slice(0,4).toUpperCase()}); saveState(n+' añadido'); }
   else if(a==='team-del'){ const id=el.dataset.id; if(S.fixtures.some(f=>f.home===id||f.away===id)) return toast('Quita antes sus enfrentamientos del calendario'); S.teams=S.teams.filter(t=>t.id!==id); saveState('Club quitado'); }
   else if(a==='jornada-add'){ const n=NJ()+1, last=S.fixtures.filter(f=>f.j===NJ())[0]; let d=new Date(); if(last){ d=new Date(last.date+'T12:00:00'); d.setDate(d.getDate()+7); } const others=S.teams.filter(t=>t.id!==POLO);
