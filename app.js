@@ -20,16 +20,18 @@ const CONFIG_HINT='Revisa <b>config.js</b>: los seis valores deben ser exactamen
    ========================================================= */
 const SEASON_ID = '2026-27';
 // Equipos del club. Polo A conserva su ruta original (seasons/2026-27); el resto: seasons/<temporada>-<equipo>
-const DEFAULT_CLUB_TEAMS=[{id:'polo-a',name:'Absoluto Masculino A',short:'Polo A',cat:'Absoluto',gender:'Masculino'},{id:'polo-b',name:'Absoluto Masculino B',short:'Polo B',cat:'Absoluto',gender:'Masculino'},{id:'fem-a',name:'Absoluto Femenino A',short:'Femenino A',cat:'Absoluto',gender:'Femenino'}];
-let teamId=(()=>{ try{ return localStorage.getItem('polo-team')||'polo-a'; }catch(e){ return 'polo-a'; } })();
-const docIdFor=(tid,season)=> tid==='polo-a'? season : season+'-'+tid;
+const CLUB = window.CLUB || {name:'Club', medium:'Club', short:'Club', teamShort:'Club', abbr:'CLB', fileTag:'CLUB', crest:'', crestSm:'', teams:[], fctGroups:{}};   // identidad del club: club-config.js
+const DEFAULT_CLUB_TEAMS=CLUB.teams;
+const MAIN_TEAM = (CLUB.teams[0]||{}).id || 'polo-a';   // su temporada conserva la ruta original (seasons/2026-27)
+let teamId=(()=>{ try{ return localStorage.getItem('polo-team')||MAIN_TEAM; }catch(e){ return MAIN_TEAM; } })();
+const docIdFor=(tid,season)=> tid===MAIN_TEAM? season : season+'-'+tid;
 let SEASON_PATH = 'seasons/' + docIdFor(teamId, SEASON_ID);
 let viewSeason = SEASON_ID;
 const POLO = 'polo';
 const COMP = { name:'13a Lliga Catalana Absolut i Sènior per Equips', group:'Absolut masculino, Barcelona, Divisió 1', memorial:'Memorial Carlos Punzano' };
 
 const TEAMS0 = [
-  {id:'polo',      name:'RC de Polo',            short:'Polo',            abbr:'RCP'},
+  {id:'polo',      name:CLUB.short,              short:CLUB.teamShort,    abbr:CLUB.abbr},
   {id:'masram',    name:'CE Mas-Ram',            short:'Mas-Ram',         abbr:'MR'},
   {id:'pompeia',   name:'RST Pompeia',           short:'Pompeia',         abbr:'RSTP'},
   {id:'turo',      name:'Club Turò David Lloyd', short:'Turò David Lloyd',abbr:'TDL'},
@@ -438,7 +440,7 @@ function scoreboard(f, big=false){
   return `<a class="board ${big?'big':''}" href="#jornada-${f.j}">
     <div class="board-top"><b>Jornada ${f.j}</b><span>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</span><span>${status}</span></div>
     <div class="board-grid"><span></span>${RUBBERS.map(R=>`<span class="board-h">${R.type==='D'?'D':R.n}</span>`).join('')}<span class="board-h">Total</span>${rows}</div>
-    <div class="board-foot"><span>${p.home? 'En casa, Real Club de Polo' : 'Fuera, en las pistas del '+esc(clubName(p.rival))}</span><span>${big?'':'Ver jornada'}</span></div></a>`;
+    <div class="board-foot"><span>${p.home? 'En casa, '+esc(CLUB.medium) : 'Fuera, en las pistas del '+esc(clubName(p.rival))}</span><span>${big?'':'Ver jornada'}</span></div></a>`;
 }
 function courtSVG(){ return `<svg class="court" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g fill="none" stroke="#E2C47C" stroke-opacity=".32" stroke-width="1"><rect x="60" y="30" width="280" height="240"/><rect x="85" y="30" width="230" height="240"/><path d="M85 95h230M85 205h230M200 95v110"/><path d="M60 150h280"/></g></svg>`; }
 const titleLetters = t => [...t].map((c,i)=>c===' '?' ':`<span style="--i:${i}">${esc(c)}</span>`).join('');
@@ -649,11 +651,11 @@ function checkCssVersion(){ if(ui.cssChecked) return; ui.cssChecked=true; try{ c
 
 function vInicio(){
   const nx=nextPoloFix(), last=lastPoloPlayed(), st=standings(), mine=st.find(r=>r.id===POLO), ts=teamStats();
-  const photo = `${courtSVG()}<span class="ball" aria-hidden="true"></span>${photos._team?.d?`<div class="hero-media"><img src="${esc(photos._team.d)}" alt="Equipo masculino absoluto del Real Club de Polo"></div>`:''}`;
+  const photo = `${courtSVG()}<span class="ball" aria-hidden="true"></span>${photos._team?.d?`<div class="hero-media"><img src="${esc(photos._team.d)}" alt="Equipo del ${esc(CLUB.medium)}"></div>`:''}`;
   let h=`<section class="hero">${photo}<div class="wrap hero-in">
     <p class="hero-comp">${esc(S.comp.name)}, ${esc(S.comp.group)}</p>
     <h1 class="hero-title" aria-label="${esc(teamLabel())}">${titleLetters(teamLabel())}</h1>
-    <p class="hero-sub">Real Club de Polo de Barcelona, temporada ${esc(S.seasonId||viewSeason)}</p>
+    <p class="hero-sub">${esc(CLUB.name)}, temporada ${esc(S.seasonId||viewSeason)}</p>
     ${nx? scoreboard(nx) : ''}</div></section><div class="wrap">`;
   // 1) capitán: centro de operaciones  2) tareas del jugador  3) su próxima jornada  4) resultados  5) clasificación  6) sus números  7) actividad
   ui.homeMyj=true; const co=callouts(nx); ui.homeMyj=false;
@@ -949,8 +951,16 @@ function vStats(){
   const tabs=[['equipo','Equipo'],['jugadores','Jugadores'],['mvp','MVP'],['disponibilidad','Disponibilidad'],['rankings','Rankings'],['records','Récords']];
   let h=`<div class="wrap"><div class="pagehead"><h1>Estadísticas</h1><p class="lede">Calculadas con los resultados introducidos. Las encuestas solo alimentan los rankings de votos.</p></div>
   <div class="chips" style="margin-top:18px">${tabs.map(([k,l])=>`<button class="chip" data-act="stats-tab" data-v="${k}" aria-pressed="${ui.statsTab===k}">${l}</button>`).join('')}</div>`;
+  const emp=statsEmpty(); if(emp) return h.replace('<div class="chips"', emp+'<div class="chips"')+`</div>`;
   return h+(ui.statsTab==='equipo'?statsEquipo():ui.statsTab==='jugadores'?statsJugadores():ui.statsTab==='disponibilidad'?statsDisponibilidad():ui.statsTab==='mvp'?`<section class="sec">${mvpRanking(false)}</section>${statsMvpHistory()}`:ui.statsTab==='rankings'?statsRankings():statsRecords())+`</div>`;
 }
+// Inicio de temporada: sin resultados todavía, en lugar de gráficos vacíos se explica cuándo aparecerán
+function statsEmpty(){ const mine=S.fixtures.filter(f=>f.home===POLO||f.away===POLO); if(mine.some(isPlayed)) return '';
+  const nx=mine.filter(f=>!isPlayed(f)).sort((a,b)=>String(a.date).localeCompare(String(b.date))||a.j-b.j)[0];
+  const list=(meta?.seasons||[]).filter(x=>x!==viewSeason).sort(), prev=list.filter(x=>x<viewSeason).pop();
+  const when= nx? `Aparecerán tras la jornada ${nx.j}, ${esc(fdate(nx,{weekday:'long',day:'numeric',month:'long'}))}, contra ${esc(clubName(persp(nx).rival))}.` : 'Aparecerán en cuanto se cargue el calendario y se juegue la primera jornada.';
+  return `<section class="sec"><div class="notice" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between"><div><b>La temporada ${esc(viewSeason)} aún no ha empezado.</b><br><span class="small">${when} Todo se calcula solo con los resultados.</span></div>
+    ${prev? `<button class="btn ghost sm" data-act="season-view" data-id="${esc(prev)}">Ver la temporada ${esc(prev)}</button>` : ''}</div></section>`; }
 function statsEquipo(){
   const ts=teamStats(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos}));
   let h=`<section class="sec"><div class="figs stagger"><div class="fig"><b>${ts.tw}-${ts.tl}</b><span>eliminatorias</span></div><div class="fig"><b>${ts.rw+ts.rl? count(pct(ts.rw,ts.rw+ts.rl),'%'):'–'}</b><span>partidos ganados (${ts.rw}-${ts.rl})</span></div><div class="fig"><b>${ts.sw}-${ts.sl}</b><span>sets</span></div><div class="fig"><b>${ts.dbl.w}-${ts.dbl.l}</b><span>dobles decisivos</span></div></div>
@@ -1230,9 +1240,9 @@ function surveyCard(){
 /* ---------------- Puerta de acceso ---------------- */
 function vLogin(){
   return `<div class="gatebox">${courtSVG()}<span class="ball" aria-hidden="true"></span><div class="inner">
-    <img class="gate-crest" src="${ASSET.crest}" alt="Real Club de Polo de Barcelona">
+    <img class="gate-crest" src="${ASSET.crest}" alt="${esc(CLUB.name)}">
     <p class="hero-comp">${esc(S.comp.name)}, ${esc(S.comp.group)}</p><h1 class="hero-title" aria-label="${esc(teamLabel())}">${titleLetters(teamLabel())}</h1>
-    <p class="hero-sub">${route().startsWith('disponibilidad-')? 'Entra para decir si puedes jugar la jornada '+esc(route().slice(15))+'.' : 'La app privada del equipo masculino absoluto del Real Club de Polo de Barcelona.'}</p>
+    <p class="hero-sub">${route().startsWith('disponibilidad-')? 'Entra para decir si puedes jugar la jornada '+esc(route().slice(15))+'.' : 'La app privada de los equipos del '+esc(CLUB.name)+'.'}</p>
     <button class="gbtn" data-act="signin"><svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Entrar con Google</button>
     <p class="small" style="color:var(--onGreenMuted);margin-top:14px">Después eliges tu nombre de la lista del equipo. Solo se hace una vez: tu nombre queda ligado a tu Gmail en cualquier dispositivo.</p></div></div>`;
 }
@@ -1546,7 +1556,7 @@ function aPlantilla(){
     <div class="row" style="margin-top:14px"><button class="btn brass" data-act="players-save">Guardar plantilla</button></div>
     <div class="panel" style="margin-top:24px"><b>Añadir jugador</b><div class="row" style="margin-top:10px"><input type="text" id="np-name" placeholder="Nombre corto" style="max-width:200px"><input type="text" id="np-full" placeholder="Nombre completo" style="max-width:240px"><input type="text" id="np-cat" placeholder="Categoría" style="max-width:140px"><button class="btn sm" data-act="player-add">Añadir</button></div></div></section>`;
 }
-const FCT_GROUPS={'2026-27':4622,'2026-27-polo-a':4622,'2026-27-polo-b':4621,'2026-27-fem-a':4599};
+const FCT_GROUPS=CLUB.fctGroups||{};
 const fctDefaultGroup = () => FCT_GROUPS[SEASON_PATH.split('/')[1]]||null;
 function fctAgo(){ const L=S.fctLast; return L?.at? relTime(L.at) : null; }
 function fctPanel(){ const L=S.fctLast, has=S.comp.fctGroup||fctDefaultGroup();
@@ -1673,7 +1683,7 @@ function present(j,i){
   const avs = pls.length? pls.map(x=>avatar(x, pls.length>1?'lg':'xl')).join('') : avatar(null,'xl');
   st.innerHTML=`<div class="beam l"></div><div class="beam r"></div><button class="x" data-act="stage-close">Cerrar</button>
     <div class="ribbon">${RUBBERS[i].label}, jornada ${j}. ${p.home?'En casa':'Fuera'}, ${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}</div>
-    <div class="versus"><div class="vside l"><span class="ghost">${esc(ghost)}</span><span class="duo" style="justify-content:center">${avs}</span><span class="nm">${esc(leftName)}</span><span class="meta"><img src="${ASSET.crestSm}" alt="" style="height:22px;vertical-align:-6px;margin-right:6px">Real Club de Polo${pls.length===1?', nº '+pls[0].order:''}</span></div>
+    <div class="versus"><div class="vside l"><span class="ghost">${esc(ghost)}</span><span class="duo" style="justify-content:center">${avs}</span><span class="nm">${esc(leftName)}</span><span class="meta"><img src="${ASSET.crestSm}" alt="" style="height:22px;vertical-align:-6px;margin-right:6px">${esc(CLUB.medium)}${pls.length===1?', nº '+pls[0].order:''}</span></div>
       <div class="vside r"><span class="ghost">${esc(team(p.rival).short)}</span>${crest(p.rival,'lg')}<span class="nm">${esc(team(p.rival).short)}</span><span class="meta">${esc(clubName(p.rival))}</span></div>
       <span class="vs">VS</span><span class="wave"></span><span class="wave w2"></span></div><div class="flash"></div>
     <div class="tape">${c.res?`<p style="text-align:center;font-stretch:62%;font-weight:800;font-size:2rem;margin:0 0 14px">${c.sets.map(s=>s.join('-')).join('  ')} ${resBadge(c.res)}</p>`:''}
@@ -1870,7 +1880,7 @@ if('serviceWorker' in navigator && B.mode==='firebase' && location.protocol==='h
 initPushState();
 
 /* ===================== INTRO: THE BALL OPENS THE GAME ===================== */
-const ASSET = { ball:'img/ball.webp', crest:'img/escudo.webp', crestSm:'img/escudo-sm.webp', court:'img/court.jpg', felt:'img/felt.jpg', fuzz:'img/fuzz.webp' };
+const ASSET = { ball:'img/ball.webp', crest:CLUB.crest||'img/escudo.webp', crestSm:CLUB.crestSm||'img/escudo-sm.webp', court:'img/court.jpg', felt:'img/felt.jpg', fuzz:'img/fuzz.webp' };
 function introSeen(){ try{ return sessionStorage.getItem('polo-intro')==='1'; }catch(e){ return false; } }
 function preload(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.onerror=()=>r(null); i.src=src; if(i.complete&&i.naturalWidth) r(i); }); }
 async function playIntro(){
@@ -1988,7 +1998,7 @@ function tieState(d,f){ return withS(d,()=>{ const p=persp(f), tr=tieFromRubbers
   let st = p.played? (p.ps>p.rs?'win':'loss') : future? 'next' : 'pending';
   return {p, rival:clubName(p.rival), st, confirm: p.played && f.status!=='official', singles, dbl, partial: !p.played && tr.decided>0}; }); }
 const ST_LABEL={win:'Victoria',loss:'Derrota',pending:'Pendiente de resultado',next:'Programada'};
-const CLUB_TABS=[['club','Inicio','M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],['club-equipos','Equipos','M8 8a3.5 3.5 0 1 0 0-.01M2.5 20c.8-3.6 3.3-5.5 5.5-5.5s4.7 1.9 5.5 5.5M16 7a3 3 0 1 0 0-.01M15 14c2.6 0 5 1.6 6.5 5'],['club-docs','Documentación','M6 2h9l5 5v15H6zM14 2v6h6'],['club-resumen','Resumen','M4 20V10M10 20V4M16 20v-7M22 20H2'],['club-ajustes','Configuración','M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6']];
+const CLUB_TABS=[['club','Inicio','M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],['club-equipos','Equipos','M8 8a3.5 3.5 0 1 0 0-.01M2.5 20c.8-3.6 3.3-5.5 5.5-5.5s4.7 1.9 5.5 5.5M16 7a3 3 0 1 0 0-.01M15 14c2.6 0 5 1.6 6.5 5'],['club-fct','Federació','M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4'],['club-docs','Documentación','M6 2h9l5 5v15H6zM14 2v6h6'],['club-resumen','Resumen','M4 20V10M10 20V4M16 20v-7M22 20H2'],['club-ajustes','Configuración','M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6']];
 const clubRouteKey = r => String(r||'').replace(/^club-doc-.*/,'club-docs').replace(/^club-equipo-.*/,'club-equipos');
 // Dentro de la gestión deportiva, la barra superior (y la inferior en el móvil) muestra SUS apartados, no los del equipo
 function setNavMode(club){
@@ -1996,9 +2006,9 @@ function setNavMode(club){
   if(!ui.navOrig) ui.navOrig={top:top.innerHTML, bar:bar.innerHTML};
   if(club && !ui.navClub){ ui.navClub=true;
     top.innerHTML=CLUB_TABS.map(([k,l])=>`<a href="#${k}" data-club="${k}">${l}</a>`).join('');
-    bar.innerHTML=CLUB_TABS.map(([k,l,d])=>`<a href="#${k}" data-club="${k}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>${l==='Documentación'?'Docs':l==='Configuración'?'Ajustes':l}</a>`).join(''); }
+    bar.innerHTML=CLUB_TABS.map(([k,l,d])=>`<a href="#${k}" data-club="${k}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>${l==='Documentación'?'Docs':l==='Configuración'?'Ajustes':l==='Federació'?'FCT':l}</a>`).join(''); }
   else if(!club && ui.navClub){ ui.navClub=false; top.innerHTML=ui.navOrig.top; bar.innerHTML=ui.navOrig.bar; }
-  if(club){ const k=clubRouteKey(route()); document.querySelectorAll('[data-club]').forEach(a=>a.dataset.club===k? a.setAttribute('aria-current','page') : a.removeAttribute('aria-current')); }
+  if(club){ const k=clubRouteKey(route()), fr=fctOverview().rev>0; document.querySelectorAll('[data-club]').forEach(a=>{ a.dataset.club===k? a.setAttribute('aria-current','page') : a.removeAttribute('aria-current'); if(a.dataset.club==='club-fct') a.classList.toggle('has-dot',fr); }); }
 }
 function clubNav(){ return ''; }
 function clubWeekRows(){
@@ -2016,6 +2026,11 @@ function clubAttention(){ const out=[], today=ymd(new Date()), lim=ymd(new Date(
     d.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&f.date<today&&f.date>=lim).forEach(f=>{ const s=tieState(d,f);
       if(s.st==='pending') out.push({lvl:'warn', t:`${t.short}, jornada ${f.j} contra ${s.rival}: sin resultado`, href:'#club-equipo-'+t.id});
       else if(s.confirm) out.push({lvl:'info', t:`${t.short}, jornada ${f.j}: resultado ${s.p.ps}-${s.p.rs} pendiente de validar`, href:'#club-equipo-'+t.id}); });
+    const fi=fctTeamInfo(t), L=fi.L, un=L?.actas?.unmatched?.length||0;
+    if(d.fctError && (!L || d.fctError.at>L.at)) out.push({lvl:'warn', t:`${t.short}: la sincronización con la FCT ha fallado (${d.fctError.msg})`, href:'#club-fct'});
+    if(fi.k.rev) out.push({lvl:'warn', t:`${t.short}: la FCT tiene datos distintos en ${fi.k.rev} ${fi.k.rev===1?'partido':'partidos'}`, href:'#club-fct'});
+    if(un) out.push({lvl:'info', t:`${t.short}: ${un} ${un===1?'jugador de las actas no está':'jugadores de las actas no están'} en la plantilla`, href:'#club-fct'});
+    if(fi.grp && (!L || Date.now()-L.at>36*3600e3)) out.push({lvl:'info', t:`${t.short}: ${L? 'sin sincronizar con la FCT desde '+relTime(L.at) : 'aún no se ha sincronizado con la FCT'}`, href:'#club-fct'});
     const rv=Object.values(clubDocs[t.id]||{}).filter(x=>x.status==='revision'||x.status==='error').length;
     if(rv) out.push({lvl:'info', t:`${t.short}: ${rv} ${rv===1?'documento':'documentos'} por revisar`, href:'#club-docs', tid:t.id, go:'docs'}); });
   return out.sort((a,b)=>(a.lvl==='warn'?0:1)-(b.lvl==='warn'?0:1)); }
@@ -2027,7 +2042,8 @@ function vClub(){
   const fmt=d=>d.toLocaleDateString('es-ES',{day:'numeric',month:'long'});
   const cats=[...new Set(all.map(t=>t.cat).filter(Boolean))];
   const next=all.map(t=>{ const d=clubData[t.id]; if(!d) return null; const f=d.fixtures.filter(x=>(x.home===POLO||x.away===POLO)&&!isPlayed(x)&&x.date>=ymd(new Date())).sort((a,b)=>a.date.localeCompare(b.date))[0]; return f? {t,d,f} : null; }).filter(Boolean);
-  return `<div class="wrap club"><div class="pagehead"><p class="qsec">Real Club de Polo de Barcelona</p><h1>Inicio</h1><p class="lede">Todos los equipos del club en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
+  return `<div class="wrap club"><div class="pagehead"><p class="qsec">${esc(CLUB.name)}</p><h1>Inicio</h1><p class="lede">Todos los equipos del club en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
+  ${fctHero()}
   
   <section class="sec"><div class="wknav"><button class="btn ghost sm" data-act="club-wk" data-d="-7" aria-label="Fin de semana anterior">‹</button><div><span class="muted small">Fin de semana</span><b>${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}</b></div><button class="btn ghost sm" data-act="club-wk" data-d="7" aria-label="Fin de semana siguiente">›</button>
     <input type="date" data-act="club-date" value="${W.sat}" aria-label="Elegir fecha" style="max-width:170px"><button class="btn ghost sm" data-act="club-wk" data-d="0">Último</button></div>
@@ -2039,7 +2055,7 @@ function vClub(){
   <section class="sec"><div class="sec-h"><h2>Equipos del fin de semana</h2><a href="#club-resumen">Resumen para imprimir</a></div>
     ${rows.length? `<div class="ccards stagger">${rows.map(({t,d,f,s})=>`<a class="ccard ${s.st}" href="#club-equipo-${esc(t.id)}">
       <span class="cc-top"><b>${esc(t.name)}</b><small>${esc(teamCat(t))}</small></span>
-      <span class="cc-vs">${crest(POLO,'sm')} Real Club de Polo <i>contra</i> ${esc(s.rival)}</span>
+      <span class="cc-vs">${crest(POLO,'sm')} ${esc(CLUB.medium)} <i>contra</i> ${esc(s.rival)}</span>
       <span class="cc-date">Jornada ${f.j}, ${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${s.p.home?'en casa':'fuera'}</span>
       <span class="cc-res">${s.p.played? `Polo ${s.p.ps}-${s.p.rs}` : s.partial? 'En curso' : '–'}</span>
       <span class="cc-badges"><span class="ccb ${s.st}">${ST_LABEL[s.st]}</span>${s.confirm?'<span class="ccb confirm">Pendiente de confirmar</span>':''}</span>
@@ -2077,8 +2093,8 @@ function vClubEquipos(){
         <span class="cc-res">${me_.pj? me_.pos+'º' : '–'}<small> ${me_.pts||0} pts</small></span><span class="cc-meta">${r.n} jugadores. Eliminatorias ${ts.tw}-${ts.tl}, partidos ${ts.rw}-${ts.rl}.</span><span class="cc-badges"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></span></a>`; }).join('')}</div>`;
   const table=`<table class="eqtable"><thead><tr>${th('name','Equipo')}${th('cat','Categoría')}<th>Capitán</th>${th('n','Jugadores')}${th('next','Próxima jornada')}${th('act','Actividad')}</tr></thead><tbody>
     ${rows.map(r=>`<tr data-href="#club-equipo-${esc(r.t.id)}"><td data-l="Equipo"><a href="#club-equipo-${esc(r.t.id)}"><b>${esc(r.t.name)}</b></a></td><td data-l="Categoría">${esc(teamCat(r.t))||'–'}</td><td data-l="Capitán">${esc(r.caps)||'<span class="muted">Sin asignar</span>'}</td><td data-l="Jugadores">${r.n}</td><td data-l="Próxima jornada">${esc(r.nextTxt)}</td><td data-l="Actividad"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></td></tr>`).join('')}</tbody></table>`;
-  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del Real Club de Polo en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
-    <section class="sec">${filters}<div style="margin-top:12px">${view==='table'? table : cards}</div></section>${fctCenter()}</div>`;
+  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del ${esc(CLUB.medium)} en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
+    <section class="sec">${filters}<div style="margin-top:12px">${view==='table'? table : cards}</div></section>${fctHero()}</div>`;
 }
 
 function vClubTeam(tid){
@@ -2145,7 +2161,7 @@ async function reportFacts(sat){
   const sum=k=>out.reduce((a,x)=>{ const [w,l]=x.fin_de_semana[k].split('-').map(Number); return [a[0]+w,a[1]+l]; },[0,0]);
   const tot={equipos:out.length, victorias:out.filter(x=>x.estado==='victoria').length, derrotas:out.filter(x=>x.estado==='derrota').length, empates:0, pendientes:out.filter(x=>x.estado==='pendiente').length,
     sin_validar:out.filter(x=>x.pendientes.sin_validar).length, individuales:sum('individuales').join('-'), dobles:sum('dobles').join('-')};
-  return {club:'Real Club de Polo de Barcelona', temporada:viewSeason, fin_de_semana:weekendLabel(rg), sat, totales:tot, equipos:out, proximo_fin_de_semana:{fechas:weekendLabel(rn), eliminatorias:next}, documentacion_pendiente:docsPend};
+  return {club:CLUB.name, temporada:viewSeason, fin_de_semana:weekendLabel(rg), sat, totales:tot, equipos:out, proximo_fin_de_semana:{fechas:weekendLabel(rn), eliminatorias:next}, documentacion_pendiente:docsPend};
 }
 // ---- textos de respaldo si la IA no está disponible: solo datos, sin interpretación
 function factualTexts(F){ const T=F.totales;
@@ -2156,91 +2172,7 @@ function factualTexts(F){ const T=F.totales;
   return r; }
 // ---- PDF
 async function crestPng(h=300){ const im=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=ASSET.crest||ASSET.crestSm; }); const c=document.createElement('canvas'); const k=h/im.height; c.width=Math.round(im.width*k); c.height=h; c.getContext('2d').drawImage(im,0,0,c.width,c.height); return c.toDataURL('image/png'); }
-function buildReportDoc(F, A, crest, meta_){
-  const T=F.totales, gen=new Date().toLocaleString('es-ES',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  const H=(num,title)=>[{text:'SECCIÓN '+num,style:'kicker',margin:[0,0,0,2]},{text:title,style:'h1'},{canvas:[{type:'line',x1:0,y1:0,x2:60,y2:0,lineWidth:2,lineColor:RC.gold}],margin:[0,4,0,14]}];
-  const tbl=(head,rows,widths)=>({table:{headerRows:1,dontBreakRows:true,widths:widths||head.map(()=>'*'),body:[head.map(h=>({text:h,style:'th'})),...rows.map(r=>r.map(c=>typeof c==='object'?c:{text:String(c??'–'),style:'td'}))]},layout:{hLineWidth:(i,n)=>i===0||i===1||i===n.table.body.length?0.8:0.4,vLineWidth:()=>0,hLineColor:i=>i<=1?RC.navy:RC.line,paddingTop:()=>5,paddingBottom:()=>5,paddingLeft:()=>4,paddingRight:()=>4,fillColor:(i)=>i===0?RC.soft:null},margin:[0,0,0,12]});
-  const kv=rows=>({table:{widths:[120,'*'],body:rows.map(([k,v])=>[{text:k,style:'k'},{text:v??'–',style:'v'}])},layout:{hLineWidth:()=>0.4,vLineWidth:()=>0,hLineColor:()=>RC.line,paddingTop:()=>4,paddingBottom:()=>4},margin:[0,0,0,12]});
-  const kpi=(n,l,c)=>({stack:[{text:String(n),fontSize:24,bold:true,color:c||RC.navy},{text:l.toUpperCase(),fontSize:7,color:RC.grey,characterSpacing:.6}],margin:[0,6,0,6]});
-  const resTxt=x=>x.resultado? `${x.estado==='victoria'?'Victoria':'Derrota'} ${x.resultado}` : 'Pendiente';
-  const valTxt=x=>!x.resultado? 'Sin resultado' : x.validado? 'Validado (oficial)' : 'Pendiente de validación';
-  // gráfico discreto: barras horizontales de individuales y dobles ganados/perdidos por equipo
-  const chart=()=>{ if(!F.equipos.length) return {text:''}; const W=470, rowH=26, L=150, scale=(W-L-40)/Math.max(5,...F.equipos.map(x=>{ const [a,b]=x.fin_de_semana.individuales.split('-').map(Number); const [c,d]=x.fin_de_semana.dobles.split('-').map(Number); return a+b+c+d; }));
-    const cv=[], txt=[]; F.equipos.forEach((x,i)=>{ const y=i*rowH; const [sw,sl]=x.fin_de_semana.individuales.split('-').map(Number), [dw,dl]=x.fin_de_semana.dobles.split('-').map(Number); let X=L;
-      [[sw,RC.navy],[sl,RC.crimson],[dw,'#5B7BB0'],[dl,'#D98C9A']].forEach(([n,c])=>{ if(n){ cv.push({type:'rect',x:X,y:y+6,w:n*scale-2,h:12,color:c}); X+=n*scale; } }); });
-    return {stack:[{canvas:cv,absolutePosition:undefined},
-      {columns:[{width:L,stack:F.equipos.map(x=>({text:x.equipo,fontSize:8.5,color:RC.ink,margin:[0,0,0,0],lineHeight:1,height:rowH,marginBottom:rowH-10}))},{text:''}],relativePosition:{x:0,y:-F.equipos.length*rowH+2}},
-      {text:[{text:'Individuales ganados',color:RC.navy,bold:true},'   ',{text:'Individuales perdidos',color:RC.crimson,bold:true},'   ',{text:'Dobles ganados',color:'#5B7BB0',bold:true},'   ',{text:'Dobles perdidos',color:'#D98C9A',bold:true}],fontSize:7.5,margin:[0,6,0,14]}]}; };
-  const c=[];
-  // PORTADA (fondo azul marino en el background)
-  c.push({stack:[{image:crest,width:118,alignment:'center',margin:[0,86,0,34]},
-    {text:'WEEKEND SPORTS REPORT',alignment:'center',color:'#FFFFFF',fontSize:26,bold:true,characterSpacing:4},
-    {canvas:[{type:'line',x1:200,y1:0,x2:299,y2:0,lineWidth:1.5,lineColor:RC.gold}],margin:[0,16,0,16]},
-    {text:'Real Club de Polo de Barcelona',alignment:'center',color:'#FFFFFF',fontSize:15},
-    {text:F.fin_de_semana,alignment:'center',color:RC.gold,fontSize:13,bold:true,margin:[0,22,0,4]},
-    {text:`Temporada ${F.temporada}`,alignment:'center',color:'#C9D2E0',fontSize:10.5},
-    {text:'Lliga Catalana de Tennis per Equips',alignment:'center',color:'#C9D2E0',fontSize:10.5,margin:[0,2,0,0]},
-    {text:'DOCUMENTO INTERNO',alignment:'center',color:'#C9D2E0',fontSize:8,characterSpacing:2,margin:[0,140,0,4]},
-    {text:`Generado el ${gen}`,alignment:'center',color:'#8FA0BA',fontSize:8}],pageBreak:'after'});
-  // 01 RESUMEN EJECUTIVO
-  c.push(...H('01','Resumen ejecutivo'));
-  c.push({columns:[kpi(T.equipos,'Equipos'),kpi(T.victorias,'Victorias',RC.win),kpi(T.derrotas,'Derrotas',RC.crimson),kpi(T.pendientes,'Pendientes'),kpi(T.sin_validar,'Por validar',RC.gold)],margin:[0,0,0,6]});
-  c.push({columns:[kv([['Individuales',T.individuales+' (ganados-perdidos)']]),kv([['Dobles',T.dobles+' (ganados-perdidos)']])],columnGap:20});
-  c.push({text:A.resumen_ejecutivo||'',style:'p'});
-  if(A.conclusiones?.length) c.push({text:'Conclusiones',style:'h3'},{ul:A.conclusiones.map(x=>({text:x,style:'li'})),margin:[0,0,0,12]});
-  if(F.equipos.length) c.push({text:'Partidos por equipo',style:'h3'},chart());
-  c.push({text:A._ia? 'Textos de resumen y conclusiones redactados con IA a partir exclusivamente de los datos registrados.' : 'Textos generados directamente a partir de los datos registrados.',style:'note'});
-  // 02 FICHAS DE EQUIPO
-  F.equipos.forEach((x,i)=>{ c.push({text:'',pageBreak:'before'}); if(i===0) c.push(...H('02','Resultados por equipo'));
-    c.push({table:{widths:['*'],body:[[{stack:[{text:x.equipo,color:'#fff',fontSize:15,bold:true},{text:x.categoria,color:'#C9D2E0',fontSize:9}],fillColor:RC.navy,margin:[10,8,10,8]}]]},layout:'noBorders',margin:[0,0,0,10]});
-    c.push(kv([['Capitán',x.capitan||'Sin asignar'],['Rival',`${x.rival} (${x.casa?'en casa':'fuera'})`],['Fecha y jornada',`Jornada ${x.jornada}, ${x.fecha}, ${x.hora} h`],['Resultado global',resTxt(x)],['Estado del resultado',valTxt(x)]]));
-    const jug=[...new Set([...x.individuales,...x.dobles].flatMap(m=>m.jugadores))];
-    c.push({text:'Jugadores participantes',style:'h3'},{text:jug.length? jug.join(', ') : (x.convocados.length? 'Convocados: '+x.convocados.join(', ') : 'Sin jugadores registrados.'),style:'p'});
-    c.push({text:'Individuales',style:'h3'}, x.individuales.length? tbl(['Orden','Jugador','Marcador','Resultado'],x.individuales.map(m=>[m.n,m.jugadores.join(', ')||'–',m.marcador||'–',m.resultado+(m.nota?` (${m.nota})`:'')]),[40,'*',90,90]) : {text:'Sin partidos individuales registrados.',style:'p'});
-    c.push({text:'Dobles',style:'h3'}, x.dobles.length? tbl(['Pareja','Marcador','Resultado'],x.dobles.map(m=>[m.jugadores.join(' y ')||'–',m.marcador||'–',m.resultado+(m.nota?` (${m.nota})`:'')]),['*',90,90]) : {text:'No se jugó dobles o no está registrado.',style:'p'});
-    if(x.clasificacion){ c.push({unbreakable:true,stack:[{text:'Clasificación actual',style:'h3'},{text:`${x.clasificacion.posicion}º de ${x.clasificacion.equipos}, ${x.clasificacion.puntos} puntos tras ${x.clasificacion.jugadas} ${x.clasificacion.jugadas===1?'jornada':'jornadas'}.`,style:'p'},
-      tbl(['Pos.','Club','PJ','Pts'],x.clasificacion.tabla.map(r=>[{text:r.pos,style:'td',bold:r.nuestro},{text:r.club,style:'td',bold:r.nuestro},{text:r.pj,style:'td'},{text:r.pts,style:'td',bold:r.nuestro}]),[34,'*',34,40])]}); }
-    if(x.evolucion.length) c.push({text:'Evolución en la clasificación',style:'h3'},{text:x.evolucion.map(e=>`J${e.j}: ${e.pos}º`).join('     '),style:'p'});
-  });
-  // 03 INFORME DE LOS CAPITANES
-  c.push({text:'',pageBreak:'before'},...H('03','Informe del capitán'));
-  if(!F.equipos.length) c.push({text:'Sin eliminatorias este fin de semana.',style:'p'});
-  F.equipos.forEach(x=>{ const r=x.informe_capitan; const blk=[{text:x.equipo,style:'h2'}];
-    if(!r) blk.push({text:'El capitán no ha completado el informe postpartido.',style:'p',italics:true,color:RC.crimson});
-    else { if(A.sintesis_capitan?.[x.equipo]) blk.push({text:[{text:'Síntesis. ',bold:true},A.sintesis_capitan[x.equipo]],style:'p'},{text:'Redactada con IA a partir de las respuestas del capitán; no añade valoraciones propias.',style:'note',margin:[0,-6,0,8]});
-      blk.push(kv([['Nota de la jornada',r.nota? r.nota+' / 10':'–'],...CAP_FIELDS.map(([k,l])=>[l, r[k]||'Sin respuesta'])]),{text:`Informe de ${x.informe_por||'el capitán'}.`,style:'note'}); }
-    c.push({stack:blk,unbreakable:!r||Object.keys(r).length<5,margin:[0,0,0,10]}); });
-  // 04 ANÁLISIS Y MEJORAS
-  c.push({text:'',pageBreak:'before'},...H('04','Análisis y mejoras'));
-  c.push({text:'Rendimiento deportivo (datos objetivos)',style:'h3'});
-  c.push(F.equipos.length? tbl(['Equipo','Ind. fin de semana','Dob. fin de semana','Jugadores','Ind. temporada','Dob. temporada','Eliminatorias','Racha'],F.equipos.map(x=>[x.equipo,x.fin_de_semana.individuales,x.fin_de_semana.dobles,x.fin_de_semana.jugadores_utilizados,x.temporada.individuales,x.temporada.dobles,x.temporada.eliminatorias,x.temporada.racha||'Pocos datos']),['*',46,46,40,46,46,48,62]) : {text:'Sin datos.',style:'p'});
-  c.push({text:'Individuales y dobles se cuentan por separado (ganados-perdidos). La racha solo se indica con tres o más eliminatorias jugadas.',style:'note'});
-  const evos=F.equipos.filter(x=>x.evolucion.length);
-  c.push({text:'Evolución de los equipos',style:'h3'},{text: evos.length? '' : 'Aún no hay jornadas suficientes para mostrar una evolución.',style:'p'});
-  if(evos.length) c.push(tbl(['Equipo','Posición por jornada'],evos.map(x=>[x.equipo,x.evolucion.map(e=>`J${e.j}: ${e.pos}º`).join('   ')]),[150,'*']));
-  c.push({text:'Disponibilidad',style:'h3'});
-  c.push(F.equipos.length? tbl(['Equipo','Disponibles','No','Por confirmar','Sin respuesta','Convocados','Observaciones'],F.equipos.map(x=>{ const v=x.disponibilidad; return [x.equipo,v.disponibles,v.no_disponibles,v.pendientes,v.sin_respuesta,v.convocados,v.problemas.length? v.problemas.join('; ') : 'Sin problemas']; }),['*',50,30,48,48,48,120]) : {text:'Sin datos.',style:'p'});
-  const pend=[]; F.equipos.forEach(x=>{ const p=x.pendientes; if(p.sin_validar) pend.push([x.equipo,'Resultado pendiente de validación']); if(p.partidos_incompletos) pend.push([x.equipo,'Faltan partidos por registrar']); if(p.mvp_sin_publicar) pend.push([x.equipo,'MVP sin publicar']); if(p.sin_informe_capitan) pend.push([x.equipo,'Informe del capitán pendiente']); if(x.informe_capitan?.incidencias && !/^(ningun[ao]?|no|nada|sin incidencias|-+)\.?$/i.test(x.informe_capitan.incidencias.trim())) pend.push([x.equipo,'Incidencia comunicada: '+x.informe_capitan.incidencias]); x.disponibilidad.problemas.forEach(pr=>pend.push([x.equipo,'Disponibilidad: '+pr])); });
-  F.documentacion_pendiente.forEach(dd=>pend.push([dd.equipo,`Documento «${dd.documento}»: ${dd.estado}`]));
-  c.push({text:'Aspectos que requieren seguimiento',style:'h3'}, pend.length? tbl(['Equipo','Asunto'],pend,[150,'*']) : {text:'No hay resultados, documentos ni tareas pendientes.',style:'p'});
-  c.push({text:'Recomendaciones',style:'h3'});
-  if(A.areas_mejora?.length) c.push({ul:A.areas_mejora.map(m=>({stack:[{text:(m.equipo? m.equipo+': ' : '')+m.texto,style:'li',bold:true},{text:'Basado en: '+m.fundamento,style:'li',color:RC.grey}],margin:[0,0,0,6]})),margin:[0,0,0,8]});
-  if(A.seguimiento?.length) c.push({ol:A.seguimiento.map(x=>({text:x,style:'li'})),margin:[0,0,0,8]});
-  if(!A.areas_mejora?.length && !A.seguimiento?.length) c.push({text:'No hay base suficiente en los datos ni en los informes de los capitanes para proponer recomendaciones concretas.',style:'p'});
-  c.push({text: A._ia? 'Recomendaciones redactadas con IA a partir exclusivamente de los datos y de lo escrito por los capitanes; cada una indica en qué se basa.' : 'Recomendaciones generadas directamente a partir de los pendientes registrados.',style:'note'});
-  // 06 PRÓXIMO FIN DE SEMANA
-  c.push({text:'',pageBreak:'before'},...H('05','Próximas jornadas'),{text:'Fin de semana del '+F.proximo_fin_de_semana.fechas,style:'p',bold:true});
-  const nx=F.proximo_fin_de_semana.eliminatorias;
-  c.push(nx.length? tbl(['Equipo','Jornada','Fecha y hora','Rival','Tareas pendientes del capitán'],nx.map(x=>[x.equipo,x.jornada,`${x.fecha}, ${x.hora} h`,`${x.rival} (${x.casa?'casa':'fuera'})`,x.tareas.length? x.tareas.join('; ') : 'Al día']),[90,38,90,100,'*']) : {text:'Ningún equipo del club tiene eliminatoria programada el próximo fin de semana.',style:'p'});
-  return { pageSize:'A4', pageMargins:[50,72,50,62], info:{title:'Weekend Sports Report | Real Club de Polo | '+F.fin_de_semana, author:'Real Club de Polo de Barcelona', subject:'Informe deportivo semanal'},
-    background:(page)=> page===1? {canvas:[{type:'rect',x:0,y:0,w:595.28,h:841.89,color:RC.navy},{type:'rect',x:0,y:828,w:595.28,h:13.5,color:RC.crimson}]} : null,
-    header:(page)=> page===1? null : {margin:[50,26,50,0],columns:[{image:crest,width:16},{text:'WEEKEND SPORTS REPORT',fontSize:7.5,bold:true,color:RC.navy,characterSpacing:1.5,margin:[8,4,0,0]},{text:`Real Club de Polo de Barcelona  |  ${F.fin_de_semana}`,fontSize:7.5,color:RC.grey,alignment:'right',margin:[0,4,0,0]}]},
-    footer:(page,pages)=> page===1? null : {margin:[50,20,50,0],columns:[{text:`Documento interno  |  Generado el ${gen}`,fontSize:7,color:RC.grey},{text:`Página ${page} de ${pages}`,fontSize:7,color:RC.grey,alignment:'right'}]},
-    content:c, defaultStyle:{font:'Roboto',fontSize:9.5,color:RC.ink,lineHeight:1.25},
-    styles:{kicker:{fontSize:8,bold:true,color:RC.gold,characterSpacing:1.6},h1:{fontSize:22,bold:true,color:RC.navy},h2:{fontSize:13,bold:true,color:RC.navy,margin:[0,6,0,6]},h3:{fontSize:10.5,bold:true,color:RC.navy,margin:[0,8,0,6]},
-      p:{fontSize:9.5,margin:[0,0,0,10],lineHeight:1.35},li:{fontSize:9.5,lineHeight:1.3},note:{fontSize:7.5,color:RC.grey,italics:true,margin:[0,0,0,10]},
-      th:{fontSize:7.5,bold:true,color:RC.navy,characterSpacing:.3},td:{fontSize:8.8},k:{fontSize:8.5,color:RC.grey},v:{fontSize:9,bold:true,color:RC.ink}} };
-}
+const buildReportDoc=(F,A,crest)=>ReportDoc.build(F,A,crest);   // composición del PDF en report-doc.js (compartida con el envío automático)
 const b64OfBlob = blob => new Promise((ok,ko)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).split(',')[1]); r.onerror=ko; r.readAsDataURL(blob); });
 async function buildWeekendPdf(sat, onStep){
   const step=t=>{ try{ onStep&&onStep(t); }catch(e){} };
@@ -2256,7 +2188,7 @@ async function buildWeekendPdf(sat, onStep){
   const blob=await new Promise((ok,ko)=>{ const to=setTimeout(()=>ko(new Error('El PDF tarda demasiado en generarse')),30000); try{ pdfMake.createPdf(doc).getBlob(b=>{ clearTimeout(to); ok(b); }); }catch(e){ clearTimeout(to); ko(e); } });
   if(!blob || blob.size<1500) throw new Error('El PDF generado está vacío');
   const b64=await b64OfBlob(blob);
-  return {blob, b64, file:`Weekend_Sports_Report_RCPB_${sat}.pdf`, ia:!!A._ia, aiNote, teams:F.totales.equipos};
+  return {blob, b64, file:`Weekend_Sports_Report_${CLUB.fileTag}_${sat}.pdf`, ia:!!A._ia, aiNote, teams:F.totales.equipos};
 }
 /* ---------- Envío del resumen por correo ---------- */
 let mailInfo=null, reportLog={}, reportSub=null;
@@ -2272,13 +2204,13 @@ function reportData(){
   return {range:`${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}`, items, win, loss, next, pend};
 }
 function reportEmail(extra, attach){
-  const R=reportData(), subject=`Resumen del fin de semana (${R.range}), Real Club de Polo`;
+  const R=reportData(), subject=`Resumen del fin de semana (${R.range}), ${CLUB.medium}`;
   const text=[`RESUMEN DEL FIN DE SEMANA: ${R.range}`, `Eliminatorias: ${R.items.length}. Victorias: ${R.win}. Derrotas: ${R.loss}. Programadas: ${R.next}. Pendientes: ${R.pend}.`, extra? '\n'+extra : '', '',
     ...R.items.map(x=>`${x.team} contra ${x.rival} (jornada ${x.j}, ${x.date}): ${x.res}. ${x.st}. Individuales ${x.sw}-${x.sl}, dobles ${x.dw}-${x.dl}.`+(x.S_.length? '\n'+x.S_.map(m=>`  ${m.res==='W'?'G':'P'} ${m.who}, individual ${m.n}: ${m.sets}`).join('\n'):'')+(x.D_.length? '\n'+x.D_.map(m=>`  ${m.res==='W'?'G':'P'} Dobles ${m.who}: ${m.sets}`).join('\n'):'')),
     '', attach? 'Se adjunta el informe completo en PDF: '+attach : '', 'Detalle completo en la app: '+location.origin+'/#club-resumen'].join('\n');
   const td='style="padding:6px 8px;border-bottom:1px solid #e3e6df;font-size:14px"';
   const html=`<div style="font-family:Arial,Helvetica,sans-serif;color:#13261F;max-width:640px">
-    <p style="font-size:12px;color:#94722A;text-transform:uppercase;letter-spacing:.06em;margin:0">Real Club de Polo de Barcelona, gestión deportiva</p>
+    <p style="font-size:12px;color:#94722A;text-transform:uppercase;letter-spacing:.06em;margin:0">${esc(CLUB.name)}, gestión deportiva</p>
     <h1 style="font-size:24px;margin:4px 0 2px">Resumen del fin de semana</h1><p style="margin:0 0 14px;color:#5b6b63">${esc(R.range)}</p>
     ${extra? `<p style="background:#f4f1e8;padding:10px 12px;border-radius:8px">${esc(extra).replace(/\n/g,'<br>')}</p>` : ''}
     <p><b>${R.items.length}</b> eliminatorias: <b style="color:#2F7D4F">${R.win} victorias</b>, <b style="color:#B4472F">${R.loss} derrotas</b>, ${R.next} programadas, ${R.pend} pendientes.</p>
@@ -2342,7 +2274,7 @@ function vClubResumen(){
   const concl = !rows.length? 'No hubo eliminatorias de equipos del club este fin de semana.'
     : `${played.length} ${played.length===1?'equipo compitió':'equipos compitieron'} este fin de semana: ${win} ${win===1?'victoria':'victorias'} y ${loss} ${loss===1?'derrota':'derrotas'}.${pend? ' Quedan '+pend+' '+(pend===1?'resultado':'resultados')+' por cerrar o confirmar.' : ''}`;
   return `<div class="wrap club report"><div class="pagehead noprint"></div>
-    <div class="rep-head"><img src="${ASSET.crestSm}" alt=""><div><p class="qsec">Real Club de Polo de Barcelona, gestión deportiva</p><h1>Resumen del fin de semana</h1><p class="lede">${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}. Temporada ${esc(viewSeason)}.</p></div></div>
+    <div class="rep-head"><img src="${ASSET.crestSm}" alt=""><div><p class="qsec">${esc(CLUB.name)}, gestión deportiva</p><h1>Resumen del fin de semana</h1><p class="lede">${fmt(W.rg.sat)} y ${fmt(W.rg.sun)}. Temporada ${esc(viewSeason)}.</p></div></div>
     <div class="row noprint" style="margin:6px 0 16px"><button class="btn ghost sm" data-act="club-wk" data-d="-7">‹ Anterior</button><button class="btn ghost sm" data-act="club-wk" data-d="7">Siguiente ›</button><button class="btn brass" data-act="club-print">Imprimir o guardar en PDF</button><button class="btn" data-act="mail-toggle">Enviar por correo</button></div>${ui.mailOpen? mailPanel() : ''}
     <section class="sec"><h2>1. Resumen</h2><div class="mdkpis"><div><b>${rows.length}</b><span>eliminatorias</span></div><div><b>${win}</b><span>victorias</span></div><div><b>${loss}</b><span>derrotas</span></div><div><b>${rows.filter(r=>r.s.st==='next').length}</b><span>programadas</span></div><div><b>${pend}</b><span>pendientes</span></div></div></section>
     <section class="sec"><h2>2. Resultados por equipo</h2>${rows.length? `<table><thead><tr><th>Equipo</th><th class="l">Rival</th><th>Resultado</th><th class="l">Estado</th><th>Ind.</th><th>Dob.</th></tr></thead><tbody>${rows.map(({t,d,f,s})=>{ const g=withS(d,()=>{ const tt=tie(f.j); let sw=0,sl=0,dw=0,dl=0; (tt?.rubbers||[]).forEach(r=>{ const c=rubberCalc(r); if(!c.res) return; if(r.type==='S') c.res==='W'? sw++ : sl++; else c.res==='W'? dw++ : dl++; }); return {sw,sl,dw,dl}; });
@@ -2354,16 +2286,26 @@ function vClubResumen(){
 }
 function vClubAjustes(){
   if(!canClub()) return vClub();
-  if(!isAdmin) return `<div class="wrap club"><div class="pagehead"><h1>Configuración</h1><p class="lede">Equipos y gestores del club. Solo un administrador puede cambiarlos.</p></div><section class="sec"><ul class="insights">${clubTeams().map(t=>`<li><b>${esc(t.name)}</b><small>${esc([t.cat,t.gender].filter(Boolean).join(', '))}</small></li>`).join('')}</ul></section><section class="sec"><div class="sec-h"><h2>Gestores</h2></div><ul class="insights">${(meta?.managers||[]).map(x=>`<li><b>${esc(x.name||'')}</b> ${esc(x.email)}</li>`).join('')||'<li class="muted">Ninguno</li>'}</ul></section></div>`;
+  if(!isAdmin) return `<div class="wrap club"><div class="pagehead"><h1>Configuración</h1><p class="lede">Equipos y gestores del club. Solo un administrador puede cambiarlos.</p></div><section class="sec"><ul class="insights">${clubTeams().map(t=>`<li><b>${esc(t.name)}</b><small>${esc([t.cat,t.gender].filter(Boolean).join(', '))}</small></li>`).join('')}</ul></section><section class="sec"><div class="sec-h"><h2>Gestores</h2></div><ul class="insights">${(meta?.managers||[]).map(x=>`<li><b>${esc(x.name||'')}</b> ${esc(x.email)}</li>`).join('')||'<li class="muted">Ninguno</li>'}</ul></section>${autoReportPanel()}</div>`;
   const m=meta||{}, teams=clubTeams(), mgr=m.managers||[];
   return `<div class="wrap club"><div class="pagehead"><h1>Configuració</h1></div>
     <section class="sec"><div class="sec-h"><h2>Gestores deportivos</h2></div><p class="muted small">Ven todos los equipos del club y pueden corregir datos. Entran con su Google; no necesitan ser jugadores.</p>
       ${mgr.length? `<ul class="insights">${mgr.map((x,i)=>`<li class="row" style="justify-content:space-between"><span><b>${esc(x.name||'')}</b> ${esc(x.email)}</span><button class="btn sm ghost" data-act="mgr-del" data-i="${i}">Quitar</button></li>`).join('')}</ul>` : '<div class="empty">Aún no hay gestores.</div>'}
       <div class="row" style="margin-top:10px"><input type="text" id="mgr-name" placeholder="Nombre (por ejemplo, Albert)" style="max-width:200px"><input type="email" id="mgr-email" placeholder="correo@gmail.com" style="max-width:260px"><button class="btn sm brass" data-act="mgr-add">Añadir gestor</button></div></section>
+    ${autoReportPanel()}
     <section class="sec"><div class="sec-h"><h2>Equipos del club</h2></div><p class="muted small">Cada equipo tiene su propia temporada: calendario, plantilla, resultados, disponibilidad y MVP. Jugadores, fotos y fichas son del club.</p>
       <div id="ctlist">${teams.map(t=>`<div class="qedit" data-id="${esc(t.id)}" style="grid-template-columns:1fr 110px 1fr 120px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="cat" value="${esc(t.cat||'')}" aria-label="Categoría"><select name="gender" aria-label="Género"><option value="">Género</option>${['Masculino','Femenino','Mixto'].map(g=>`<option ${t.gender===g?'selected':''}>${g}</option>`).join('')}</select></div>`).join('')}</div>
       <div class="row" style="margin-top:10px"><button class="btn sm brass" data-act="cteams-save">Guardar equipos</button><input type="text" id="ct-name" placeholder="Nuevo equipo (por ejemplo, Veteranos +35)" style="max-width:280px"><input type="text" id="ct-short" placeholder="Nombre corto" style="max-width:140px"><button class="btn sm ghost" data-act="cteam-add">Añadir equipo</button></div></section></div>`;
 }
+// Informe semanal automático: el servidor lo genera y lo envía el domingo por la noche (api/fct-sync.js → api/_report.js)
+function autoReportPanel(){ ensureFctCss(); ensureReportLog(); mailStatus(); const c=meta?.autoReport||{}, on=c.on!==false, mg=meta?.managerEmails||[], ok=mailInfo?.configured;
+  const last=Object.values(reportLog).filter(x=>x.auto).sort((a,b)=>b.at-a.at)[0];
+  return `<section class="sec"><div class="sec-h"><h2>Informe semanal automático</h2></div><div class="panel">
+    <label class="chkline"><input type="checkbox" data-act="ar-on" ${on?'checked':''}> <span><b>Enviar el «Weekend Sports Report» sin pulsar nada</b>: el mismo correo con el PDF que «Enviar desde la app», después de sincronizar con la FCT.</span></label>
+    <div class="row" style="margin-top:10px;gap:10px"><span class="small">Cuándo</span><select data-act="ar-day" style="max-width:260px" ${on?'':'disabled'}><option value="sun" ${c.day!=='mon'?'selected':''}>Domingo por la noche</option><option value="mon" ${c.day==='mon'?'selected':''}>Lunes por la noche</option></select>
+      <button class="btn sm ghost" data-act="ar-send" ${ui.arSending||!ok||!mg.length?'disabled':''}>${ui.arSending? 'Generando y enviando…' : 'Enviar ahora'}</button></div>
+    <p class="muted small" style="margin:8px 0 0">${mg.length? 'Destinatarios: los gestores ('+esc(mg.join(', '))+').' : 'Añade al menos un gestor con correo para que se envíe.'} ${mailInfo && !ok? '<b>Falta configurar el correo en Vercel</b> (SMTP_USER y SMTP_PASS, o RESEND_API_KEY y MAIL_FROM).' : ''}</p>
+    ${last? `<p class="small" style="margin:6px 0 0">Último envío automático: ${last.status==='enviado'?'✓':'✗'} ${esc(last.range||'')}, ${relTime(last.at)}${last.error? ' ('+esc(last.error)+')' : ''}.</p>` : ''}</div></section>`; }
 async function saveMeta(patch,msg){ const m={current:currentSeason(), seasons:meta?.seasons||[viewSeason], ...(meta||{}), ...patch}; meta=m; renderQuiet(); await safe(()=>B.set('meta/app',m),msg); }
 function teamMenuHTML(){ const ts=clubTeams(), inClub=route().startsWith('club'); return `${ts.map(t=>`<button data-act="team-pick" data-t="${esc(t.id)}" aria-pressed="${!inClub && t.id===teamId}"><b>${esc(t.short)}</b><small>${esc(t.name)}</small></button>`).join('')}${canClub()? `<a href="#club" data-act="team-menu-close" aria-pressed="${inClub}"><b>Gestión deportiva</b><small>Todos los equipos del club</small></a>` : ''}`; }
 
@@ -2790,7 +2732,7 @@ function drawOnb(){ const O=ui.onb; let el=document.getElementById('onb');
   clearInterval(ui.cycT); onbSave(); const nm=(me&&player(me)?.name||(authUser?.name&&!/vista previa/i.test(authUser.name)? authUser.name : '')||'').split(' ')[0];
   let h='';
   if(O.stage==='welcome'){ const R=onbRoles();
-    h=`<div class="ob-card ob-welcome"><div class="ob-wbg"></div><img class="ob-crest" src="${ASSET.crestSm}" alt=""><span class="hx-k">Real Club de Polo de Barcelona</span><h1>¡Bienvenido a Lliga Catalana${nm? ', '+esc(nm) : ''}!</h1><p>Todo lo que necesitas para vivir y gestionar la competición de tu equipo, en un solo lugar.</p>
+    h=`<div class="ob-card ob-welcome"><div class="ob-wbg"></div><img class="ob-crest" src="${ASSET.crestSm}" alt=""><span class="hx-k">${esc(CLUB.name)}</span><h1>¡Bienvenido a Lliga Catalana${nm? ', '+esc(nm) : ''}!</h1><p>Todo lo que necesitas para vivir y gestionar la competición de tu equipo, en un solo lugar.</p>
       ${R.length? `<div class="ob-access"><span>Tu acceso</span><div>${R.map(([k,l])=>`<i class="${k}">${l}</i>`).join('')}</div></div>` : ''}
       <button class="btn brass big ob-cta" data-onb="discover">Descubrir la plataforma ${svgi('arrow',16)}</button><button class="ob-later" data-onb="skipall">Ahora no</button></div>`; }
   else if(O.stage==='tour'){ const S_=onbSlides(), n=S_.length, s=S_[Math.min(O.i,n-1)];
@@ -3124,7 +3066,7 @@ function fctTeamInfo(t){ const sid=docIdFor(t.id,viewSeason), d=clubData[t.id]||
   const st= !d? ['nodata','Sin temporada'] : !grp? ['nogroup','Falta el grupo'] : k.rev? ['rev','Revisar'] : !L? ['new','Sin sincronizar'] : ['ok','Al día'];
   return {t,d,sid,grp,L,k,st}; }
 function fctCenter(){ ensureMsgCss(); ensureFctCss(); const rows=clubTeams().map(fctTeamInfo), busy=ui.fctBusy||{};
-  return `<section class="sec"><div class="sec-h"><h2>Federació (FCT)</h2><button class="btn brass sm" data-act="fct-all" ${Object.keys(busy).length?'disabled':''}>Sincronizar todos</button></div>
+  return `<section class="sec"><div class="sec-h"><h2>Por equipo</h2></div>
     <div class="fctc">${rows.map(r=>`<div class="fctc-row st-${r.st[0]}">
       <div class="fc-t"><b>${esc(r.t.name)}</b><span>${r.grp? 'Grupo '+r.grp : 'Sin grupo FCT'}${r.L? ', última consulta '+relTime(r.L.at) : ''}</span></div>
       <div class="fc-k">${[['imp','importados'],['off','oficiales'],['prov','provisionales'],['rev','por revisar'],['pend','sin resultado']].map(([x,l])=>`<span class="${(x==='rev'||x==='pend')&&r.k[x]?'w':''}"><b>${r.k[x]}</b>${l}</span>`).join('')}</div>
@@ -3135,9 +3077,39 @@ function fctCenter(){ ensureMsgCss(); ensureFctCss(); const rows=clubTeams().map
       ${r.L?.actas?.unmatched?.length? `<p class="fc-note">En las actas de la FCT aparecen jugadores que no se reconocen en la plantilla: <b>${esc(r.L.actas.unmatched.join(', '))}</b>. Añádelos en Gestión → Plantilla (o corrige su nombre completo) y vuelve a sincronizar: sus partidos se completarán solos.</p>` : ''}
       ${r.d&&r.k.rev? `<p class="fc-note">La FCT tiene datos distintos en ${r.k.rev} ${r.k.rev===1?'partido':'partidos'} del equipo: revísalos en Resultados o en Preparar. La app no los cambia sola.</p>` : ''}</div>`).join('')}</div>
     <p class="muted small" style="margin:10px 0 0">Del portal de la Federació se importan calendario, fechas y resultados de toda la liga (oficiales si el acta está cerrada), cada noche y con estos botones. Las plantillas y el orden de juego no están disponibles en el portal: se cargan con documentos en Documentación o desde la app.</p></section>`; }
+// Estado global de la sincronización con la Federació (todos los equipos)
+function fctOverview(){ const rows=clubTeams().map(fctTeamInfo), on=rows.filter(r=>r.grp);
+  const last=on.map(r=>r.L?.at||0), oldest=on.length? Math.min(...last) : 0, newest=last.length? Math.max(...last) : 0;
+  const rev=on.reduce((n,r)=>n+r.k.rev,0), un=on.reduce((n,r)=>n+(r.L?.actas?.unmatched?.length||0),0), err=on.filter(r=>r.d?.fctError && (!r.L || r.d.fctError.at>r.L.at)).length;
+  const stale=on.some(r=>!r.L || Date.now()-r.L.at>36*3600e3);
+  const st= err? 'err' : (rev||un)? 'rev' : !on.length? 'nogroup' : stale? 'stale' : 'ok';
+  return {rows, on, oldest, newest, rev, un, err, st, imp:on.reduce((n,r)=>n+r.k.imp,0), off:on.reduce((n,r)=>n+r.k.off,0)}; }
+const FCT_ICON='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"/></svg>';
+function fctHero(detail=true){ ensureFctCss(); const O=fctOverview(), busy=Object.keys(ui.fctBusy||{}).length;
+  const title= O.st==='err'? 'La sincronización ha fallado' : O.st==='rev'? `${O.rev+O.un} ${O.rev+O.un===1?'dato por revisar':'datos por revisar'}` : O.st==='nogroup'? 'Conecta los equipos con la FCT' : O.st==='stale'? 'Pendiente de sincronizar' : 'Todo sincronizado con la FCT';
+  const sub= O.st==='nogroup'? 'Pon el código de grupo de cada equipo y la app traerá sola calendario, resultados, actas y plantillas.'
+    : `${O.newest? 'Última sincronización '+relTime(O.newest) : 'Aún sin sincronizar'}. Se actualiza sola cada noche: ${O.imp} ${O.imp===1?'partido':'partidos'} de la liga ${O.imp===1?'importado':'importados'}, ${O.off} ${O.off===1?'oficial':'oficiales'}.`;
+  return `<section class="sec"><div class="fcth st-${O.st}">
+    <div class="fcth-ic${busy?' spinning':''}">${FCT_ICON}</div>
+    <div class="fcth-t"><p class="fcth-k">Federació Catalana de Tennis</p><h2>${title}</h2><p>${esc(sub)}</p>
+      <div class="fcth-teams">${O.rows.map(r=>`<span class="fcth-chip st-${r.st[0]}"><i></i>${esc(r.t.short||r.t.name)}<small>${esc(r.st[1])}</small></span>`).join('')}</div></div>
+    <div class="fcth-a"><button class="btn brass" data-act="fct-all" ${busy||!O.on.length?'disabled':''}>${busy? 'Sincronizando…' : 'Sincronizar ahora'}</button>${detail? '<a class="btn ghost" href="#club-fct">Ver detalle</a>' : ''}</div></div></section>`; }
+function vClubFct(){
+  if(!canClub()) return vClub(); ensureClubSubs();
+  const m=meta||{}, al=(m.fctAlerts||{}).on!==false;
+  return `<div class="wrap club"><div class="pagehead"><p class="qsec">Gestión deportiva</p><h1>Federació (FCT)</h1><p class="lede">La app se mantiene al día con el portal de la Federació Catalana de Tennis: cada noche y cuando pulsas «Sincronizar».</p></div>
+  ${fctHero(false)}${fctCenter()}
+  <section class="sec"><div class="sec-h"><h2>Qué se sincroniza</h2></div><ul class="fcth-what">
+    <li><b>Calendario</b><span>Fechas, horas y aplazamientos de toda la liga. Lo que alguien cambia a mano en la app no se toca; la diferencia queda como aviso.</span></li>
+    <li><b>Resultados</b><span>De todos los equipos del grupo. Pasan a oficiales cuando la FCT cierra el acta.</span></li>
+    <li><b>Actas y plantillas</b><span>Quién jugó cada partido del Polo, marcadores, licencias y puntos.</span></li>
+    <li><b>El Polo manda</b><span>Si un resultado del Polo ya está en la app, no se sobrescribe: si la FCT dice otra cosa, aparece aquí y en «Requiere atención».</span></li></ul></section>
+  <section class="sec"><div class="sec-h"><h2>Avisos por correo</h2></div><div class="panel">
+    <label class="chkline"><input type="checkbox" data-act="fct-alerts" ${al?'checked':''}> <span>Enviar un correo a los gestores cuando la sincronización de la noche encuentre datos que no cuadran o falle</span></label>
+    <p class="muted small" style="margin:6px 0 0">${(m.managerEmails||[]).length? 'Se envía a: '+esc(m.managerEmails.join(', ')) : 'Aún no hay gestores con correo: añádelos en Configuración.'}</p></div></section></div>`; }
 async function fctSyncTeam(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t) return null; const info=fctTeamInfo(t);
   if(!info.grp){ toast('Pon primero el código del grupo FCT'); return null; }
-  if(!info.d){ await B.set('seasons/'+info.sid,{comp:{name:t.name, fctGroup:info.grp}, teams:[{id:POLO,name:'RC de Polo',short:'Polo'}], fixtures:[], players:[], captains:[], ties:{}, memberIds:[]}).catch(()=>{}); }
+  if(!info.d){ await B.set('seasons/'+info.sid,{comp:{name:t.name, fctGroup:info.grp}, teams:[{id:POLO,name:CLUB.short,short:CLUB.teamShort}], fixtures:[], players:[], captains:[], ties:{}, memberIds:[]}).catch(()=>{}); }
   (ui.fctBusy ||= {})[tid]=1; renderQuiet();
   try{ const tok=await B.idToken(); const r=await fetch('/api/fct-sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({season:info.sid})});
     if(r.status===501||r.status===404){ toast('Falta configurar la sincronización en Vercel (FIREBASE_SERVICE_ACCOUNT)'); return null; }
@@ -3156,6 +3128,21 @@ const FCT_CSS=`
 .st-ok .fc-st{color:#1F7A4D}.st-rev .fc-st{color:#94722A}
 .fc-note{grid-column:1 / -1;margin:0;font-size:.82rem;color:#6b5a2e;background:#FBF6E8;border-radius:10px;padding:8px 10px}
 @media (max-width:820px){.fctc-row{grid-template-columns:1fr}.fc-a{justify-content:flex-start}}
+.fcth{position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr auto;gap:18px 22px;align-items:center;padding:22px 24px;border-radius:24px;color:#F1F4EF;background:radial-gradient(120% 140% at 0% 0%,#1E5A45 0%,#0F3B2E 55%,#0A2A20 100%);border:1px solid #2C5E4E;box-shadow:0 14px 34px -18px rgba(10,42,32,.75)}
+.fcth::after{content:"";position:absolute;inset:auto -60px -80px auto;width:240px;height:240px;border-radius:50%;border:2px solid rgba(226,196,124,.18);pointer-events:none}
+.fcth-ic{display:grid;place-items:center;width:58px;height:58px;border-radius:18px;background:rgba(226,196,124,.14);color:#E2C47C;box-shadow:inset 0 0 0 1px rgba(226,196,124,.35)}
+.fcth-ic.spinning svg{animation:fcspin 1.1s linear infinite}@keyframes fcspin{to{transform:rotate(360deg)}}
+.fcth-k{margin:0;font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#E2C47C}
+.fcth h2{margin:2px 0 4px;font-size:1.45rem;line-height:1.15;color:#fff}.fcth-t>p{margin:0;font-size:.88rem;color:#C9D6CF;max-width:62ch}
+.fcth.st-rev .fcth-ic,.fcth.st-err .fcth-ic{background:#E2C47C;color:#0A2A20}.fcth.st-err .fcth-ic{background:#E8A08F}
+.fcth-teams{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.fcth-chip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.08);font-size:.8rem;font-weight:700;color:#fff}.fcth-chip small{font-weight:500;color:#AFC2B8}
+.fcth-chip i{width:8px;height:8px;border-radius:50%;background:#9aa6a0}.fcth-chip.st-ok i{background:#5FD39A}.fcth-chip.st-rev i{background:#E2C47C}
+.fcth-a{display:flex;flex-direction:column;gap:8px;align-items:stretch;position:relative;z-index:1}.fcth-a .btn.ghost{color:#F1F4EF;border-color:rgba(241,244,239,.35);background:transparent;text-align:center}
+.chkline{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.chkline input{margin-top:3px;flex:none;width:18px;height:18px}
+.fcth-what{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.fcth-what li{padding:14px 16px;border-radius:16px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df)}.fcth-what b{display:block;margin-bottom:4px}.fcth-what span{font-size:.86rem;color:var(--muted,#5b6b63)}
+a.has-dot{position:relative}a.has-dot::after{content:"";position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:#C8553D}
+@media (max-width:820px){.fcth{grid-template-columns:auto 1fr;padding:18px}.fcth-a{grid-column:1 / -1;flex-direction:row}.fcth-a .btn{flex:1}}
 `;
 function ensureFctCss(){ if(document.getElementById('fct-css')) return; const s=document.createElement('style'); s.id='fct-css'; s.textContent=FCT_CSS; document.head.appendChild(s); }
 
@@ -3277,18 +3264,18 @@ function render(){
     else if(r.startsWith('encuesta-')){ html=vEncuesta(+r.slice(9)); nav='yo'; }
     else if(r.startsWith('mvp-')){ html=vMvp(+r.slice(4)); nav='yo'; }
     else if(r==='mi-ficha'){ html=vMiFicha(); nav='yo'; }
-    else if(r==='club'){ html=vClub(); nav='club'; } else if(r==='club-equipos'){ html=vClubEquipos(); nav='club'; } else if(r==='club-resumen'){ html=vClubResumen(); nav='club'; } else if(r==='club-ajustes'){ html=vClubAjustes(); nav='club'; } else if(r==='club-docs'){ html=vClubDocs(); nav='club'; }
+    else if(r==='club'){ html=vClub(); nav='club'; } else if(r==='club-equipos'){ html=vClubEquipos(); nav='club'; } else if(r==='club-fct'){ html=vClubFct(); nav='club'; } else if(r==='club-resumen'){ html=vClubResumen(); nav='club'; } else if(r==='club-ajustes'){ html=vClubAjustes(); nav='club'; } else if(r==='club-docs'){ html=vClubDocs(); nav='club'; }
     else if(r.startsWith('club-equipo-')){ html=vClubTeam(r.slice(12)); nav='club'; }
     else if(r.startsWith('club-doc-')){ ui.docBase='club-doc-'; ui.docBack='club-docs'; html=vDoc(r.slice(9)); nav='club'; }
     else if(r==='docs') html=vDocs(); else if(r.startsWith('doc-')) html=vDoc(r.slice(4));
     else if(r==='stats') html=vStats(); else if(r==='yo'||r==='votar') { html=vYo(); nav='yo'; } else if(r==='admin') html=vAdmin(); else html=vNotFound();
-    html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del ${esc(curTeam()?.short||'equipo')} (${esc(teamCat(curTeam()))}) del Real Club de Polo de Barcelona.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
+    html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del ${esc(curTeam()?.short||'equipo')} (${esc(teamCat(curTeam()))}) del ${esc(CLUB.name)}.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
   app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
   document.querySelectorAll('[data-nav]').forEach(a=>{ if(a.dataset.nav===nav) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   const al=$('.adminlink'); al.classList.toggle('on',canManage);
   if(!al.querySelector('.al-t')){ al.insertAdjacentHTML('beforeend','<span class="al-t">Gestión</span><span class="al-dot" aria-hidden="true"></span>'); al.setAttribute('aria-label','Gestión'); al.title='Gestión'; }
   let pend=null; try{ pend=canManage? pendingAction() : null; }catch(e){} al.classList.toggle('pending', !!pend); al.setAttribute('aria-label', pend? 'Gestión: hay un paso pendiente' : 'Gestión');
-  const bs=$('.brand span'); if(bs) bs.innerHTML= nav==='club'? `Gestión deportiva <small>Real Club de Polo</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
+  const bs=$('.brand span'); if(bs) bs.innerHTML= nav==='club'? `Gestión deportiva <small>${esc(CLUB.medium)}</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
   let tw=$('.teamsw'); if(!tw){ tw=document.createElement('button'); tw.className='teamsw'; tw.type='button'; tw.setAttribute('aria-label','Cambiar de equipo'); tw.dataset.act='team-menu'; tw.textContent='▾'; $('.brand').after(tw); }
   const inClub = nav==='club'; tw.hidden = !(clubTeams().length>1 || canClub());
   tw.textContent = inClub? 'Ir a un equipo ▾' : '▾'; tw.style.cssText = inClub? 'width:auto;padding:0 10px;margin-left:10px;white-space:nowrap;font-size:.78rem;font-weight:600' : '';
@@ -3436,6 +3423,13 @@ document.addEventListener('click', async e=>{
   else if(a==='eq-view'){ ui.eqView=el.dataset.v; try{ localStorage.setItem('polo-eqview',ui.eqView); }catch(e){} renderQuiet(); }
   else if(a==='eq-sort'){ const v=el.dataset.v; ui.eqDir= ui.eqSort===v? -(ui.eqDir||1) : 1; ui.eqSort=v; renderQuiet(); }
   else if(a==='mail-toggle'){ ui.mailOpen=!ui.mailOpen; renderQuiet(); }
+  else if(a==='fct-alerts'){ await saveMeta({fctAlerts:{...(meta?.fctAlerts||{}), on:el.checked}}, el.checked? 'Avisos de la FCT activados' : 'Avisos de la FCT desactivados'); }
+  else if(a==='ar-on'){ await saveMeta({autoReport:{...(meta?.autoReport||{}), on:el.checked}}, el.checked? 'Informe automático activado' : 'Informe automático desactivado'); }
+  else if(a==='ar-send'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); if(!confirm('¿Generar y enviar ahora el informe del último fin de semana a los gestores?')) return;
+    ui.arSending=true; renderQuiet();
+    try{ const tok=await B.idToken(); const r=await fetch('/api/auto-report',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:'{}'}); const j=await r.json().catch(()=>({}));
+      toast(r.ok? `Informe enviado a ${j.to.length} ${j.to.length===1?'gestor':'gestores'}` : 'No se ha enviado: '+(j.error||r.status)); }
+    catch(err){ toast('Sin conexión con el servidor'); } finally{ ui.arSending=false; renderQuiet(); } }
   else if(a==='mail-to'){ ui.mailTo ||= new Set(); el.checked? ui.mailTo.add(el.value) : ui.mailTo.delete(el.value); ui.mailExtra=$('#mail-extra')?.value||''; renderQuiet(); }
   else if(a==='mail-send'){ mailSend(); }
   else if(a==='mail-open'){ mailOpen(); }
@@ -3605,6 +3599,7 @@ document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
   else if(a==='club-doc-team'){ switchTeam(el.value); renderQuiet(); }
   else if(a==='club-date'){ if(el.value){ ui.clubSat=ymd(weekendSat(new Date(el.value+'T12:00:00'))); renderQuiet(); } }
   else if(a==='club-f'){ ui[el.dataset.k]=el.value||null; renderQuiet(); }
+  else if(a==='ar-day'){ saveMeta({autoReport:{...(meta?.autoReport||{}), day:el.value}}, el.value==='mon'? 'Se enviará el lunes por la noche' : 'Se enviará el domingo por la noche'); }
   else if(a==='doc-kind'){ const id=el.dataset.id, d=docs[id]; if(!d || d.kind===el.value) return;
     const log=[...(d.kindLog||[]), {from:d.kind, to:el.value, by:(me&&player(me)?.name)||authUser?.email||'', at:Date.now()}].slice(-20);
     safe(()=>B.update(`${SEASON_PATH}/docs/${id}`,{kind:el.value, kindLog:log}),'Tipo cambiado a «'+(DOC_KINDS[el.value]||el.value)+'». El archivo, su jornada y su historial se conservan.'); }
@@ -3663,7 +3658,7 @@ function syncMvpSubs(force){
   });
 }
 function emptyTeamSeed(tid){ const t=clubTeams().find(x=>x.id===tid)||{short:'Polo',cat:''};
-  return normalize({seasonId:viewSeason, teamId:tid, comp:{name:'Lliga Catalana per Equips', group:teamCat(t), memorial:''}, teams:[{id:POLO,name:'RC de Polo '+String(t.short||'').replace(/^Polo\s*/,''),short:t.short||'Polo',abbr:'RCP'}],
+  return normalize({seasonId:viewSeason, teamId:tid, comp:{name:'Lliga Catalana per Equips', group:teamCat(t), memorial:''}, teams:[{id:POLO,name:CLUB.short+' '+String(t.short||'').replace(new RegExp('^'+CLUB.teamShort+'\\s*'),''),short:t.short||CLUB.teamShort,abbr:CLUB.abbr}],
     players:[], fixtures:[], ties:{}, published:{}, official:{asOf:0,order:[]}, captains:[], mvp:{}}); }
 function switchTeam(tid){ ui.teamAuto=true; if(tid===teamId) return; teamId=tid; try{ localStorage.setItem('polo-team',tid); }catch(e){} S=emptyTeamSeed(tid); serverS=null; ui.fe=null; switchSeason(viewSeason, !ui.seasonPicked); }
 function switchSeason(id,auto){ privKey=''; docsKey=''; ui.rev=null; if(!auto) ui.seasonPicked=true; viewSeason=id; SEASON_PATH='seasons/'+docIdFor(teamId,id); avail={}; picks={}; ballots={}; notes={}; myBallot=null; privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[]; ui.adminJ=null; ui.calJ=null; subscribeData(); watchMine(); render(); }

@@ -1,4 +1,12 @@
 rules_version = '2';
+// Reglas de Firestore de la app. Se publican a mano: Firebase > Firestore Database > Reglas > pegar este archivo > Publicar.
+// Reflejan los permisos de la app (app.js, función updRoles):
+//   - Administrador: colección admins (id = UID o correo en minúsculas). Todo.
+//   - Gestor del club: correo en meta/app.managerEmails. Todos los equipos, sin necesidad de ser jugador.
+//   - Capitán: su pid está en seasons/{temporada}.captains. Datos privados de su equipo y gestión del MVP.
+//   - Jugador del equipo: su pid está en seasons/{temporada}.memberIds (o la lista está vacía). Edita su equipo
+//     mientras rules.teamManage no sea false.
+// Las funciones de Vercel (api/*) usan la cuenta de servicio y no pasan por estas reglas.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -9,11 +17,42 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         exists(/databases/$(database)/documents/admins/$(email())));
     }
-    function myPid() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.pid; }
+    function isManager() {
+      return signedIn() && email() in get(/databases/$(database)/documents/meta/app).data.get('managerEmails', []);
+    }
+    function isStaff() { return isAdmin() || isManager(); }
     function isMember() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
-    function canRead() { return isMember() || isAdmin(); }
+    function myPid() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.pid; }
+    function isMe(pid) { return isMember() && myPid() == pid; }
+    function canRead() { return isMember() || isStaff(); }
 
-    // Administradores: se crean a mano en la consola (id = UID o correo en minúsculas)
+    // Temporada de un equipo
+    function season(s) { return get(/databases/$(database)/documents/seasons/$(s)).data; }
+    function isCaptainOf(s) { return isMember() && myPid() in season(s).get('captains', []); }
+    function inTeam(s) {
+      return isMember() && (season(s).get('memberIds', []).size() == 0 || myPid() in season(s).get('memberIds', []));
+    }
+    function teamManage(s) { return season(s).get('rules', {}).get('teamManage', true) != false; }
+    // Editar la temporada del equipo (calendario, convocatoria, resultados, documentos...)
+    function canEdit(s) { return isStaff() || isCaptainOf(s) || (teamManage(s) && inTeam(s)); }
+    // Datos privados del equipo (respuestas individuales, comentarios, quién votó a quién)
+    function canPrivate(s) { return isStaff() || isCaptainOf(s); }
+
+    // El recuento solo sube en uno, y solo para el jugador del voto que se crea en el mismo lote
+    function validVoteTally(s, k) {
+      let vote = /databases/$(database)/documents/seasons/$(s)/mvp/$(k)/votes/$(myPid());
+      let v = getAfter(vote).data.v;
+      let before = resource == null ? {} : resource.data;
+      let t0 = before.get('t', {});
+      let t1 = request.resource.data.get('t', {});
+      return isMember() && !exists(vote) && existsAfter(vote)
+        && request.resource.data.diff(before).affectedKeys().hasOnly(['t', 'n'])
+        && request.resource.data.get('n', 0) == before.get('n', 0) + 1
+        && t1.diff(t0).affectedKeys().hasOnly([v])
+        && t1.get(v, 0) == t0.get(v, 0) + 1;
+    }
+
+    // Administradores: se crean a mano en la consola
     match /admins/{id} {
       allow read: if signedIn() && (id == request.auth.uid || id == email());
       allow write: if false;
@@ -40,23 +79,89 @@ service cloud.firestore {
       allow delete: if isAdmin() || uid == request.auth.uid;
     }
 
-    // Temporadas disponibles y temporada actual
-    match /meta/{doc} { allow read: if canRead(); allow write: if isAdmin(); }
-    // Fotos recortadas (una por jugador, se usan en toda la app). _team = foto del equipo
-    match /photos/{id} { allow read: if canRead(); allow write: if isAdmin() && request.resource.data.d.size() < 950000; allow delete: if isAdmin(); }
-    // Teléfonos para recordatorios: solo administradores
+    // Configuración del club (temporadas, equipos, gestores, informe automático). La leen también los gestores que no juegan.
+    match /meta/{doc} {
+      allow read: if canRead();
+      allow write: if isStaff();
+    }
+    // Lista pública de nombres por equipo, para elegir el tuyo al entrar
+    match /public/{doc} {
+      allow read: if signedIn();
+      allow write: if canRead();
+    }
+    // Fotos recortadas (una por jugador; _team = foto del equipo). Las sube el propio jugador o quien gestiona el equipo.
+    match /photos/{id} {
+      allow read: if canRead();
+      allow create, update: if canRead() && request.resource.data.d is string && request.resource.data.d.size() < 950000;
+      allow delete: if canRead();
+    }
+    // Ficha de tenista: la lee el club; la edita su dueño o la gestión
+    match /profiles/{pid} {
+      allow read: if canRead();
+      allow write: if isMe(pid) || isStaff();
+    }
+    // Teléfonos para recordatorios y WhatsApp: los ven y editan quienes gestionan equipos
+    match /phones/{pid} {
+      allow read, write: if canRead();
+    }
+    // Tokens de notificaciones: cada jugador añade los suyos; solo los lee el servidor
+    match /pushTokens/{pid} {
+      allow read: if isAdmin();
+      allow create, update: if isMe(pid) || isStaff();
+      allow delete: if isAdmin();
+    }
+    // Registro de envíos del resumen semanal
+    match /reports/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+    // Uso antiguo, solo administradores
     match /private/{doc} { allow read, write: if isAdmin(); }
 
-    match /seasons/{season} {
+    match /seasons/{s} {
       allow read: if canRead();
-      allow write: if isAdmin();
-      // Disponibilidad (estado e histórico): la ve el equipo, cada uno escribe la suya; el capitán puede anotar a mano
-      match /avail/{pid} { allow read: if canRead(); allow write: if isAdmin() || (isMember() && myPid() == pid); }
-      // Comentarios de disponibilidad: solo su autor y los administradores
-      match /availNotes/{pid} { allow read, write: if isAdmin() || (isMember() && myPid() == pid); }
-      match /picks/{pid} { allow read: if canRead(); allow write: if isAdmin() || (isMember() && myPid() == pid); }
+      allow create: if isStaff();
+      // Capitanes, reglas de permisos y equipo solo los cambia la gestión
+      allow update: if canEdit(s) && (isStaff() || (
+        request.resource.data.get('rules', {}) == resource.data.get('rules', {}) &&
+        (!('captains' in resource.data) || request.resource.data.get('captains', []) == resource.data.captains) &&
+        request.resource.data.get('teamId', null) == resource.data.get('teamId', null)));
+      allow delete: if isAdmin();
+
+      // Disponibilidad: la ve el equipo, cada uno escribe la suya; quien gestiona puede anotar a mano
+      match /avail/{pid} { allow read: if canRead(); allow write: if isMe(pid) || canEdit(s); }
+      // Comentarios de disponibilidad: su autor, capitanes y gestión
+      match /availNotes/{pid} { allow read, write: if isMe(pid) || canPrivate(s); }
+      // Pronósticos
+      match /picks/{pid} { allow read: if canRead(); allow write: if isMe(pid) || isStaff(); }
       // Encuestas postpartido: privadas
-      match /ballots/{pid} { allow read, write: if isAdmin() || (isMember() && myPid() == pid); }
+      match /ballots/{pid} { allow read, write: if isMe(pid) || canPrivate(s); }
+      // Documentos (troceados) y fotos diarias de la temporada
+      match /docs/{id} {
+        allow read: if canRead();
+        allow write: if canEdit(s);
+        match /chunks/{n} { allow read: if canRead(); allow write: if canEdit(s); }
+      }
+      match /snapshots/{d} { allow read: if canRead(); allow write: if canEdit(s); }
+
+      // MVP de cada jornada. Recuento público; quién votó a quién, privado.
+      // Un voto por jugador, nunca a uno mismo y sin poder cambiarlo. Solo capitanes y gestión anulan.
+      match /mvp/{k} {
+        allow read: if canRead();
+        allow write: if canPrivate(s) || validVoteTally(s, k);
+
+        match /votes/{voter} {
+          allow read: if isMe(voter) || canPrivate(s);
+          allow create: if isMe(voter) && inTeam(s)
+            && request.resource.data.keys().hasOnly(['v', 'at'])
+            && request.resource.data.v is string
+            && request.resource.data.v != voter
+            && existsAfter(/databases/$(database)/documents/seasons/$(s)/mvp/$(k));
+          allow update: if false;
+          allow delete: if canPrivate(s);
+        }
+      }
     }
   }
 }

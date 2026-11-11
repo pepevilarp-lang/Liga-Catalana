@@ -14,7 +14,7 @@
       ]
     },
     {
-      "source": "/(app.js|styles.css|config.js|index.html)",
+      "source": "/(app.js|club-config.js|report-doc.js|styles.css|config.js|index.html)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -38,7 +38,7 @@
   ],
   "functions": {
     "api/*.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
   "crons": [
