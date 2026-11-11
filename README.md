@@ -5,17 +5,39 @@ GitHub + Vercel + Firebase. Instalable en el móvil y con notificaciones.
 
 ## Archivos (todo en la raíz del repositorio, respetando estas carpetas)
 ```
-index.html  styles.css  app.js  config.js  sw.js  manifest.webmanifest
-vercel.json  package.json  firestore.rules  README.md
+index.html  styles.css  app.js  sw.js  manifest.webmanifest
+config.js        claves públicas de Firebase y clave web de notificaciones (vapidKey)
+club-config.js   identidad del club: nombre, escudo, equipos y grupos FCT (lo usan la app y el servidor)
+report-doc.js    composición del PDF «Weekend Sports Report» (app y servidor)
+firestore.rules  reglas de seguridad de Firestore (se publican a mano, ver abajo)
+vercel.json  package.json  README.md
 icons/      icon-192.png  icon-512.png  maskable-512.png  apple-touch-icon.png  badge-96.png
-img/        escudo.webp  escudo-sm.webp  ball.webp  court.jpg  felt.jpg  fuzz.webp   (escudo, pelota y texturas de la intro)
-api/        notify.js      (función de Vercel que envía las notificaciones)
+img/        escudo.webp  escudo-sm.webp  ball.webp  court.jpg  felt.jpg  fuzz.webp  intro-*.jpg
+api/        funciones de Vercel:
+            notify.js        notificaciones push
+            remind.js        recordatorios automáticos (tarea diaria)
+            fct-sync.js      sincronización con la FCT (tarea nocturna) + avisos al gestor + informe automático
+            auto-report.js   «Enviar ahora» del informe automático
+            send-report.js   envío del resumen desde la app
+            write-report.js  textos del informe con IA
+            extract.js       lectura de documentos con IA
+            _report.js _mail.js _ai.js _crest.js   (código compartido; no son direcciones públicas)
 ```
+
+## Datos en Firestore
+- `meta/app`: temporada actual, equipos del club, gestores (`managers`, `managerEmails`), informe automático (`autoReport`) y avisos FCT (`fctAlerts`).
+- `seasons/{temporada}` (Polo A) y `seasons/{temporada}-{equipo}`: calendario, plantilla, resultados, capitanes, `memberIds` y `fctLast`. Dentro: `avail`, `availNotes`, `picks`, `ballots`, `docs` (+`chunks`), `snapshots`, `mvp/{jornada}` (+`votes`).
+- Del club: `claims`, `users`, `profiles`, `photos`, `phones` (teléfonos), `pushTokens`, `public/roster`, `reports` (registro de envíos) y `admins`.
 
 ## Roles
 - **Jugador**: entra con Google, elige su nombre y gestiona lo suyo desde **Yo**: foto, teléfono, ficha de tenista, disponibilidad y encuestas.
-- **Capitán**: los marcados como capitán en la plantilla. Piden disponibilidad, convocan, preparan el cartel, ponen resultados y publican el MVP.
+- **Capitán**: los marcados como capitán en la plantilla de su equipo. Piden disponibilidad, convocan, preparan el cartel, ponen resultados y publican el MVP. Ven los datos privados de su equipo.
+- **Gestor del club**: se añade en Gestión deportiva → Configuración (nombre y Gmail). Ve todos los equipos sin ser jugador: al entrar va directo a Gestión deportiva, sin elegir nombre ni hacer el tour de jugador.
 - **Administrador**: además gestiona plantilla, capitanes y temporadas. Se da de alta en Firestore > colección `admins` > documento con su Gmail en minúsculas.
+
+## Reglas de seguridad (cada vez que cambie `firestore.rules`)
+Firebase > Firestore Database > **Reglas** > pegar el contenido de `firestore.rules` > **Publicar**. La consola guarda el historial: si algo dejara de funcionar, se puede volver a la versión anterior desde ahí.
+Las reglas reflejan los roles de arriba. El MVP lo protege el servidor: un voto por jugador, nunca a uno mismo y sin poder cambiarlo; solo capitanes y gestión pueden anular un voto.
 
 ## Puesta en marcha de las notificaciones (una vez)
 1. **Clave web**: Firebase > ⚙️ Configuración del proyecto > **Cloud Messaging** > *Certificados push web* > **Generar par de claves**. Copia la clave en `vapidKey` dentro de `config.js`.
@@ -55,6 +77,17 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
   - `FIREBASE_PROJECT_ID`: `lliga-catalana-bf8e3`.
   - Opcionales: `GROQ_MODEL` (por defecto `qwen/qwen3.8-27b`), `AI_PROVIDER` (groq, openai, xai, gemini, anthropic) con su clave y modelo, `FIREBASE_SERVICE_ACCOUNT` (activa el tope diario `AI_DAILY_LIMIT`, por defecto 150 lecturas).
 
+## Federació (FCT)
+- Gestión deportiva → **Federació** (también la tarjeta destacada en Inicio): estado de cada equipo, última sincronización y botón «Sincronizar ahora».
+- Cada noche (tarea de Vercel a las 21:30 UTC) se sincronizan todos los equipos: calendario, resultados, actas y plantillas.
+- Lo que no cuadra (un resultado del Polo distinto en la FCT, una fecha cambiada a mano, jugadores de las actas que no están en la plantilla, o un fallo de sincronización) aparece en **Requiere atención** y se avisa por correo a los gestores (se puede desactivar en la pestaña Federació).
+- Necesita en Vercel: `FIREBASE_SERVICE_ACCOUNT` y `CRON_SECRET`.
+
+## Informe semanal automático
+- Gestión deportiva → Configuración → **Informe semanal automático**. Activado por defecto: el domingo por la noche (o el lunes), después de sincronizar con la FCT, se envía a los gestores el mismo correo con el PDF que «Enviar desde la app». No se repite si ese fin de semana ya se envió automáticamente.
+- «Enviar ahora» lo genera y lo envía al momento (sirve para probar).
+- Necesita lo mismo que el envío desde la app (correo y, para los textos con IA, la clave de IA) más `FIREBASE_SERVICE_ACCOUNT` y `CRON_SECRET`. Opcional: `APP_URL` (dirección de la app para el enlace del correo).
+
 ## Envío del resumen por correo
 - Gestión deportiva → Resumen del fin de semana → «Enviar por correo». Se elige a qué gestores se envía (o a uno mismo) y se puede añadir un mensaje.
 - «Abrir en mi correo» funciona sin configurar nada: abre tu Mail o Gmail con todo escrito y lo envías tú.
@@ -64,7 +97,7 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
 - Solo se puede enviar a gestores configurados en la app o a uno mismo. Cada envío queda registrado (fecha, destinatarios, estado) y nunca se da por enviado si el servicio no lo confirma.
 
 ## Gestió esportiva, capitanes y equipos (noviembre 2026)
-- Gestió esportiva (icono del edificio): menú propio Inici, Equips, Documentació, Resum y Configuració.
+- Gestió esportiva (icono del edificio): menú propio Inicio, Equipos, Federació, Documentación, Resumen y Configuración.
 - Documentació: se elige el equipo en el desplegable y desde ahí se sube, se lee con IA, se revisa y se valida. El tipo de un documento se cambia desde la propia fila, sin borrarlo; queda registrado quién y cuándo, y no se vuelve a leer solo.
 - Equips: vista de tarjetas o de tabla (se recuerda la última), con ordenación y filtros por categoría y género.
 - Capitanes y administradores ven en Inicio el siguiente paso real de la jornada, con botón directo, y un punto rojo en «Gestió» cuando hay algo pendiente.
@@ -76,3 +109,6 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
 - Si el PDF no se puede generar, no se envía el correo y se muestra el error para reintentar.
 - Las conclusiones y recomendaciones las redacta la IA (función `api/write-report.js`, mismas variables que la lectura de documentos) solo con datos registrados; si la IA no responde, el informe se genera igual con textos sacados directamente de los datos.
 - El informe del capitán se rellena en Matchday → Postpartido. Si no está, el PDF lo indica.
+
+## Otro club (primer paso multi-club)
+La identidad del club está en `club-config.js`: nombre, nombre corto, escudo, equipos, grupos FCT y cómo aparece el club en actas y en la FCT. Para otro club se cambia ese archivo y el escudo de `img/` (y, para el PDF del servidor, `api/_crest.js`, que es el escudo en PNG). Firebase y Vercel son por club: cada club tiene su propio proyecto.

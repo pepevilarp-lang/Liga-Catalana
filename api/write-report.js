@@ -30,7 +30,7 @@ async function authorize(token) {
   const a = await fetch(fsBase() + 'admins/' + encodeURIComponent(email), h);
   if (a.status !== 200 && !managers.includes(email)) throw Object.assign(new Error('Solo gestores del club y administradores'), { status: 403 });
 }
-const SYSTEM = `Eres el redactor del informe deportivo semanal del Real Club de Polo de Barcelona (tenis, Lliga Catalana por equipos).
+const SYSTEM = `Eres el redactor del informe deportivo semanal del ${require('../club-config.js').name} (tenis, Lliga Catalana por equipos).
 Escribes en español, con tono profesional, sobrio y claro, como un informe de dirección deportiva. Sin emojis ni adjetivos exagerados.
 REGLAS ESTRICTAS:
 1. Usa SOLO los datos del JSON que recibes. No inventes resultados, marcadores, jugadores, estadísticas, rivales, opiniones, declaraciones ni incidencias.
@@ -55,25 +55,32 @@ function clean(o, teams) {
   (Array.isArray(o.seguimiento) ? o.seguimiento : []).slice(0, 8).forEach(x => out.seguimiento.push(words(x, 40)));
   return out;
 }
+// Redacta los textos a partir de los datos. La usan el botón de la app y el informe automático (api/_report.js).
+async function analyze(facts) {
+  const p = provider();
+  const txt = JSON.stringify(facts);
+  if (txt.length > 90000) throw Object.assign(new Error('Demasiados datos para redactar'), { status: 413 });
+  const teams = (facts.equipos || []).map(t => t.equipo).filter(Boolean);
+  const payload = { model: p.model, temperature: 0.2, [p.maxTok]: 3000, response_format: { type: 'json_object' },
+    messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: 'Datos del fin de semana (JSON):\n' + txt }], ...(p.extra || {}) };
+  const go = b => fetch(p.base + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env[p.keyVar] }, body: JSON.stringify(b) });
+  let r = await go(payload);
+  if (r.status === 400 && p.extra) { const t = await r.text(); if (/reasoning/i.test(t)) { Object.keys(p.extra).forEach(k => delete payload[k]); r = await go(payload); } else throw Object.assign(new Error('El proveedor rechazó la petición: ' + t.slice(0, 200)), { status: 502 }); }
+  if (!r.ok) throw Object.assign(new Error('Error del proveedor (' + r.status + '): ' + (await r.text()).slice(0, 200)), { status: 502 });
+  const j = await r.json(); let raw = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}';
+  raw = raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^```(json)?|```$/g, '').trim();
+  let o; try { o = JSON.parse(raw); } catch (e) { const m = raw.match(/\{[\s\S]*\}/); o = m ? JSON.parse(m[0]) : {}; }
+  return { provider: p.name, model: p.model, usage: j.usage || null, data: clean(o, teams) };
+}
 module.exports = async (req, res) => {
   if (req.method === 'GET') { let p = null, err = null; try { p = provider(); } catch (e) { err = e.message; } return res.status(200).json({ configured: !!p && !!process.env.FIREBASE_PROJECT_ID, provider: p ? p.name : null, model: p ? p.model : null, error: err }); }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
   try {
-    const p = provider();
+    provider();
     await authorize(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const facts = body.facts || {}; const txt = JSON.stringify(facts);
-    if (txt.length > 90000) throw Object.assign(new Error('Demasiados datos para redactar'), { status: 413 });
-    const teams = (facts.equipos || []).map(t => t.equipo).filter(Boolean);
-    const payload = { model: p.model, temperature: 0.2, [p.maxTok]: 3000, response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: 'Datos del fin de semana (JSON):\n' + txt }], ...(p.extra || {}) };
-    const go = b => fetch(p.base + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env[p.keyVar] }, body: JSON.stringify(b) });
-    let r = await go(payload);
-    if (r.status === 400 && p.extra) { const t = await r.text(); if (/reasoning/i.test(t)) { Object.keys(p.extra).forEach(k => delete payload[k]); r = await go(payload); } else throw Object.assign(new Error('El proveedor rechazó la petición: ' + t.slice(0, 200)), { status: 502 }); }
-    if (!r.ok) throw Object.assign(new Error('Error del proveedor (' + r.status + '): ' + (await r.text()).slice(0, 200)), { status: 502 });
-    const j = await r.json(); let raw = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}';
-    raw = raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^```(json)?|```$/g, '').trim();
-    let o; try { o = JSON.parse(raw); } catch (e) { const m = raw.match(/\{[\s\S]*\}/); o = m ? JSON.parse(m[0]) : {}; }
-    return res.status(200).json({ ok: true, provider: p.name, model: p.model, usage: j.usage || null, data: clean(o, teams) });
+    const out = await analyze(body.facts || {});
+    return res.status(200).json({ ok: true, ...out });
   } catch (e) { return res.status(e.status || 500).json({ error: e.message || 'error' }); }
 };
+module.exports.analyze = analyze;

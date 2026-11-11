@@ -13,10 +13,12 @@ function getAdmin() {
 }
 const FCT_API = 'https://portal.fctennis.cat/app/api/calendario.do';
 // Grupos de la 13a Lliga Catalana 2026-27 (torneo 4296)
-const KNOWN_GROUPS = { '2026-27': 4622, '2026-27-polo-a': 4622, '2026-27-polo-b': 4621, '2026-27-fem-a': 4599 };
+const CLUBCFG = require('../club-config.js');
+const KNOWN_GROUPS = CLUBCFG.fctGroups || {};
 const POLO = 'polo';
 const STOP = new Set(['club', 'de', 'del', 'la', 'el', 'tenis', 'tennis', 'rc', 'rst', 'ct', 'ce', 'rct', 'real', 'sant', 'sport', 'esportiu', 's', 'i', 'y', 'a', 'b', 'cd', 'cn', 'ctn', 'c', 't', 'n']);
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const CLUB_RE = new RegExp('\\b' + norm(CLUBCFG.fctMatch || 'polo') + '\\b');   // el club en los nombres de equipo de la FCT
 const toks = s => norm(s).split(' ').filter(t => t && !STOP.has(t));
 const slug = s => norm(s).replace(/ /g, '-');
 const ymd = d => { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(d || '')); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
@@ -129,12 +131,12 @@ function syncActa(S, j, acta, poloCode) {
 function teamFor(S, code, name, added, poloCode) {
   if (poloCode && +code === +poloCode) { const p = S.teams.find(x => x.id === POLO); if (p) { p.fct = code; return POLO; } }
   let t = S.teams.find(x => +x.fct === +code); if (t) return t.id;
-  if (!poloCode && /\bpolo\b/.test(norm(name))) { t = S.teams.find(x => x.id === POLO); if (t) { t.fct = code; return POLO; } }
+  if (!poloCode && CLUB_RE.test(norm(name))) { t = S.teams.find(x => x.id === POLO); if (t) { t.fct = code; return POLO; } }
   // Otro equipo del Polo en el mismo grupo (p. ej. el B cuando este es el A): es un rival más
-  if (/\bpolo\b/.test(norm(name))) {
+  if (CLUB_RE.test(norm(name))) {
     const L = (/-\s*([A-Z])\s*$/.exec(String(name)) || [])[1] || '';
     let id = 'polo-' + (L.toLowerCase() || 'otro'); while (S.teams.some(x => x.id === id)) id += '-2';
-    S.teams.push({ id, name: ('RC de Polo ' + L).trim(), short: ('Polo ' + L).trim(), abbr: 'RCP' + L, fct: code }); added.push(('RC de Polo ' + L).trim());
+    S.teams.push({ id, name: (CLUBCFG.short + ' ' + L).trim(), short: (CLUBCFG.teamShort + ' ' + L).trim(), abbr: CLUBCFG.abbr + L, fct: code }); added.push((CLUBCFG.short + ' ' + L).trim());
     return id;
   }
   const a = toks(name); let best = null, bs = 0;
@@ -150,7 +152,7 @@ function teamFor(S, code, name, added, poloCode) {
 
 function syncSeason(S, partidos, poloCode) {
   S.teams = Array.isArray(S.teams) ? S.teams : []; S.fixtures = Array.isArray(S.fixtures) ? S.fixtures : [];
-  if (!S.teams.some(t => t.id === POLO)) S.teams.unshift({ id: POLO, name: 'RC de Polo', short: 'Polo', abbr: 'RCP' });
+  if (!S.teams.some(t => t.id === POLO)) S.teams.unshift({ id: POLO, name: CLUBCFG.short, short: CLUBCFG.teamShort, abbr: CLUBCFG.abbr });
   const note = (f, what) => { f.hist = [...(f.hist || []), { at: Date.now(), by: 'FCT', what }].slice(-6); f.srcAt = Date.now(); };
   const out = { results: 0, official: 0, dates: 0, created: 0, newTeams: [], diffs: [], dateDiffs: [] };
   for (const p of partidos) {
@@ -197,7 +199,7 @@ function syncSeason(S, partidos, poloCode) {
 // manda comp.fctTeam; si no, la letra final del nombre del equipo en la app («… B» → «Polo, RC de - B»).
 function pickPoloCode(S, partidos) {
   const seen = new Map();
-  partidos.forEach(p => { [[p.equipoLocal, p.equipoLocal === p.codigoEquipo ? p.equipo : p.contrario], [p.equipoVisitante, p.equipoVisitante === p.codigoEquipo ? p.equipo : p.contrario]].forEach(([c, e]) => { const n = (e && e.nombreCuadro) || ''; if (c && /\bpolo\b/.test(norm(n))) seen.set(+c, n); }); });
+  partidos.forEach(p => { [[p.equipoLocal, p.equipoLocal === p.codigoEquipo ? p.equipo : p.contrario], [p.equipoVisitante, p.equipoVisitante === p.codigoEquipo ? p.equipo : p.contrario]].forEach(([c, e]) => { const n = (e && e.nombreCuadro) || ''; if (c && CLUB_RE.test(norm(n))) seen.set(+c, n); }); });
   const comp = S.comp || {};
   if (comp.fctTeam && seen.has(+comp.fctTeam)) return +comp.fctTeam;
   if (seen.size <= 1) return seen.size ? [...seen.keys()][0] : null;
@@ -207,7 +209,7 @@ function pickPoloCode(S, partidos) {
 }
 async function runSeason(db, id) {
   const ref = db.doc('seasons/' + id), snap = await ref.get(); if (!snap.exists) return { season: id, skipped: 'no-existe' };
-  const S = snap.data(), group = +((S.comp || {}).fctGroup || KNOWN_GROUPS[id] || 0);
+  const S = snap.data(), prevUnmatched = new Set((((S.fctLast || {}).actas || {}).unmatched) || []), group = +((S.comp || {}).fctGroup || KNOWN_GROUPS[id] || 0);
   if (!group) return { season: id, skipped: 'sin-grupo-fct' };
   if ((S.comp || {}).fctSync === false) return { season: id, skipped: 'desactivado' };
   const partidos = await fctMatches(group);
@@ -225,14 +227,54 @@ async function runSeason(db, id) {
     const mine = partidos.filter(p => (+p.equipoLocal === +poloCode || +p.equipoVisitante === +poloCode) && +p.codigoActa > 0);
     const acts = { loaded: [], manual: [] };
     for (const p of mine) { try { const st = syncActa(S, +p.jornada, await fctActa(p.codigo), poloCode); if (st === 'loaded') acts.loaded.push(+p.jornada); if (st === 'manual') acts.manual.push(+p.jornada); } catch (e) { (acts.errors = acts.errors || []).push(+p.jornada); } }
-    if (S.__unmatched && S.__unmatched.size) acts.unmatched = [...S.__unmatched].slice(0, 30);
+    if (S.__unmatched && S.__unmatched.size) { acts.unmatched = [...S.__unmatched].slice(0, 30); const nu = acts.unmatched.filter(x => !prevUnmatched.has(x)); if (nu.length) acts.newUnmatched = nu; }
     delete S.__unmatched;
     out.actas = acts;
   }
   const changed = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} }) !== before;
   const meta = { at: Date.now(), group, ...out };
-  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, ties: S.ties || {}, fctLast: meta, updatedAt: Date.now() } : { fctLast: meta });
+  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, ties: S.ties || {}, fctLast: meta, fctError: admin.firestore.FieldValue.delete(), updatedAt: Date.now() } : { fctLast: meta, fctError: admin.firestore.FieldValue.delete() });
   return { season: id, changed, ...meta };
+}
+
+const appUrl = req => process.env.APP_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host || ''));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function alertManagers(db, results, req) {
+  const meta = (await db.doc('meta/app').get()).data() || {}, teams = require('./_report.js').clubTeams(meta);
+  const nameOf = sid => { const tid = String(sid).replace(/^\d{4}-\d{2}-?/, '') || (teams[0] || {}).id; return (teams.find(t => t.id === tid) || {}).name || sid; };
+  const items = [];
+  results.forEach(r => {
+    const name = nameOf(r.season);
+    if (r.error) items.push(`${name}: no se ha podido sincronizar con la FCT (${r.error}).`);
+    (r.diffs || []).forEach(d => items.push(`${name}, jornada ${d.j}: la FCT tiene ${d.fct} y en la app consta ${d.app}.`));
+    (r.dateDiffs || []).forEach(d => items.push(`${name}, jornada ${d.j}: la FCT tiene fecha ${d.fct} y en la app ${d.app}.`));
+    const nu = (r.actas || {}).newUnmatched || []; if (nu.length) items.push(`${name}: jugadores de las actas que no están en la plantilla: ${nu.join(', ')}.`);
+  });
+  if (!items.length) return { sent: 0 };
+  if ((meta.fctAlerts || {}).on === false) return { sent: 0, off: true, items: items.length };
+  const to = (meta.managerEmails || []).slice(0, 10); if (!to.length) return { sent: 0, noManagers: true };
+  const { via, sendMail } = require('./_mail.js'); if (!via()) return { sent: 0, noMail: true };
+  const link = appUrl(req) + '/#club-fct';
+  await sendMail({ to, subject: 'Federació (FCT): hay datos que revisar, ' + CLUBCFG.medium,
+    text: ['La sincronización de esta noche con la Federació Catalana de Tennis ha encontrado datos que no cuadran con la app. La app no los cambia sola.', '', ...items.map(x => '· ' + x), '', 'Revísalos en: ' + link].join('\n'),
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#13261F;max-width:640px"><p style="font-size:12px;color:#94722A;text-transform:uppercase;letter-spacing:.06em;margin:0">${esc(CLUBCFG.name)}, gestión deportiva</p>
+      <h1 style="font-size:22px;margin:4px 0 10px">Datos de la FCT por revisar</h1><p>La sincronización de esta noche ha encontrado datos que no cuadran con la app. La app no los cambia sola: decide tú cuál es el bueno.</p>
+      <ul>${items.map(x => `<li style="margin:4px 0">${esc(x)}</li>`).join('')}</ul><p><a href="${esc(link)}" style="color:#94722A">Revisar en Gestión deportiva → Federació</a></p></div>` });
+  return { sent: to.length, items: items.length };
+}
+async function weeklyReport(db, req, now = new Date()) {
+  const R = require('./_report.js');
+  const meta = (await db.doc('meta/app').get()).data() || {}, cfg = meta.autoReport || {};
+  if (cfg.on === false) return { skipped: 'desactivado' };
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Madrid', weekday: 'short' }).format(now);
+  if (day !== (cfg.day === 'mon' ? 'Mon' : 'Sun')) return { skipped: 'no-toca' };
+  const sat = R.ymd(R.weekendSat(now));
+  if (cfg.lastSat === sat) return { skipped: 'ya-enviado' };
+  if (!(meta.managerEmails || []).length) return { skipped: 'sin-gestores' };
+  if (!require('./_mail.js').via()) return { skipped: 'correo-sin-configurar' };
+  const out = await R.sendWeekly(db, { meta, sat, appUrl: appUrl(req), auto: true });
+  await db.doc('meta/app').set({ autoReport: { ...cfg, lastSat: sat, lastAt: Date.now() } }, { merge: true });
+  return { sent: out.to.length, sat };
 }
 
 module.exports = async (req, res) => {
@@ -241,7 +283,8 @@ module.exports = async (req, res) => {
     const A = getAdmin(), db = A.firestore();
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     let ids = [];
-    if (process.env.CRON_SECRET && tok === process.env.CRON_SECRET) {
+    const cron = !!(process.env.CRON_SECRET && tok === process.env.CRON_SECRET);
+    if (cron) {
       const snap = await db.collection('seasons').get(); snap.forEach(d => ids.push(d.id));
     } else {
       // Botón «Actualizar desde la FCT»: administradores, gestores o quien pueda gestionar ese equipo
@@ -258,11 +301,18 @@ module.exports = async (req, res) => {
       ids = [season];
     }
     const results = [];
-    for (const id of ids) { try { results.push(await runSeason(db, id)); } catch (e) { results.push({ season: id, error: e.message }); } }
-    return res.status(200).json({ ok: true, results });
+    for (const id of ids) { try { results.push(await runSeason(db, id)); } catch (e) { results.push({ season: id, error: e.message }); await db.doc('seasons/' + id).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); } }
+    const extra = {};
+    if (cron) {
+      // Avisos al gestor: datos de la FCT que no cuadran con la app (solo los nuevos de esta noche)
+      try { extra.alert = await alertManagers(db, results, req); } catch (e) { extra.alert = { error: e.message }; }
+      // Informe semanal automático: el domingo por la noche, después de sincronizar
+      try { extra.report = await weeklyReport(db, req); } catch (e) { extra.report = { error: e.message }; }
+    }
+    return res.status(200).json({ ok: true, results, ...extra });
   } catch (e) {
     return res.status(500).json({ error: e.code || e.message });
   }
 };
 
-module.exports._test = { syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer };
+module.exports._test = { syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };

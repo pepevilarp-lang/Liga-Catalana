@@ -3,6 +3,7 @@
 // ===== Capa de IA independiente del proveedor (antes api/_ai.js, ahora dentro de este archivo para no depender de otros) =====
 //  Se elige con la variable AI_PROVIDER (por defecto: groq).
 // Las claves viven SOLO en el servidor (variables de entorno de Vercel). Nunca llegan al navegador.
+const CLUBCFG = require('../club-config.js');
 const PROVIDERS = {
   // Verificado en la documentación de Groq (nov. 2026): qwen/qwen3.8-27b lee texto e imágenes (máx. 3), modo JSON.
   groq:     { base: process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1', keyVar: 'GROQ_API_KEY', model: process.env.GROQ_MODEL || 'qwen/qwen3.8-27b', maxImages: 3, extra: { reasoning_effort: 'none' } },
@@ -90,7 +91,7 @@ async function authorize(req) {
   throw Object.assign(new Error('Solo miembros del equipo'), { status: 403 });
 }
 const COMMON = `Eres un asistente que extrae datos de documentos de la Lliga Catalana de tenis por equipos (Federació Catalana de Tennis).
-Nuestro club es el Real Club de Polo de Barcelona (aparece como "Polo, RC de", "RC Polo", "Real Club de Polo"...).
+Nuestro club es el ${CLUBCFG.name} (aparece como ${CLUBCFG.aliases.map(x => '"' + x + '"').join(', ')}...).
 REGLAS OBLIGATORIAS:
 - Devuelve SOLO un objeto JSON válido con exactamente la estructura pedida.
 - No inventes nada. Si un dato no aparece o no se lee bien, pon null y añade una frase a "unclear".
@@ -114,7 +115,7 @@ CÓMO ES EL IMPRESO:
 - Bloque "DOBLES": parejas 1 y 2, cada una con dos jugadores (marcados 1 y 2).
 - Debajo de cada fila hay una LÍNEA DE PUNTOS. El impreso dice "Anoteu els resultats de cada partit a la línia de punts al peu del nom del guanyador": EL MARCADOR SE ESCRIBE DEBAJO DEL GANADOR, normalmente desde su punto de vista (6-3 6-4). Si el marcador está en la columna del Polo, ganó el Polo; si está en la columna del rival, ganó el rival.
 - "CAPITÀ" de cada equipo y, abajo, "PUNTUACIÓ": "L'equip del Club ___ guanya el del ___ per __ a __", lugar y fecha.
-NUESTRO EQUIPO es el Real Club de Polo de Barcelona ("Polo", "RC Polo", "R.C. Polo", "Reial Club de Polo"...). Identifica primero cuál de las dos columnas es la del Polo.
+NUESTRO EQUIPO es el ${CLUBCFG.name} (${[CLUBCFG.teamShort, ...CLUBCFG.aliases].map(x => '"' + x + '"').join(', ')}...). Identifica primero cuál de las dos columnas es la de nuestro club.
 En la columna del rival a veces solo se escribe el nombre del club: NO hace falta leer nombres de jugadores rivales.
 Estructura:
 {"acta_numero":string|null,"prova":string|null,"categoria":string|null,"columna_polo":"izquierda"|"derecha"|null,"rival":"club rival tal cual"|null,
