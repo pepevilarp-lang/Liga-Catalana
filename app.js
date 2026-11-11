@@ -2746,6 +2746,8 @@ function drawOnb(){ const O=ui.onb; let el=document.getElementById('onb');
       <div class="ob-form">${profileStep(sk)}</div>
       <div class="ob-nav"><button class="btn ghost" data-onb="pprev" ${k? '' : 'disabled'}>Atrás</button><span class="ob-saved">${ui.fe?.dirty? 'Guardando…' : 'Guardado'}</span><button class="btn brass" data-onb="pnext">${k===PSTEPS.length-1? 'Terminar' : 'Siguiente'}</button></div></div>`; }
   else if(O.stage==='apps'){ h=appsStage(); }
+  else if(O.stage==='done' && !me){ onbMarkDone();
+    h=`<div class="ob-card ob-done"><div class="ob-wbg"></div><img class="ob-crest" src="${ASSET.crestSm}" alt=""><h1>¡Todo listo!</h1><p>Ya tienes acceso a la gestión deportiva del club: todos los equipos, la Federació y el informe del fin de semana.</p><button class="btn brass big ob-cta" data-onb="enter">Ir a Gestión deportiva ${svgi('arrow',16)}</button></div>`; }
   else if(O.stage==='done'){ onbMarkDone(); const p=player(me);
     h=`<div class="ob-card ob-done"><div class="ob-wbg"></div><div class="ob-burst">${photos[me]?.d? `<img src="${esc(photos[me].d)}" alt="">` : `<b>${esc((p?.name||'?').split(' ').map(x=>x[0]).slice(0,2).join(''))}</b>`}</div><h1>¡Tu perfil está listo!</h1><p>Ya formas parte de tu equipo. Ahora puedes empezar a utilizar Lliga Catalana.</p><button class="btn brass big ob-cta" data-onb="enter">Entrar en mi equipo ${svgi('arrow',16)}</button><button class="ob-later" data-act="intro-open" data-id="${esc(me)}">▶ Ver mi presentación de jugador</button></div>`; }
   el.innerHTML=h; el.querySelector('.ob-cta, [data-onb="next"], [data-onb="pnext"]')?.focus({preventScroll:true});
