@@ -7,5 +7,5 @@ window.POLO_CONFIG = {
     messagingSenderId: "807897020475",
     appId: "1:807897020475:web:0aff09bf7a8231c8b9c41e"
   },
-  vapidKey: ""
+  vapidKey: "BJFunnnF6YnNQTNv9fWNdy7sXGQf2h7uZOXVj1RCfeumNL_nT3sHIlOZrIBKcCrohHITLxVpGA_2qGrNYV3PVz4"
 };
