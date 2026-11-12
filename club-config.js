@@ -8,6 +8,8 @@
   else root.CLUB = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   return {
+    id: 'rcpb',                               // identificador del club en la plataforma (clubs/<id>, invitaciones, solicitudes)
+    dataRoot: '',                             // raíz de sus datos en Firestore: '' = la raíz actual; en la fase 3 del plan, 'clubs/rcpb'
     name: 'Real Club de Polo de Barcelona',   // nombre completo (cabeceras, informe, correos)
     medium: 'Real Club de Polo',              // nombre de uso habitual
     short: 'RC de Polo',                      // como aparece en la clasificación
@@ -16,6 +18,8 @@
     fileTag: 'RCPB',                          // en el nombre del PDF: Weekend_Sports_Report_RCPB_2026-11-08.pdf
     fctMatch: 'polo',                         // palabra que identifica al club en los nombres de equipo de la FCT («Polo, RC de - B»)
     aliases: ['Polo, RC de', 'RC Polo', 'R.C. Polo', 'Real Club de Polo', 'Reial Club de Polo'],   // cómo aparece en actas y documentos
+    town: 'Barcelona',
+    colors: { primary: '#0F3B2E', secondary: '#94722A' },   // colores de marca; se pueden cambiar desde Configuración (clubs/<id>)
     crest: 'img/escudo.webp',
     crestSm: 'img/escudo-sm.webp',
     // Equipos del club. El primero conserva la ruta original de su temporada (seasons/2026-27); el resto: seasons/<temporada>-<equipo>

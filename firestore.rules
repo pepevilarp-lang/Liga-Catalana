@@ -6,6 +6,9 @@ rules_version = '2';
 //   - Capitán: su pid está en seasons/{temporada}.captains. Datos privados de su equipo y gestión del MVP.
 //   - Jugador del equipo: su pid está en seasons/{temporada}.memberIds (o la lista está vacía). Edita su equipo
 //     mientras rules.teamManage no sea false.
+//   - Vincular un Gmail a un jugador exige una invitación válida (invites/{código}), salvo que un administrador
+//     active meta/app.openClaims. Ser gestor exige que un administrador lo añada o apruebe su solicitud (clubRequests).
+// Elegir un rol en la pantalla de entrada no da permisos: todo se decide aquí. Plan multiclub: docs/MULTICLUB.md
 // Las funciones de Vercel (api/*) usan la cuenta de servicio y no pasan por estas reglas.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -38,6 +41,18 @@ service cloud.firestore {
     // Datos privados del equipo (respuestas individuales, comentarios, quién votó a quién)
     function canPrivate(s) { return isStaff() || isCaptainOf(s); }
 
+    // Invitaciones: el código existe, es de ese jugador, no ha caducado ni se ha usado, y se marca como usado en el mismo lote
+    function openClaims() { return get(/databases/$(database)/documents/meta/app).data.get('openClaims', false) == true; }
+    function inviteOk(pid) {
+      let code = request.resource.data.get('invite', '-');
+      let inv = /databases/$(database)/documents/invites/$(code);
+      return code is string && code.size() >= 6 && exists(inv)
+        && get(inv).data.pid == pid
+        && get(inv).data.get('usedBy', null) == null
+        && get(inv).data.exp > request.time.toMillis()
+        && getAfter(inv).data.usedBy == request.auth.uid;
+    }
+
     // El recuento solo sube en uno, y solo para el jugador del voto que se crea en el mismo lote
     function validVoteTally(s, k) {
       let vote = /databases/$(database)/documents/seasons/$(s)/mvp/$(k)/votes/$(myPid());
@@ -64,7 +79,8 @@ service cloud.firestore {
       allow create: if signedIn()
         && !exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == email();
+        && request.resource.data.email == email()
+        && (openClaims() || inviteOk(pid));
       allow update: if signedIn()
         && resource.data.email == email()
         && request.resource.data.email == email()
@@ -80,9 +96,54 @@ service cloud.firestore {
     }
 
     // Configuración del club (temporadas, equipos, gestores, informe automático). La leen también los gestores que no juegan.
+    // Los gestores cambian la configuración, pero la lista de gestores y el acceso sin invitación solo un administrador.
     match /meta/{doc} {
       allow read: if canRead();
-      allow write: if isStaff();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isManager()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['managers', 'managerEmails', 'openClaims']));
+      allow delete: if isAdmin();
+    }
+    // Invitaciones de jugador: las crean capitanes y gestión; se leen conociendo el código; las usa el invitado una vez
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if isStaff();
+      allow create: if signedIn() && canPrivate(request.resource.data.season)
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.get('usedBy', null) == null
+        && request.resource.data.pid is string
+        && request.resource.data.exp is int
+        && request.resource.data.exp <= request.time.toMillis() + 2678400000;
+      allow update: if signedIn() && resource.data.get('usedBy', null) == null
+        && resource.data.exp > request.time.toMillis()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
+        && request.resource.data.usedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/claims/$(resource.data.pid)).data.uid == request.auth.uid;
+      allow delete: if isStaff() || canPrivate(resource.data.season);
+    }
+    // Catálogo de clubes de la FCT (importado por un administrador)
+    match /catalog/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    // Solicitudes de gestores para vincularse a un club: las crea el interesado y las resuelve un administrador
+    match /clubRequests/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow create: if signedIn() && uid == request.auth.uid
+        && request.resource.data.uid == uid
+        && request.resource.data.email == email()
+        && request.resource.data.status == 'pendiente';
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (uid == request.auth.uid && resource.data.status != 'aprobada');
+    }
+    // Identidad de cada club (colores, contacto) y sus miembros aprobados
+    match /clubs/{club} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+      match /members/{uid} {
+        allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+        allow write: if isAdmin();
+      }
     }
     // Lista pública de nombres por equipo, para elegir el tuyo al entrar
     match /public/{doc} {
