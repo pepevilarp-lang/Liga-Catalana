@@ -20,8 +20,13 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         exists(/databases/$(database)/documents/admins/$(email())));
     }
+    // Identificador del club de este proyecto (club-config.js → id)
+    function clubId() { return 'rcpb'; }
+    function memberDoc(c) { return /databases/$(database)/documents/clubs/$(c)/members/$(request.auth.uid); }
+    // Gestor: en la lista meta/app.managerEmails o aprobado/invitado en clubs/<club>/members/<uid>
     function isManager() {
-      return signedIn() && email() in get(/databases/$(database)/documents/meta/app).data.get('managerEmails', []);
+      return signedIn() && (email() in get(/databases/$(database)/documents/meta/app).data.get('managerEmails', [])
+        || (exists(memberDoc(clubId())) && 'gestor' in get(memberDoc(clubId())).data.get('roles', [])));
     }
     function isStaff() { return isAdmin() || isManager(); }
     function isMember() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
@@ -51,6 +56,17 @@ service cloud.firestore {
         && get(inv).data.get('usedBy', null) == null
         && get(inv).data.exp > request.time.toMillis()
         && getAfter(inv).data.usedBy == request.auth.uid;
+    }
+
+    // Invitación de gestor válida para ese club, usada en el mismo lote por quien se da de alta
+    function gestorInviteOk(c, uid) {
+      let code = request.resource.data.get('invite', '-');
+      let inv = /databases/$(database)/documents/invites/$(code);
+      return signedIn() && uid == request.auth.uid && code is string && code.size() >= 6 && exists(inv)
+        && get(inv).data.get('role', '') == 'gestor' && get(inv).data.club == c
+        && get(inv).data.get('usedBy', null) == null && get(inv).data.exp > request.time.toMillis()
+        && getAfter(inv).data.usedBy == request.auth.uid
+        && request.resource.data.roles == ['gestor'];
     }
 
     // El recuento solo sube en uno, y solo para el jugador del voto que se crea en el mismo lote
@@ -104,36 +120,50 @@ service cloud.firestore {
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['managers', 'managerEmails', 'openClaims']));
       allow delete: if isAdmin();
     }
-    // Invitaciones de jugador: las crean capitanes y gestión; se leen conociendo el código; las usa el invitado una vez
+    // Invitaciones: de jugador (las crean capitanes y gestión) o de gestor (solo gestión). Se leen conociendo el código
+    // y las usa el invitado una vez, en el mismo lote que crea su vínculo.
     match /invites/{code} {
       allow get: if signedIn();
       allow list: if isStaff();
-      allow create: if signedIn() && canPrivate(request.resource.data.season)
+      allow create: if signedIn()
         && request.resource.data.by == request.auth.uid
         && request.resource.data.get('usedBy', null) == null
-        && request.resource.data.pid is string
         && request.resource.data.exp is int
-        && request.resource.data.exp <= request.time.toMillis() + 2678400000;
+        && request.resource.data.exp <= request.time.toMillis() + 2678400000
+        && ((request.resource.data.get('role', 'jugador') == 'gestor' && isStaff() && request.resource.data.club == clubId())
+          || (request.resource.data.get('role', 'jugador') != 'gestor' && request.resource.data.pid is string && canPrivate(request.resource.data.season)));
       allow update: if signedIn() && resource.data.get('usedBy', null) == null
         && resource.data.exp > request.time.toMillis()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
         && request.resource.data.usedBy == request.auth.uid
-        && getAfter(/databases/$(database)/documents/claims/$(resource.data.pid)).data.uid == request.auth.uid;
-      allow delete: if isStaff() || canPrivate(resource.data.season);
+        && ((resource.data.get('role', 'jugador') == 'gestor'
+              && 'gestor' in getAfter(/databases/$(database)/documents/clubs/$(resource.data.club)/members/$(request.auth.uid)).data.roles)
+          || (resource.data.get('role', 'jugador') != 'gestor'
+              && getAfter(/databases/$(database)/documents/claims/$(resource.data.pid)).data.uid == request.auth.uid));
+      allow delete: if isStaff() || (resource.data.get('role', 'jugador') != 'gestor' && canPrivate(resource.data.season));
     }
-    // Catálogo de clubes de la FCT (importado por un administrador)
-    match /catalog/{id} {
+    // Acceso sin invitación activado (copia pública de meta/app.openClaims para la pantalla de entrada)
+    match /public/access {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
+    // Catálogo de clubes de la FCT (importado por un administrador)
+    match /catalog/{id} {
+      allow read: if true;   // datos públicos de la FCT: el buscador de clubes se usa antes de iniciar sesión
+      allow write: if isAdmin();
+    }
     // Solicitudes de gestores para vincularse a un club: las crea el interesado y las resuelve un administrador
+    // Solicitudes para vincularse a un club (como gestor o jugador): las crea el interesado y las resuelve un
+    // administrador o un gestor de ese club. Un gestor solo ve las de su club.
     match /clubRequests/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow create: if signedIn() && uid == request.auth.uid
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || (isManager() && resource.data.clubId == clubId()));
+      allow create, update: if signedIn() && uid == request.auth.uid
         && request.resource.data.uid == uid
         && request.resource.data.email == email()
-        && request.resource.data.status == 'pendiente';
-      allow update: if isAdmin();
+        && request.resource.data.role in ['gestor', 'jugador']
+        && request.resource.data.status == 'pendiente'
+        && (resource == null || resource.data.status != 'aprobada');
+      allow update: if isAdmin() || (isManager() && resource.data.clubId == clubId() && request.resource.data.clubId == clubId());
       allow delete: if isAdmin() || (uid == request.auth.uid && resource.data.status != 'aprobada');
     }
     // Identidad de cada club (colores, contacto) y sus miembros aprobados
@@ -141,14 +171,15 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isAdmin();
       match /members/{uid} {
-        allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-        allow write: if isAdmin();
+        allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || (isManager() && club == clubId()));
+        allow create: if isAdmin() || (isManager() && club == clubId()) || gestorInviteOk(club, uid);
+        allow update, delete: if isAdmin() || (isManager() && club == clubId());
       }
     }
     // Lista pública de nombres por equipo, para elegir el tuyo al entrar
     match /public/{doc} {
       allow read: if signedIn();
-      allow write: if canRead();
+      allow write: if canRead() && doc != 'access';
     }
     // Fotos recortadas (una por jugador; _team = foto del equipo). Las sube el propio jugador o quien gestiona el equipo.
     match /photos/{id} {

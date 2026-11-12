@@ -57,7 +57,18 @@ Un usuario tiene una sola cuenta y una sola ficha de jugador por club, aunque ju
 
 ## 4. Plan por fases
 
-### Fase 1, incluida en este cambio (no mueve datos)
+### Recorrido de entrada (implementado)
+La entrada es de Lliga Catalana: no muestra el nombre, el escudo ni los colores de ningún club hasta que se sabe a cuál pertenece el usuario.
+1. **«¿Cómo quieres acceder?»**: gestor deportivo, capitán o jugador. Elegir no da permisos.
+2. **Según el perfil**:
+   - Gestor: «¿De qué club eres gestor deportivo?» con buscador del catálogo (escudo, nombre, localidad) y el último club usado arriba. Luego «Has seleccionado…» y acceso con Google. Si está autorizado (lista de gestores o `clubs/<club>/members/<uid>`), entra en el entorno de ese club. Si no, «Tu acceso como gestor está pendiente de validación», con solicitud al club o invitación de gestor.
+   - Capitán: acceso con Google; se buscan los equipos en los que es capitán. Uno: entra en su gestión. Varios: elige equipo. Ninguno: se le explica y se le ofrecen sus otros perfiles.
+   - Jugador: acceso con Google; se identifican sus equipos. Uno: entra. Varios: elige. Ninguno: código de invitación o solicitud de vinculación a un club, que el club resuelve eligiendo su ficha de jugador.
+3. **Entrada al entorno**: se aplica la identidad del club y se reproduce la intro con su escudo.
+
+Cada paso muestra en qué punto está y tiene «Atrás». Se recuerdan el último perfil y el último club en el dispositivo.
+
+### Fase 1, incluida (no mueve datos)
 1. **Cerrar sesión completo**: menú de cuenta en la cabecera (móvil y escritorio) y en Yo, con confirmación, estado de carga y errores. Cancela todas las escuchas, vacía los datos privados en memoria, borra la copia local de Firestore y vuelve a la pantalla de entrada sin dejar páginas privadas en el historial.
 2. **Pantalla de acceso con tres roles** (gestor deportivo, capitán, jugador). Tras entrar con Google se comprueban los roles reales; si no tiene el elegido se explica por qué y qué puede hacer. Con varios roles se cambia de contexto desde el menú de cuenta, y el último se recuerda en ese dispositivo.
 3. **Invitaciones para jugadores**: el capitán o la gestión genera un enlace por jugador y lo envía por WhatsApp. Elegir un nombre ya no basta: las reglas exigen la invitación. Los jugadores que ya están vinculados no se ven afectados.

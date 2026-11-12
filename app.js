@@ -159,6 +159,9 @@ function makeDemo(){
     async claimInvite(code,pid){ const iv=mem['invites/'+code]; if(!iv||iv.usedBy||iv.pid!==pid||(iv.exp||0)<Date.now()) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
       if(mem['claims/'+pid] && mem['claims/'+pid].email!==u.email) throw Object.assign(new Error('ya vinculado'),{code:'permission-denied'});
       mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now(),invite:code}; mem['users/'+u.uid]={pid,email:u.email}; mem['invites/'+code]={...iv,usedBy:u.uid,usedAt:Date.now()}; persist(); emit(); },
+    watchWhere(p,field,val,cb){ return watch(p,m=>cb(Object.fromEntries(Object.entries(m||{}).filter(([,x])=>x&&x[field]===val))),true); },
+    async acceptGestorInvite(code,club){ const iv=mem['invites/'+code]; if(!iv||iv.role!=='gestor'||iv.club!==club||iv.usedBy||(iv.exp||0)<Date.now()) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
+      mem['invites/'+code]={...iv,usedBy:u.uid,usedAt:Date.now()}; mem['clubs/'+club+'/members/'+u.uid]={email:u.email,roles:['gestor'],invite:code,approvedBy:iv.byEmail||'',at:Date.now()}; persist(); emit(); },
     async getColl(p){ const out={}, d=p.split('/').length+1; Object.keys(mem).forEach(k=>{ if(k.startsWith(p+'/') && k.split('/').length===d) out[k.split('/').pop()]=clone(mem[k]); }); return out; },
     async relink(){ return null; },
     async isAdmin(){ try{ return !JSON.parse(localStorage.getItem('polo-demo-as')||'null')?.noAdmin; }catch(e){ return true; } },
@@ -206,6 +209,11 @@ function makeFirebase(){
     async claimInvite(code,pid){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const b=fs.batch();
       b.set(pathRef('claims/'+pid),{uid:u.uid,email,at:Date.now(),invite:code}); b.set(pathRef('users/'+u.uid),{pid,email});
       b.update(pathRef('invites/'+code),{usedBy:u.uid,usedAt:Date.now()}); await b.commit(); },
+    watchWhere(p,field,val,cb){ return fs.collection(CP(p)).where(field,'==',val).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
+    // Invitación de gestor: se marca como usada y se crea el miembro del club en el mismo lote (lo validan las reglas)
+    async acceptGestorInvite(code,club){ const u=auth.currentUser; const b=fs.batch();
+      b.update(pathRef('invites/'+code),{usedBy:u.uid,usedAt:Date.now()});
+      b.set(fs.doc('clubs/'+club+'/members/'+u.uid),{email:(u.email||'').toLowerCase(),roles:['gestor'],invite:code,at:Date.now()}); await b.commit(); },
     async getColl(p){ const q=await fs.collection(CP(p)).get(); const o={}; q.forEach(d=>o[d.id]=d.data()); return o; },
     async relink(){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const q=await fs.collection(CP('claims')).where('email','==',email).limit(1).get();
       if(q.empty) return null; const d=q.docs[0];
@@ -1253,14 +1261,6 @@ function surveyCard(){
 
 /* ---------------- Puerta de acceso ---------------- */
 function vLogin(){ return accLogin(); }
-function vLoginOld(){
-  return `<div class="gatebox">${courtSVG()}<span class="ball" aria-hidden="true"></span><div class="inner">
-    <img class="gate-crest" src="${ASSET.crest}" alt="${esc(CLUB.name)}">
-    <p class="hero-comp">${esc(S.comp.name)}, ${esc(S.comp.group)}</p><h1 class="hero-title" aria-label="${esc(teamLabel())}">${titleLetters(teamLabel())}</h1>
-    <p class="hero-sub">${route().startsWith('disponibilidad-')? 'Entra para decir si puedes jugar la jornada '+esc(route().slice(15))+'.' : 'La app privada de los equipos del '+esc(CLUB.name)+'.'}</p>
-    <button class="gbtn" data-act="signin"><svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Entrar con Google</button>
-    <p class="small" style="color:var(--onGreenMuted);margin-top:14px">Después eliges tu nombre de la lista del equipo. Solo se hace una vez: tu nombre queda ligado a tu Gmail en cualquier dispositivo.</p></div></div>`;
-}
 function vClaim(){
   const taken=new Set(Object.keys(claims).filter(pid=>claims[pid]?.email!==authUser.email));
   return `<div class="wrap" style="padding-top:30px;padding-bottom:40px"><p class="muted small">Has entrado como ${esc(authUser.email)}. <button class="textlink" data-act="signout">Cambiar de cuenta</button></p>
@@ -1999,7 +1999,7 @@ function rosterAll(){ const out=new Map(); const add=(tid,list)=>(list||[]).forE
 function syncRoster(){ if(B.mode!=='firebase'&&B.mode!=='demo') return; const list=S.players.filter(p=>p.active!==false).map(p=>({id:p.id,name:p.name,order:p.order||0}));
   roster={...(roster||{}), teams:{...(roster?.teams||{}), [teamId]:list}}; B.merge('public/roster',{teams:{[teamId]:list}}).catch(()=>{}); }
 const canClub = () => isAdmin || isManager;
-function checkManager(m){ const em=(authUser?.email||'').toLowerCase(); isManager = !!(em && (m?.managerEmails||[]).includes(em)); }
+function checkManager(m){ const em=(authUser?.email||'').toLowerCase(); isManager = !!(em && (m?.managerEmails||[]).includes(em)) || accIsMemberGestor(); }   // gestores de la lista o aprobados (access.js)
 function ensureClubSubs(){ const key=clubTeams().map(t=>t.id).join(',')+'|'+viewSeason; if(key===clubKey) return; clubKey=key;
   clubSubs.forEach(u=>{ try{u()}catch(e){} }); clubSubs=[]; clubData={};
   clubTeams().forEach(t=>clubSubs.push(B.watchDoc('seasons/'+docIdFor(t.id,viewSeason), d=>{ clubData[t.id]= d? normalize(clone(d)) : null; softRender(); }))); }
@@ -2301,13 +2301,14 @@ function vClubResumen(){
 }
 function vClubAjustes(){
   if(!canClub()) return vClub();
-  if(!isAdmin) return `<div class="wrap club"><div class="pagehead"><h1>Configuración</h1><p class="lede">Equipos y gestores del club. Solo un administrador puede cambiarlos.</p></div><section class="sec"><ul class="insights">${clubTeams().map(t=>`<li><b>${esc(t.name)}</b><small>${esc([t.cat,t.gender].filter(Boolean).join(', '))}</small></li>`).join('')}</ul></section><section class="sec"><div class="sec-h"><h2>Gestores</h2></div><ul class="insights">${(meta?.managers||[]).map(x=>`<li><b>${esc(x.name||'')}</b> ${esc(x.email)}</li>`).join('')||'<li class="muted">Ninguno</li>'}</ul></section>${autoReportPanel()}</div>`;
+  if(!isAdmin) return `<div class="wrap club"><div class="pagehead"><h1>Configuración</h1><p class="lede">Equipos y gestores del club. Solo un administrador puede cambiarlos.</p></div><section class="sec"><ul class="insights">${clubTeams().map(t=>`<li><b>${esc(t.name)}</b><small>${esc([t.cat,t.gender].filter(Boolean).join(', '))}</small></li>`).join('')}</ul></section><section class="sec"><div class="sec-h"><h2>Gestores</h2></div><ul class="insights">${(meta?.managers||[]).map(x=>`<li><b>${esc(x.name||'')}</b> ${esc(x.email)}</li>`).join('')||'<li class="muted">Ninguno</li>'}</ul></section>${autoReportPanel()}${accRequestsPanel()}</div>`;
   const m=meta||{}, teams=clubTeams(), mgr=m.managers||[];
   return `<div class="wrap club"><div class="pagehead"><h1>Configuració</h1></div>
     <section class="sec"><div class="sec-h"><h2>Gestores deportivos</h2></div><p class="muted small">Ven todos los equipos del club y pueden corregir datos. Entran con su Google; no necesitan ser jugadores.</p>
       ${mgr.length? `<ul class="insights">${mgr.map((x,i)=>`<li class="row" style="justify-content:space-between"><span><b>${esc(x.name||'')}</b> ${esc(x.email)}</span><button class="btn sm ghost" data-act="mgr-del" data-i="${i}">Quitar</button></li>`).join('')}</ul>` : '<div class="empty">Aún no hay gestores.</div>'}
       <div class="row" style="margin-top:10px"><input type="text" id="mgr-name" placeholder="Nombre (por ejemplo, Albert)" style="max-width:200px"><input type="email" id="mgr-email" placeholder="correo@gmail.com" style="max-width:260px"><button class="btn sm brass" data-act="mgr-add">Añadir gestor</button></div></section>
     ${autoReportPanel()}
+    ${accRequestsPanel()}
     ${accAdminPanels()}
     <section class="sec"><div class="sec-h"><h2>Equipos del club</h2></div><p class="muted small">Cada equipo tiene su propia temporada: calendario, plantilla, resultados, disponibilidad y MVP. Jugadores, fotos y fichas son del club.</p>
       <div id="ctlist">${teams.map(t=>`<div class="qedit" data-id="${esc(t.id)}" style="grid-template-columns:1fr 110px 1fr 120px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="cat" value="${esc(t.cat||'')}" aria-label="Categoría"><select name="gender" aria-label="Género"><option value="">Género</option>${['Masculino','Femenino','Mixto'].map(g=>`<option ${t.gender===g?'selected':''}>${g}</option>`).join('')}</select></div>`).join('')}</div>
@@ -3264,15 +3265,15 @@ function ensureIntroCss(){ if(document.getElementById('intro-css')) return; cons
 const route = () => (location.hash||'#inicio').slice(1)||'inicio';
 function render(){
   if(me && ui.sLoaded===SEASON_PATH && !ui.teamAuto && !S.players.some(p=>p.id===me)){ const hit=rosterAll().find(p=>p.id===me), other=hit?.teams.find(t=>t!==teamId); if(other){ ui.teamAuto=true; setTimeout(()=>switchTeam(other),0); } }
-  ensureHomeCss(); updRoles(); if(authReady && authUser && !me && isManager && !adminSkip && ACC.want!=='jugador' && ACC.want!=='capitan'){ adminSkip=true; if(!route().startsWith('club')) history.replaceState(null,'','#club'); }
+  ensureHomeCss(); updRoles(); if(authReady && authUser && !me && isManager && !adminSkip && ACC.flow?.role!=='jugador' && ACC.flow?.role!=='capitan'){ adminSkip=true; if(!route().startsWith('club')) history.replaceState(null,'','#club'); }
   const accHtml = authReady && authUser ? accGate() : null;   // acceso por rol, invitaciones y solicitud de gestor (access.js)
   const app=$('#app'), gate=!authReady || !authUser || !!accHtml || (!me && !adminSkip);
   document.body.classList.toggle('gate', gate);
   let html, nav=route();
-  if(!authReady) html=`<div class="gatebox">${courtSVG()}</div>`;
+  if(!authReady) html=accShell('');   // arranque: fondo de Lliga Catalana, sin la identidad de ningún club
   else if(!authUser) html=vLogin();
   else if(accHtml) html=accHtml;
-  else if(!me && !adminSkip) html=accClaimView();
+  else if(!me && !adminSkip) html=accJoinView(ACC.flow||{}, 'jugador');
   else { const r=nav;
     const split=!!document.querySelector('[data-nav="calendario"]');   // barra con Clasificación y Calendario separados
     if(r==='docs'||r.startsWith('doc-')){ ui.docBase='doc-'; ui.docBack='docs'; }   // documentos dentro del equipo
@@ -3295,7 +3296,7 @@ function render(){
   const al=$('.adminlink'); al.classList.toggle('on',canManage);
   if(!al.querySelector('.al-t')){ al.insertAdjacentHTML('beforeend','<span class="al-t">Gestión</span><span class="al-dot" aria-hidden="true"></span>'); al.setAttribute('aria-label','Gestión'); al.title='Gestión'; }
   let pend=null; try{ pend=canManage? pendingAction() : null; }catch(e){} al.classList.toggle('pending', !!pend); al.setAttribute('aria-label', pend? 'Gestión: hay un paso pendiente' : 'Gestión');
-  const bs=$('.brand span'); if(bs) bs.innerHTML= nav==='club'? `Gestión deportiva <small>${esc(CLUB.medium)}</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
+  const bs=$('.brand span'); if(bs) bs.innerHTML= gate? 'Lliga Catalana' : nav==='club'? `Gestión deportiva <small>${esc(CLUB.medium)}</small>` : `${esc(teamLabel())} <small>Lliga Catalana ${esc(String(viewSeason).replace(/^20(\d\d)-(\d\d)$/,'$1-$2'))}</small>`;
   let tw=$('.teamsw'); if(!tw){ tw=document.createElement('button'); tw.className='teamsw'; tw.type='button'; tw.setAttribute('aria-label','Cambiar de equipo'); tw.dataset.act='team-menu'; tw.textContent='▾'; $('.brand').after(tw); }
   const inClub = nav==='club'; tw.hidden = !(clubTeams().length>1 || canClub());
   tw.textContent = inClub? 'Ir a un equipo ▾' : '▾'; tw.style.cssText = inClub? 'width:auto;padding:0 10px;margin-left:10px;white-space:nowrap;font-size:.78rem;font-weight:600' : '';
@@ -3305,6 +3306,9 @@ function render(){
   document.body.classList.toggle('clubmode', nav==='club');
   setNavMode(nav==='club'); if(authReady&&authUser&&!gate&&route()==='intro'&&!ui.onb){ history.replaceState(null,'','#inicio'); startOnb({force:true}); }
   if(authReady&&authUser){ checkCssVersion(); if(!gate) maybeTour(); if(ui.onb?.stage==='perfil' && ui.onb.step===0 && !document.querySelector('.cropper.on')) drawOnb(); if(ui.onb?.stage==='apps') drawOnb(); if(ui.onb?.stage==='spot' && document.getElementById('spot')) setTimeout(()=>spotPlace(false),30); } document.body.classList.toggle('noplayer', !me);
+  const tc=document.querySelector('meta[name="theme-color"]'); if(tc) tc.setAttribute('content', gate? '#0E1216' : (getComputedStyle(document.documentElement).getPropertyValue('--green').trim()||'#0F3B2E'));
+  document.title = gate? 'Lliga Catalana' : (nav==='club'? 'Gestión deportiva · '+CLUB.medium : teamLabel()+' · Lliga Catalana');
+  const bi=$('.brand img'); if(bi && bi.getAttribute('src')!==ASSET.crestSm) bi.setAttribute('src',ASSET.crestSm);
   const mb=$('.mebtn'); if(mb) mb.innerHTML = me? avatar(player(me)) : (authUser? `<span class="av">${esc((authUser.email||'?')[0].toUpperCase())}</span>`:'');
   const dot=document.querySelector('.tabbar [data-nav="yo"]'); if(dot){ dot.querySelector('.dot')?.remove(); const nx=nextPoloFix(); if(pendingSurveys().length || pendingMvp().length || (nx&&me&&availOpen(nx)&&!avOf(me,nx.j))) dot.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
   afterRender(app);
@@ -3685,15 +3689,15 @@ function switchSeason(id,auto){ privKey=''; docsKey=''; ui.rev=null; if(!auto) u
 B.onAuth(async u=>{
   unsubAll(); dataSubs.forEach(x=>{ try{x()}catch(e){} }); dataSubs=[];
   authUser=u; me=null; isAdmin=false; adminSkip=false; claims={}; avail={}; picks={}; ballots={}; myBallot=null; S=seed();
-  ACC.ctx=null; ACC.capTeams=null; ACC.capKey=''; ACC.req=undefined; ACC.navDone=false; ACC.menu=false; accMenuDraw();
+  ACC.ctx=null; ACC.capTeams=null; ACC.capKey=''; ACC.req=undefined; ACC.member=null; ACC.memberOf={}; ACC.menu=false; accMenuDraw();
   if(!u){ authReady=true; render(); return; }
-  isAdmin=await B.isAdmin(u.email,u.uid); accLoadBrand();
+  isAdmin=await B.isAdmin(u.email,u.uid); accLoadBrand(); await accLoadMember(u);
   try{ const m0=await B.getDoc('meta/app'); if(m0){ meta=m0; } checkManager(m0); }catch(e){}
   try{ await B.relink(); }catch(e){}
   subs.push(B.watchColl('claims', m=>{ claims=m; softRender(); }));
   subs.push(B.watchDoc('public/roster', d=>{ roster=d; softRender(); }));
   let first=true;
   subs.push(B.watchDoc('users/'+u.uid, d=>{ const nm=d?.pid||null;
-    if(nm!==me || first){ first=false; me=nm; subscribeData(); watchMine(); authReady=true; render(); } else softRender(); }));
+    if(nm!==me || first){ const was=first; first=false; me=nm; subscribeData(); watchMine(); authReady=true; render(); if(was && (me || isManager || isAdmin) && !ACC.flow) playIntro();   /* con un recorrido de entrada en curso, la intro sale al entrar (accFinish) */ } else softRender(); }));
 });
-lastRoute=route(); render(); playIntro();
+lastRoute=route(); render();   // la intro con el escudo del club se reproduce al entrar (B.onAuth), no antes
