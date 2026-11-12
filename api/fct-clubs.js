@@ -35,8 +35,12 @@ const NOT_A_CLUB = /^(independents?|indep\.|escola|esc\.|altre territorial|feder
 async function fetchAll() {
   const out = []; let start = 1;
   for (let i = 0; i < 20; i++) {
-    const r = await fetch(FCT_CLUBS, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'buscar', start, count: 100, data: { nombre: '' } }) });
-    if (!r.ok) throw new Error('FCT respondió ' + r.status);
+    // Las mismas cabeceras que envía el buscador del portal (sin ellas el portal puede responder 403)
+    const r = await fetch(FCT_CLUBS, { method: 'POST', body: JSON.stringify({ accion: 'buscar', start, count: 100, data: { nombre: '' } }), headers: {
+      'Content-Type': 'application/json;charset=UTF-8', Accept: 'application/json, text/plain, */*', 'Accept-Language': 'ca,es;q=0.9',
+      Origin: 'https://portal.fctennis.cat', Referer: 'https://portal.fctennis.cat/app/',
+      'User-Agent': 'Mozilla/5.0 (compatible; LligaCatalana/1.0; +https://lliga.vercel.app)' } });
+    if (!r.ok) throw new Error('FCT respondió ' + r.status + (r.status === 403 ? ' (acceso denegado desde el servidor)' : ''));
     const j = await r.json();
     if (j.error) throw new Error('FCT: error al listar los clubes');
     const page = Array.isArray(j.data) ? j.data : [];
