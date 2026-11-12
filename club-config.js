@@ -9,6 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   return {
     id: 'rcpb',                               // identificador del club en la plataforma (clubs/<id>, invitaciones, solicitudes)
+    fctId: '0708017',                         // código del club en la FCT (portal.fctennis.cat): lo enlaza con su ficha del buscador
     dataRoot: '',                             // raíz de sus datos en Firestore: '' = la raíz actual; en la fase 3 del plan, 'clubs/rcpb'
     name: 'Real Club de Polo de Barcelona',   // nombre completo (cabeceras, informe, correos)
     medium: 'Real Club de Polo',              // nombre de uso habitual

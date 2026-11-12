@@ -30,9 +30,10 @@ Las funciones de Vercel (`api/*`) usan la cuenta de servicio y leen esas mismas 
 `club-config.js` fija nombre, escudo, abreviaturas, equipos y grupos de la FCT. Los colores están en `styles.css` como variables (`--green`, `--green2`, `--brass`, `--brassLine`, `--gold`). El nombre interno del equipo propio en los calendarios es `polo` para todos los clubes.
 
 ### Catálogo de clubes de la FCT
-- La FCT **no publica una API ni una exportación de clubes**. Su web tiene una página de [clubs afiliats](https://fctennis.cat/clubs-afiliats/) con nombre, dirección, localidad, teléfono, correo y web, **sin escudos**.
-- La app ya usa la API interna del portal de competición (`portal.fctennis.cat/app/api/calendario.do`) para calendarios, plantillas y actas. No está documentada ni hay constancia de que tenga una acción para listar clubes, así que no se usa para el catálogo.
-- Por eso el catálogo se carga con una **importación administrable (CSV o XLSX)** a partir de esa página o de un listado que entregue la FCT. Los escudos los sube cada club. No se incluye ningún club inventado: el catálogo empieza vacío salvo el Real Club de Polo, que ya está configurado.
+- La web pública de la FCT tiene un buscador de clubes ([clubs](https://fctennis.cat/clubs/)) que hoy no devuelve resultados, y la página de [clubs afiliats](https://fctennis.cat/clubs-afiliats/) solo muestra un club.
+- El **portal oficial de la FCT** (`portal.fctennis.cat`) sí tiene un servicio de clubes: `api/club.do`, acción `buscar`, el mismo que usa su buscador de clubes. Devuelve los clubes afiliados (unos 320) con código FCT, nombre oficial, nombre corto, dirección, localidad, provincia, web y un campo `logo` que hoy viene vacío.
+- La app lo consulta desde `api/fct-clubs.js` (Vercel), quita cuentas que no son clubes (independents, escuelas, bajas) y lo guarda en caché un día.
+- **Escudos**: la FCT no los publica. Se usa, por este orden: el escudo configurado del club (el del Polo), el que cargue la plataforma (CSV/Excel con `codigo` y `escudo`), el logo de la FCT si algún día lo publica, y el icono de la web oficial que figura en la FCT. Si no hay ninguno, iniciales.
 
 ## 2. Modelo de datos objetivo
 
