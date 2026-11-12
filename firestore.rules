@@ -6,8 +6,8 @@ rules_version = '2';
 //   - Capitán: su pid está en seasons/{temporada}.captains. Datos privados de su equipo y gestión del MVP.
 //   - Jugador del equipo: su pid está en seasons/{temporada}.memberIds (o la lista está vacía). Edita su equipo
 //     mientras rules.teamManage no sea false.
-//   - Vincular un Gmail a un jugador exige una invitación válida (invites/{código}), salvo que un administrador
-//     active meta/app.openClaims. Ser gestor exige que un administrador lo añada o apruebe su solicitud (clubRequests).
+//   - Vincular un Gmail a un jugador: directamente (cada ficha a un solo Gmail) salvo que un administrador ponga
+//     meta/app.openClaims = false; entonces exige invitación (invites/{código}) o que el club valide la solicitud. Ser gestor exige que un administrador lo añada o apruebe su solicitud (clubRequests).
 // Elegir un rol en la pantalla de entrada no da permisos: todo se decide aquí. Plan multiclub: docs/MULTICLUB.md
 // Las funciones de Vercel (api/*) usan la cuenta de servicio y no pasan por estas reglas.
 service cloud.firestore {
@@ -47,7 +47,7 @@ service cloud.firestore {
     function canPrivate(s) { return isStaff() || isCaptainOf(s); }
 
     // Invitaciones: el código existe, es de ese jugador, no ha caducado ni se ha usado, y se marca como usado en el mismo lote
-    function openClaims() { return get(/databases/$(database)/documents/meta/app).data.get('openClaims', false) == true; }
+    function openClaims() { return get(/databases/$(database)/documents/meta/app).data.get('openClaims', true) != false; }
     function inviteOk(pid) {
       let code = request.resource.data.get('invite', '-');
       let inv = /databases/$(database)/documents/invites/$(code);
