@@ -1196,7 +1196,7 @@ function connCard(){
     ${ui.diag? `<ul class="diag">${ui.diag.map(([a,b,ok])=>`<li class="${ok?'ok':'ko'}"><span>${ok?'✓':'✗'}</span><b>${esc(a)}</b><em>${esc(b)}</em></li>`).join('')}</ul>${diagHint(ui.diag)}` : ''}</section>`;
 }
 function vYo(){
-  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1></div><div class="notice">Tu usuario de administrador no está ligado a ningún jugador. <button class="textlink" data-act="unskip">Elegir mi nombre</button></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
+  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1><p class="lede">Entras como ${esc(authUser?.email||'')}${isManager? ', gestor deportivo' : isAdmin? ', administrador' : ''}. No estás ligado a ningún jugador.</p><div class="row" style="margin-top:10px;gap:8px">${canClub()? `<a class="btn sm" href="#club">Gestión deportiva</a>` : ''}<button class="btn sm ghost" data-act="unskip">Soy jugador: elegir mi nombre</button><button class="btn sm ghost" data-act="signout">Cerrar sesión</button></div></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
   const p=player(me)||{id:me, name:rosterAll().find(x=>x.id===me)?.name||'Jugador', order:'', cat:''}, pr=profiles[me]||{}, tasks=[];
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ const v=avOf(me,f.j); tasks.push(`<a class="task ${v?'done':''}" href="#disponibilidad-${f.j}"><span class="ti">${v?'✓':'?'}</span><span><b>Disponibilidad, jornada ${f.j}</b><small>${v? 'Has dicho: '+AV_LABEL[v.s]+'. Puedes cambiarla hasta el '+esc(fmtDT(deadline(f.j))) : 'Contra '+esc(clubName(persp(f).rival))+'. Responde antes del '+esc(fmtDT(deadline(f.j)))}</small></span></a>`); });
   pendingMvp().forEach(j=>tasks.push(`<a class="task hot" href="#mvp-${j}"><span class="ti">🏆</span><span><b>Vota al MVP, jornada ${j}</b><small>Un voto, hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</small></span></a>`));
@@ -3349,7 +3349,7 @@ document.addEventListener('click', async e=>{
   const el=e.target.closest('[data-act]'); if(!el) return; const a=el.dataset.act;
   if(a==='signin') B.signIn();
   else if(a==='signout'){ B.signOut(); closeSheet(); }
-  else if(a==='me'){ if(me) openSheet(me); else if(authUser && confirm('¿Cerrar sesión?')) B.signOut(); }
+  else if(a==='me'){ if(me) openSheet(me); else if(authUser) location.hash='yo'; }
   else if(a==='skip'){ adminSkip=true; render(); }
   else if(a==='unskip'){ adminSkip=false; render(); }
   else if(a==='claim'){ const id=el.dataset.id; await safe(()=>B.claim(id)); }
