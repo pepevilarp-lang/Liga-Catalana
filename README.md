@@ -19,6 +19,8 @@ api/        funciones de Vercel:
             remind.js        recordatorios automáticos (tarea diaria)
             fct-sync.js      sincronización con la FCT (tarea nocturna) + avisos al gestor + informe automático
             auto-report.js   «Enviar ahora» del informe automático
+            access-request.js aviso por correo de una solicitud de acceso nueva
+            fct-clubs.js     clubes afiliados de la FCT para el buscador de la entrada
             send-report.js   envío del resumen desde la app
             write-report.js  textos del informe con IA
             extract.js       lectura de documentos con IA
@@ -38,6 +40,12 @@ La entrada es de Lliga Catalana, sin la identidad de ningún club: «¿Cómo qui
 - **Capitán**: los marcados como capitán en la plantilla de su equipo. Piden disponibilidad, convocan, preparan el cartel, ponen resultados y publican el MVP. Ven los datos privados de su equipo.
 - **Gestor del club**: se añade en Gestión deportiva → Configuración (nombre y Gmail), o lo pide él mismo al entrar como gestor («¿De qué club eres gestor deportivo?») y la gestión del club la valida en Configuración → Solicitudes de acceso (queda registrado quién la aprobó). También se le puede enviar una **invitación de gestor** desde ahí. Ve todos los equipos sin ser jugador: al entrar va directo a Gestión deportiva, sin elegir nombre ni hacer el tour de jugador.
 - **Administrador**: además gestiona plantilla, capitanes y temporadas. Se da de alta en Firestore > colección `admins` > documento con su Gmail en minúsculas.
+
+## Solicitudes de acceso
+Quien entra sin estar vinculado elige perfil y club, entra con Google (su correo) y escribe su nombre y apellidos. La app busca ese nombre en las plantillas del club y le ofrece su ficha; al elegirla se crea la solicitud y se avisa por correo:
+- Jugador con ficha: a los **capitanes de ese equipo** y a los **gestores del club**. Los capitanes la aceptan en Gestión → Plantilla; los gestores en Gestión deportiva → Configuración → Solicitudes de acceso.
+- Gestor, o jugador sin ficha: a los **gestores del club** (o a los administradores si aún no hay gestores).
+- Club que aún no está activo en Lliga Catalana: a los **administradores** (correos de la colección `admins`) y, si existe, a `PLATFORM_EMAILS` en Vercel (varios separados por comas).
 
 ## Reglas de seguridad (cada vez que cambie `firestore.rules`)
 Firebase > Firestore Database > **Reglas** > pegar el contenido de `firestore.rules` > **Publicar**. La consola guarda el historial: si algo dejara de funcionar, se puede volver a la versión anterior desde ahí.

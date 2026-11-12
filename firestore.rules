@@ -152,18 +152,22 @@ service cloud.firestore {
       allow read: if true;   // datos públicos de la FCT: el buscador de clubes se usa antes de iniciar sesión
       allow write: if isAdmin();
     }
-    // Solicitudes de gestores para vincularse a un club: las crea el interesado y las resuelve un administrador
     // Solicitudes para vincularse a un club (como gestor o jugador): las crea el interesado y las resuelve un
-    // administrador o un gestor de ese club. Un gestor solo ve las de su club.
+    // administrador o un gestor de ese club; las de jugador con ficha propuesta, también el capitán de ese equipo.
+    // Un gestor solo ve las de su club y un capitán solo las de su equipo.
+    function reqCaptain() {
+      return resource.data.get('role', '') == 'jugador' && resource.data.get('season', '') != '' && isCaptainOf(resource.data.season);
+    }
     match /clubRequests/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || (isManager() && resource.data.clubId == clubId()));
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || (isManager() && resource.data.clubId == clubId()) || reqCaptain());
       allow create, update: if signedIn() && uid == request.auth.uid
         && request.resource.data.uid == uid
         && request.resource.data.email == email()
         && request.resource.data.role in ['gestor', 'jugador']
         && request.resource.data.status == 'pendiente'
         && (resource == null || resource.data.status != 'aprobada');
-      allow update: if isAdmin() || (isManager() && resource.data.clubId == clubId() && request.resource.data.clubId == clubId());
+      allow update: if isAdmin() || (isManager() && resource.data.clubId == clubId() && request.resource.data.clubId == clubId())
+        || (reqCaptain() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'invite', 'pid', 'decidedBy', 'decidedByEmail', 'decidedAt']));
       allow delete: if isAdmin() || (uid == request.auth.uid && resource.data.status != 'aprobada');
     }
     // Identidad de cada club (colores, contacto) y sus miembros aprobados
