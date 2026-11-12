@@ -98,39 +98,55 @@ function accTop(back) {
 const accWait = (msg) => accShell(`${accTop(false)}<p class="acc-wait">${esc(msg || 'Comprobando tu acceso…')}</p>`, '', 'wait');
 const accAccount = () => authUser ? `<p class="acc-p dim acc-who">Entras como ${esc(authUser.email)}. <button class="acc-link" data-acc="signout-now">Usar otra cuenta</button></p>` : '';
 const accNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// Escudo: el del club (configurado o subido), el de la FCT si lo publica, o el icono de su web oficial; si no, iniciales
+function accIni(c) { return String(c?.name || '?').replace(/\b(club|de|del|la|les|el|i|tennis|tenis|esportiu|ct|c\.t\.)\b/gi, ' ').split(/[\s-]+/).filter(w => /^\p{L}/u.test(w)).map(w => w[0]).join('').slice(0, 3).toUpperCase() || '?'; }
 function accCrest(c, s) {
-  if (c && c.crest) return `<img class="acc-crest" src="${esc(c.crest)}" alt="" width="${s}" height="${s}" style="width:${s}px;height:${s}px" loading="lazy">`;
-  const ini = String(c?.name || '?').replace(/\b(club|de|del|la|el|tennis|tenis|ct|c\.t\.)\b/gi, ' ').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase();
-  return `<span class="acc-crest ini" style="width:${s}px;height:${s}px;font-size:${Math.round(s / 3.2)}px">${esc(ini || '?')}</span>`;
+  const box = `width:${s}px;height:${s}px`, ini = `<span class="acc-crest ini" style="${box};font-size:${Math.round(s / 3.2)}px">${esc(accIni(c))}</span>`;
+  if (c && c.crest) return `<img class="acc-crest" src="${esc(c.crest)}" alt="" width="${s}" height="${s}" style="${box}" loading="lazy" onerror="accCrestFail(this)">`;
+  if (c && c.web) return `<span class="acc-crest-w" style="${box}" data-ini="${esc(accIni(c))}"><img class="acc-crest web" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(c.web)}&amp;sz=128" alt="" width="${s}" height="${s}" style="${box}" loading="lazy" referrerpolicy="no-referrer" onload="if(this.naturalWidth<32)accCrestFail(this)" onerror="accCrestFail(this)"></span>`;
+  return ini;
 }
+// Sin icono propio (o demasiado pequeño para ser un escudo): iniciales
+function accCrestFail(img) { const w = img.closest('.acc-crest-w') || img, s = parseInt(img.style.width) || 52; const sp = document.createElement('span'); sp.className = 'acc-crest ini'; sp.style.cssText = `width:${s}px;height:${s}px;font-size:${Math.round(s / 3.2)}px`; sp.textContent = w.dataset?.ini || '?'; w.replaceWith(sp); }
 
 /* ---------- Catálogo de clubes ---------- */
+// Catálogo: los clubes de la FCT (portal oficial, api/fct-clubs) y, encima, lo que cargue la plataforma
+// (escudos subidos o clubes importados de un CSV/Excel, colección «catalog»)
 function accLoadCatalog() {
-  if (ACC.catalog !== null) return; ACC.catalog = {};
+  if (ACC.catalog !== null) return; ACC.catalog = {}; ACC.fct = ACC.fct || null; ACC.fctErr = false;
+  fetch('/api/fct-clubs').then(r => r.ok ? r.json() : Promise.reject(r.status)).then(j => { ACC.fct = j.clubs || []; accRefreshClubs(); }).catch(() => { ACC.fct = []; ACC.fctErr = true; accRefreshClubs(); });
   B.getColl('catalog').then(m => { ACC.catalog = m || {}; accRefreshClubs(); }).catch(() => {});
 }
 function accClubs() {
-  const own = window.CLUB && CLUB.id ? { id: CLUB.id, name: CLUB.name, town: CLUB.town || '', crest: CLUB.crestSm || '', active: true } : null;
-  const cat = Object.entries(ACC.catalog || {}).map(([id, c]) => ({ id, ...c }));
-  const out = cat.map(c => c.id === own?.id ? { ...c, ...own } : c);
-  if (own && !out.some(c => c.id === own.id)) out.push(own);
+  const ownFct = window.CLUB && CLUB.fctId, over = ACC.catalog || {}, seen = new Set(), out = [];
+  const add = c => { if (!c.id || seen.has(c.id)) return; seen.add(c.id); out.push(c); };
+  (ACC.fct || []).forEach(f => {
+    const own = ownFct && f.id === ownFct, o = over[f.id] || {};
+    const logo = f.logo ? (/^https?:/.test(f.logo) ? f.logo : 'https://portal.fctennis.cat/' + f.logo.replace(/^\//, '')) : '';
+    add({ id: own ? CLUB.id : f.id, fctId: f.id, name: own ? CLUB.name : f.name, short: f.short, town: f.town, province: f.province, web: f.web, crest: own ? (CLUB.crestSm || '') : (o.crest || logo), active: own });
+  });
+  Object.entries(over).forEach(([id, c]) => { if (!(ACC.fct || []).some(f => f.id === id)) add({ id, ...c }); });
+  if (window.CLUB && CLUB.id) add({ id: CLUB.id, name: CLUB.name, town: CLUB.town || '', crest: CLUB.crestSm || '', active: true });
   return out.sort((a, b) => accNorm(a.name).localeCompare(accNorm(b.name)));   // por nombre: ningún club va primero por defecto
 }
 const accClub = id => accClubs().find(c => c.id === id) || accStore.json('lc-last-club') || null;
 function accClubList() {
-  const q = accNorm(ACC.q), list = accClubs().filter(c => !q || accNorm(c.name + ' ' + (c.town || '')).includes(q));
-  if (!list.length) return `<p class="acc-p dim">${q ? 'No hay ningún club con ese nombre en el catálogo.' : 'Cargando el catálogo de clubes…'}</p>`;
-  return list.slice(0, 60).map(c => `<button class="acc-club" role="listitem" data-acc="club" data-v="${esc(c.id)}">${accCrest(c, 52)}<span><b>${esc(c.name)}</b><small>${esc(c.town || '')}</small></span><span class="acc-arr" aria-hidden="true">›</span></button>`).join('');
+  const q = accNorm(ACC.q).trim(), words = q.split(/\s+/).filter(Boolean);
+  const list = accClubs().filter(c => { const h = accNorm([c.name, c.short, c.town].join(' ')); return words.every(w => h.includes(w)); });
+  if (ACC.fct === null && !q) return `<p class="acc-p dim">Cargando los clubes de la Federació Catalana de Tennis…</p>`;
+  if (!list.length) return `<p class="acc-p dim">No hay ningún club de la FCT que coincida con «${esc(ACC.q)}».</p>`;
+  const more = list.length > 60 ? `<p class="acc-p dim">${list.length} clubes. Escribe para afinar la búsqueda.</p>` : '';
+  return more + list.slice(0, 60).map(c => `<button class="acc-club" role="listitem" data-acc="club" data-v="${esc(c.id)}">${accCrest(c, 52)}<span><b>${esc(c.name)}</b><small>${esc(c.town || '')}</small></span><span class="acc-arr" aria-hidden="true">›</span></button>`).join('');
 }
 function accRefreshClubs() { const box = document.getElementById('acc-clubs'); if (box) box.innerHTML = accClubList(); }
 function accClubPicker(title, sub, extra = '') {
   accLoadCatalog();
-  const last = accStore.json('lc-last-club'), nCat = Object.keys(ACC.catalog || {}).length;
+  const last = accStore.json('lc-last-club');
   return `<h1 class="acc-h sm">${title}</h1><p class="acc-q">${sub}</p>
     ${last && last.id ? `<button class="acc-club last" data-acc="club" data-v="${esc(last.id)}">${accCrest(last, 52)}<span><small>Último club utilizado</small><b>${esc(last.name)}</b></span><span class="acc-arr" aria-hidden="true">›</span></button>` : ''}
     <div class="acc-search">${accIco('search', 18)}<input id="acc-q" type="search" placeholder="Busca por nombre o localidad" value="${esc(ACC.q)}" autocomplete="off" aria-label="Buscar club"></div>
     <div class="acc-clubs" id="acc-clubs" role="list">${accClubList()}</div>
-    <p class="acc-p dim">${nCat ? `Clubes del catálogo de la Federació Catalana de Tennis.` : 'Si tu club no aparece, aún no está en el catálogo de Lliga Catalana: pide a la plataforma que lo incorpore.'}</p>${extra}`;
+    <p class="acc-p dim">${ACC.fctErr ? 'No hemos podido consultar la Federació Catalana de Tennis ahora mismo. Inténtalo de nuevo en unos minutos.' : 'Clubes afiliados a la Federació Catalana de Tennis. Busca por nombre, nombre corto o localidad.'}</p>${extra}`;
 }
 
 /* ---------- Antes de iniciar sesión (y también con la sesión iniciada, si vuelve a elegir) ---------- */
@@ -244,7 +260,7 @@ function accGestorCheck(f) {
     if (ok) return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c, 76)}<div><span class="acc-k">Acceso autorizado</span><h1 class="acc-h sm">${esc(c.name)}</h1></div></div>
       <p class="acc-p">Eres gestor deportivo de este club. Su entorno en Lliga Catalana todavía no está activo: lo prepararemos con sus equipos y su identidad y te avisaremos.</p>${accRoleSwitch('gestor')}${accAccount()}`, 'acc-launch', 'gestor-wait');
   }
-  if (ok) { accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '' })); return accFinish('gestor'); }
+  if (ok) { accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '', web: c.web || '' })); return accFinish('gestor'); }
   accWatchReq();
   if (ACC.req === undefined) return accWait();
   const R = ACC.req && ACC.req.clubId === c.id && ACC.req.role !== 'jugador' ? ACC.req : null;
@@ -489,7 +505,7 @@ function accAdminPanels() {
       <label class="acc-col grow">Correo de contacto<input type="email" id="acc-mail" value="${esc(id.contact?.email || '')}" placeholder="tenis@club.cat"></label><label class="acc-col grow">Teléfono<input type="tel" id="acc-tel" value="${esc(id.contact?.phone || '')}"></label><label class="acc-col grow">Web<input type="url" id="acc-web" value="${esc(id.contact?.web || '')}" placeholder="https://"></label></div>
     <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm brass" data-acc="brand-save">Guardar identidad</button><button class="btn sm ghost" data-acc="brand-reset">Volver a los colores originales</button></div></div></section>
   <section class="sec"><div class="sec-h"><h2>Catálogo de clubes de la FCT</h2>${nCat != null ? `<span class="muted small">${nCat} clubes</span>` : ''}</div><div class="panel">
-    <p class="muted small" style="margin:0 0 10px">Es el buscador de clubes de la pantalla de entrada. La FCT no ofrece una API ni una exportación de clubes: carga un CSV o Excel con el listado de <a href="https://fctennis.cat/clubs-afiliats/" target="_blank" rel="noopener">clubs afiliats</a> o el que os facilite la Federació. Columnas: <b>nombre</b> (obligatoria), <b>localidad</b>, <b>provincia</b>, <b>web</b>, <b>codigo</b> (FCT) y <b>escudo</b> (URL de la imagen). Se puede volver a importar para actualizarlo.</p>
+    <p class="muted small" style="margin:0 0 10px">El buscador de la pantalla de entrada usa los clubes afiliados del portal oficial de la Federació Catalana de Tennis y se actualiza solo cada día. La FCT no publica escudos: se muestra el icono de la web oficial de cada club. Aquí puedes completar o corregir escudos con un CSV o Excel: columnas <b>codigo</b> (el código FCT del club, por ejemplo 0708017) y <b>escudo</b> (URL de la imagen); también <b>nombre</b>, <b>localidad</b>, <b>provincia</b> y <b>web</b> para clubes que no estén en la FCT.</p>
     ${imp?.rows ? `<p class="small"><b>${imp.rows.length}</b> clubes en «${esc(imp.file)}»${imp.skipped ? `, ${imp.skipped} filas sin nombre descartadas` : ''}. Vista previa:</p>
       <div class="tablewrap"><table><thead><tr><th class="l">Nombre</th><th class="l">Localidad</th><th class="l">Provincia</th><th class="l">Web</th></tr></thead><tbody>${imp.rows.slice(0, 8).map(r => `<tr><td class="l">${esc(r.name)}</td><td class="l">${esc(r.town)}</td><td class="l">${esc(r.province)}</td><td class="l">${esc(r.web)}</td></tr>`).join('')}</tbody></table></div>
       <div class="row" style="margin-top:10px;gap:8px"><button class="btn sm brass" data-acc="cat-save" ${imp.busy ? 'disabled' : ''}>${imp.busy ? 'Importando…' : 'Importar ' + imp.rows.length + ' clubes'}</button><button class="btn sm ghost" data-acc="cat-cancel">Cancelar</button></div>`
@@ -505,9 +521,9 @@ async function accReadCatalog(file) {
     const pick = (r, keys) => { for (const k of Object.keys(r)) if (keys.includes(accNorm(k).replace(/[^a-z]/g, ''))) return String(r[k]).trim(); return ''; };
     let skipped = 0; const out = [], seen = new Set();
     rows.forEach(r => {
-      const name = pick(r, ['nombre', 'nom', 'name', 'club', 'nombreclub', 'nomclub']);
+      const name = pick(r, ['nombre', 'nom', 'name', 'club', 'nombreclub', 'nomclub']) || (ACC.fct || []).find(f => f.id === pick(r, ['codigo', 'codi', 'code', 'codigofct', 'codifct']).replace(/\s/g, ''))?.name || '';
       if (!name) { skipped++; return; }
-      const id = accSlug(pick(r, ['codigo', 'codi', 'code', 'id', 'codigofct', 'codifct']) || name); if (seen.has(id)) return; seen.add(id);
+      const code = pick(r, ['codigo', 'codi', 'code', 'id', 'codigofct', 'codifct']).replace(/\s/g, ''), id = /^\d{5,}$/.test(code) ? code : accSlug(code || name); if (seen.has(id)) return; seen.add(id);
       out.push({ id, name, town: pick(r, ['localidad', 'localitat', 'poblacion', 'poblacio', 'municipio', 'municipi', 'town', 'city']), province: pick(r, ['provincia', 'province']), web: pick(r, ['web', 'url', 'website', 'pagina']), crest: pick(r, ['escudo', 'escut', 'logo', 'crest']), code: pick(r, ['codigo', 'codi', 'code', 'codigofct', 'codifct']) });
     });
     ACC.admin.imp = out.length ? { file: file.name, rows: out, skipped } : { err: 'No hemos encontrado ninguna fila con la columna «nombre».' };
@@ -566,7 +582,7 @@ document.addEventListener('click', async e => {
   else if (a === 'club') {
     const c = accClubs().find(x => x.id === v) || accStore.json('lc-last-club');
     if (ACC.flow?.join) { accSetFlow({ join: { step: 'msg', club: v } }); }
-    else { accSetFlow({ club: v, step: authUser ? 'check' : 'auth' }); if (c) accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '' })); }
+    else { accSetFlow({ club: v, step: authUser ? 'check' : 'auth' }); if (c) accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '', web: c.web || '' })); }
     ACC.q = ''; render(); scrollTo(0, 0);
   }
   else if (a === 'back') accBack();
