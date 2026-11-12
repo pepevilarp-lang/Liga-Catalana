@@ -7,7 +7,8 @@ GitHub + Vercel + Firebase. Instalable en el móvil y con notificaciones.
 ```
 index.html  styles.css  app.js  sw.js  manifest.webmanifest
 config.js        claves públicas de Firebase y clave web de notificaciones (vapidKey)
-club-config.js   identidad del club: nombre, escudo, equipos y grupos FCT (lo usan la app y el servidor)
+club-config.js   identidad del club: id, nombre, escudo, colores, equipos y grupos FCT (lo usan la app y el servidor)
+access.js        entrada por rol, cierre de sesión, invitaciones, solicitud de gestor, catálogo de clubes e identidad visual
 report-doc.js    composición del PDF «Weekend Sports Report» (app y servidor)
 firestore.rules  reglas de seguridad de Firestore (se publican a mano, ver abajo)
 vercel.json  package.json  README.md
@@ -22,17 +23,20 @@ api/        funciones de Vercel:
             write-report.js  textos del informe con IA
             extract.js       lectura de documentos con IA
             _report.js _mail.js _ai.js _crest.js   (código compartido; no son direcciones públicas)
+docs/       MULTICLUB.md     auditoría y plan por fases para varios clubes
 ```
 
 ## Datos en Firestore
 - `meta/app`: temporada actual, equipos del club, gestores (`managers`, `managerEmails`), informe automático (`autoReport`) y avisos FCT (`fctAlerts`).
 - `seasons/{temporada}` (Polo A) y `seasons/{temporada}-{equipo}`: calendario, plantilla, resultados, capitanes, `memberIds` y `fctLast`. Dentro: `avail`, `availNotes`, `picks`, `ballots`, `docs` (+`chunks`), `snapshots`, `mvp/{jornada}` (+`votes`).
-- Del club: `claims`, `users`, `profiles`, `photos`, `phones` (teléfonos), `pushTokens`, `public/roster`, `reports` (registro de envíos) y `admins`.
+- Del club: `claims`, `users`, `profiles`, `photos`, `phones` (teléfonos), `pushTokens`, `public/roster`, `reports` (registro de envíos), `invites` (invitaciones de jugador) y `admins`.
+- De la plataforma: `catalog` (clubes de la FCT importados), `clubRequests` (solicitudes de gestores), `clubs/{id}` (identidad: colores y contacto) y `clubs/{id}/members` (gestores aprobados de otros clubes).
 
 ## Roles
-- **Jugador**: entra con Google, elige su nombre y gestiona lo suyo desde **Yo**: foto, teléfono, ficha de tenista, disponibilidad y encuestas.
+La pantalla de entrada pregunta «¿Cómo accedes a la plataforma?» (gestor deportivo, capitán o jugador). Elegir no da permisos: la app comprueba los roles reales y, si no tiene el elegido, lo explica y ofrece los que sí tiene. Quien tiene varios roles cambia desde el menú de su avatar, que también tiene **Cerrar sesión**.
+- **Jugador**: entra con el **enlace de invitación** que le envía su capitán o la gestión (Gestión → Plantilla → «Invitar», un solo uso, 30 días) y gestiona lo suyo desde **Yo**: foto, teléfono, ficha de tenista, disponibilidad y encuestas. Un administrador puede volver a permitir elegir el nombre sin invitación en Gestión deportiva → Configuración.
 - **Capitán**: los marcados como capitán en la plantilla de su equipo. Piden disponibilidad, convocan, preparan el cartel, ponen resultados y publican el MVP. Ven los datos privados de su equipo.
-- **Gestor del club**: se añade en Gestión deportiva → Configuración (nombre y Gmail). Ve todos los equipos sin ser jugador: al entrar va directo a Gestión deportiva, sin elegir nombre ni hacer el tour de jugador.
+- **Gestor del club**: se añade en Gestión deportiva → Configuración (nombre y Gmail), o lo pide él mismo al entrar como gestor («¿De qué club formas parte?») y un administrador aprueba la solicitud en Configuración; queda registrado quién la aprobó. Ve todos los equipos sin ser jugador: al entrar va directo a Gestión deportiva, sin elegir nombre ni hacer el tour de jugador.
 - **Administrador**: además gestiona plantilla, capitanes y temporadas. Se da de alta en Firestore > colección `admins` > documento con su Gmail en minúsculas.
 
 ## Reglas de seguridad (cada vez que cambie `firestore.rules`)
@@ -110,5 +114,7 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
 - Las conclusiones y recomendaciones las redacta la IA (función `api/write-report.js`, mismas variables que la lectura de documentos) solo con datos registrados; si la IA no responde, el informe se genera igual con textos sacados directamente de los datos.
 - El informe del capitán se rellena en Matchday → Postpartido. Si no está, el PDF lo indica.
 
-## Otro club (primer paso multi-club)
+## Otro club (multi-club)
+Plan completo y estado por fases: `docs/MULTICLUB.md`. Los colores del club se cambian en Gestión deportiva → Configuración → Identidad del club (solo administradores), y el catálogo de clubes de la FCT se importa ahí mismo desde un CSV o Excel.
+
 La identidad del club está en `club-config.js`: nombre, nombre corto, escudo, equipos, grupos FCT y cómo aparece el club en actas y en la FCT. Para otro club se cambia ese archivo y el escudo de `img/` (y, para el PDF del servidor, `api/_crest.js`, que es el escudo en PNG). Firebase y Vercel son por club: cada club tiene su propio proyecto.

@@ -146,7 +146,8 @@ function makeDemo(){
   return {
     mode:'demo',
     onAuth(cb){ authCb=cb; setTimeout(()=>cb(u),0); },
-    async signIn(){ u={uid:'preview-user', email:'jugador.prueba@gmail.com', name:'Vista previa'}; try{ localStorage.setItem(KEY+'-u',JSON.stringify(u)); }catch(e){} authCb(u); },
+    // En la vista previa se puede entrar como otra persona para probar roles: localStorage 'polo-demo-as' = {uid,email,name,noAdmin}
+    async signIn(){ let as=null; try{ as=JSON.parse(localStorage.getItem('polo-demo-as')||'null'); }catch(e){} u=as? {uid:as.uid,email:as.email,name:as.name||'Vista previa'} : {uid:'preview-user', email:'jugador.prueba@gmail.com', name:'Vista previa'}; try{ localStorage.setItem(KEY+'-u',JSON.stringify(u)); }catch(e){} authCb(u); },
     async signOut(){ u=null; try{ localStorage.removeItem(KEY+'-u'); }catch(e){} authCb(null); },
     watchDoc:(p,cb)=>watch(p,cb,false), watchColl:(p,cb)=>watch(p,cb,true),
     async set(p,d){ mem[p]=clone(d); persist(); emit(); },
@@ -155,8 +156,12 @@ function makeDemo(){
     async update(p,changes){ const doc=mem[p]||{}; Object.entries(changes).forEach(([k,v])=>{ const parts=k.split('.'); let o=doc; parts.slice(0,-1).forEach(x=>{ o[x]=o[x]&&typeof o[x]==='object'? o[x] : {}; o=o[x]; }); const last=parts.at(-1); if(v===DEL) delete o[last]; else o[last]=clone(v); }); mem[p]=doc; persist(); emit(); },
     async del(p){ delete mem[p]; persist(); emit(); },
     async claim(pid){ const c=mem['claims/'+pid]; if(c && c.email!==u.email) throw new Error('Ese nombre ya está elegido'); Object.keys(mem).forEach(k=>{ if(k.startsWith('claims/') && mem[k].email===u.email) delete mem[k]; }); mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now()}; mem['users/'+u.uid]={pid,email:u.email}; persist(); emit(); },
+    async claimInvite(code,pid){ const iv=mem['invites/'+code]; if(!iv||iv.usedBy||iv.pid!==pid||(iv.exp||0)<Date.now()) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
+      if(mem['claims/'+pid] && mem['claims/'+pid].email!==u.email) throw Object.assign(new Error('ya vinculado'),{code:'permission-denied'});
+      mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now(),invite:code}; mem['users/'+u.uid]={pid,email:u.email}; mem['invites/'+code]={...iv,usedBy:u.uid,usedAt:Date.now()}; persist(); emit(); },
+    async getColl(p){ const out={}, d=p.split('/').length+1; Object.keys(mem).forEach(k=>{ if(k.startsWith(p+'/') && k.split('/').length===d) out[k.split('/').pop()]=clone(mem[k]); }); return out; },
     async relink(){ return null; },
-    async isAdmin(){ return true; },
+    async isAdmin(){ try{ return !JSON.parse(localStorage.getItem('polo-demo-as')||'null')?.noAdmin; }catch(e){ return true; } },
     async getDoc(p){ return clone(mem[p]??null); },
     async merge(p,obj){ const deep=(a,b)=>{ Object.entries(b).forEach(([k,v])=>{ if(v&&typeof v==='object'&&!Array.isArray(v)){ a[k]=a[k]&&typeof a[k]==='object'?a[k]:{}; deep(a[k],v); } else a[k]=clone(v); }); return a; }; mem[p]=deep(mem[p]||{},obj); persist(); emit(); },
     async diag(){ return [['Modo','Vista previa: no hay base de datos que comprobar',false]]; },
@@ -167,41 +172,50 @@ function makeDemo(){
 function makeFirebase(){
   firebase.initializeApp(CFG.firebase); const auth=firebase.auth(); const fs=firebase.firestore();
   try{ fs.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}   // los cambios sin conexión se guardan y se suben al volver la red
-  const pathRef=p=>fs.doc(p);
+  // Raíz de datos del club: hoy vacía para el Polo; en la fase 3 del plan multiclub será 'clubs/<id>/' (docs/MULTICLUB.md)
+  const ROOT=(CLUB.dataRoot||'').replace(/^\/+|\/+$/g,''), CLUB_COLLS=new Set(['meta','public','claims','profiles','photos','phones','pushTokens','reports','seasons','private','invites']);
+  const CP=p=> ROOT && CLUB_COLLS.has(String(p).split('/')[0])? ROOT+'/'+p : p;
+  const pathRef=p=>fs.doc(CP(p));
   return {
     mode:'firebase',
     onAuth(cb){ auth.getRedirectResult().catch(e=>toast(authMsg(e))); auth.onAuthStateChanged(x=>cb(x? {uid:x.uid,email:(x.email||'').toLowerCase(),name:x.displayName,photo:x.photoURL} : null)); },
     async signIn(){ const p=new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({prompt:'select_account'});
       try{ await auth.signInWithPopup(p); }catch(e){ if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported'].includes(e.code)) return auth.signInWithRedirect(p); if(e.code!=='auth/popup-closed-by-user' && e.code!=='auth/cancelled-popup-request') toast(authMsg(e)); } },
-    signOut:()=>auth.signOut(),
+    // Cierra la sesión y borra la copia local de Firestore (datos del club guardados para usarla sin conexión)
+    async signOut(){ await auth.signOut(); try{ await fs.terminate(); await fs.clearPersistence(); }catch(e){ console.warn('clearPersistence',e.code||e); } },
     watchDoc(p,cb){ return pathRef(p).onSnapshot(s=>cb(s.exists? s.data():null), e=>console.warn(p,e.code)); },
-    watchColl(p,cb){ return fs.collection(p).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
+    watchColl(p,cb){ return fs.collection(CP(p)).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
     set:(p,d)=>pathRef(p).set(clone(d)),
     async diag(seasonPath, body){ const u=auth.currentUser, out=[];
       out.push(['Sesión', u? u.email+(u.emailVerified?'':' (correo sin verificar)') : 'Sin sesión', !!(u&&u.emailVerified)]); if(!u) return out;
-      try{ const d=await fs.doc('users/'+u.uid).get(); out.push(['Tu jugador', d.exists? 'Elegido: '+d.data().pid : 'No has elegido tu nombre', d.exists]); }catch(e){ out.push(['Tu jugador','No se puede leer ('+e.code+')',false]); }
-      let ad=false; try{ ad=(await fs.doc('admins/'+u.uid).get()).exists || (await fs.doc('admins/'+(u.email||'').toLowerCase()).get()).exists; }catch(e){} out.push(['Administrador', ad? 'Sí' : 'No (no hace falta para editar)', true]);
-      let ex=null; try{ ex=(await fs.doc(seasonPath).get()).exists; out.push(['Leer la temporada', ex? 'Correcto' : 'Aún no existe en la base de datos', true]); }catch(e){ out.push(['Leer la temporada','Denegado ('+e.code+')',false]); }
-      if(ex===true){ try{ await fs.doc(seasonPath).update({diagAt:Date.now()}); out.push(['Guardar en la temporada','Correcto',true]); }catch(e){ out.push(['Guardar en la temporada','Denegado ('+e.code+')',false]); } }
-      else if(ex===false){ try{ await fs.doc(seasonPath).set(clone(body)); out.push(['Crear la temporada','Creada correctamente',true]); }catch(e){ out.push(['Crear la temporada','Denegado ('+e.code+')',false]); } }
+      try{ const d=await pathRef('users/'+u.uid).get(); out.push(['Tu jugador', d.exists? 'Elegido: '+d.data().pid : 'No has elegido tu nombre', d.exists]); }catch(e){ out.push(['Tu jugador','No se puede leer ('+e.code+')',false]); }
+      let ad=false; try{ ad=(await pathRef('admins/'+u.uid).get()).exists || (await pathRef('admins/'+(u.email||'').toLowerCase()).get()).exists; }catch(e){} out.push(['Administrador', ad? 'Sí' : 'No (no hace falta para editar)', true]);
+      let ex=null; try{ ex=(await pathRef(seasonPath).get()).exists; out.push(['Leer la temporada', ex? 'Correcto' : 'Aún no existe en la base de datos', true]); }catch(e){ out.push(['Leer la temporada','Denegado ('+e.code+')',false]); }
+      if(ex===true){ try{ await pathRef(seasonPath).update({diagAt:Date.now()}); out.push(['Guardar en la temporada','Correcto',true]); }catch(e){ out.push(['Guardar en la temporada','Denegado ('+e.code+')',false]); } }
+      else if(ex===false){ try{ await pathRef(seasonPath).set(clone(body)); out.push(['Crear la temporada','Creada correctamente',true]); }catch(e){ out.push(['Crear la temporada','Denegado ('+e.code+')',false]); } }
       return out; },
     async castVote(base,voter,v){ const b=fs.batch(), inc=firebase.firestore.FieldValue.increment(1);
-      b.set(fs.doc(base+'/votes/'+voter),{v,at:Date.now()}); b.set(fs.doc(base),{t:{[v]:inc},n:inc},{merge:true}); return b.commit(); },
+      b.set(pathRef(base+'/votes/'+voter),{v,at:Date.now()}); b.set(pathRef(base),{t:{[v]:inc},n:inc},{merge:true}); return b.commit(); },
     async annulVote(base,voter,v){ const b=fs.batch(), dec=firebase.firestore.FieldValue.increment(-1);
-      b.delete(fs.doc(base+'/votes/'+voter)); if(v) b.set(fs.doc(base),{t:{[v]:dec},n:dec},{merge:true}); return b.commit(); },
+      b.delete(pathRef(base+'/votes/'+voter)); if(v) b.set(pathRef(base),{t:{[v]:dec},n:dec},{merge:true}); return b.commit(); },
     update:(p,changes)=>{ const o={}; Object.entries(changes).forEach(([k,v])=>o[k]= v===DEL? firebase.firestore.FieldValue.delete() : clone(v)); return pathRef(p).update(o); },
     del:(p)=>pathRef(p).delete(),
     async claim(pid){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const b=fs.batch();
-      b.set(fs.doc('claims/'+pid),{uid:u.uid,email,at:Date.now()}); b.set(fs.doc('users/'+u.uid),{pid,email}); await b.commit(); },
-    async relink(){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const q=await fs.collection('claims').where('email','==',email).limit(1).get();
+      b.set(pathRef('claims/'+pid),{uid:u.uid,email,at:Date.now()}); b.set(pathRef('users/'+u.uid),{pid,email}); await b.commit(); },
+    // Vincular el Gmail a un jugador con una invitación: las reglas comprueban el código, el jugador, la caducidad y que no se haya usado
+    async claimInvite(code,pid){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const b=fs.batch();
+      b.set(pathRef('claims/'+pid),{uid:u.uid,email,at:Date.now(),invite:code}); b.set(pathRef('users/'+u.uid),{pid,email});
+      b.update(pathRef('invites/'+code),{usedBy:u.uid,usedAt:Date.now()}); await b.commit(); },
+    async getColl(p){ const q=await fs.collection(CP(p)).get(); const o={}; q.forEach(d=>o[d.id]=d.data()); return o; },
+    async relink(){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const q=await fs.collection(CP('claims')).where('email','==',email).limit(1).get();
       if(q.empty) return null; const d=q.docs[0];
-      if(d.data().uid!==u.uid){ const b=fs.batch(); b.set(d.ref,{uid:u.uid,email,at:Date.now()}); b.set(fs.doc('users/'+u.uid),{pid:d.id,email}); await b.commit(); }
+      if(d.data().uid!==u.uid){ const b=fs.batch(); b.set(d.ref,{uid:u.uid,email,at:Date.now()}); b.set(pathRef('users/'+u.uid),{pid:d.id,email}); await b.commit(); }
       return d.id; },
     async idToken(){ return auth.currentUser? auth.currentUser.getIdToken() : null; },
-    async getDoc(p){ const x=await fs.doc(p).get(); return x.exists? x.data() : null; },
+    async getDoc(p){ const x=await pathRef(p).get(); return x.exists? x.data() : null; },
     merge:(p,obj)=>pathRef(p).set(clone(obj),{merge:true}),
-    async addPushToken(pid,token){ return fs.doc('pushTokens/'+pid).set({tokens:firebase.firestore.FieldValue.arrayUnion(token),at:Date.now()},{merge:true}); },
-    async isAdmin(email,uid){ try{ const [a,b]=await Promise.all([fs.doc('admins/'+uid).get(), fs.doc('admins/'+email).get()]); return a.exists||b.exists; }catch(e){ return false; } }
+    async addPushToken(pid,token){ return pathRef('pushTokens/'+pid).set({tokens:firebase.firestore.FieldValue.arrayUnion(token),at:Date.now()},{merge:true}); },
+    async isAdmin(email,uid){ try{ const [a,b]=await Promise.all([pathRef('admins/'+uid).get(), pathRef('admins/'+email).get()]); return a.exists||b.exists; }catch(e){ return false; } }
   };
 }
 function authMsg(e){ if(e?.code==='auth/unauthorized-domain') return 'Este dominio no está autorizado en Firebase > Authentication > Configuración'; return 'No se ha podido entrar: '+(e?.code||e?.message||'error'); }
@@ -1238,7 +1252,8 @@ function surveyCard(){
 }
 
 /* ---------------- Puerta de acceso ---------------- */
-function vLogin(){
+function vLogin(){ return accLogin(); }
+function vLoginOld(){
   return `<div class="gatebox">${courtSVG()}<span class="ball" aria-hidden="true"></span><div class="inner">
     <img class="gate-crest" src="${ASSET.crest}" alt="${esc(CLUB.name)}">
     <p class="hero-comp">${esc(S.comp.name)}, ${esc(S.comp.group)}</p><h1 class="hero-title" aria-label="${esc(teamLabel())}">${titleLetters(teamLabel())}</h1>
@@ -1552,7 +1567,7 @@ function aPlantilla(){
       <button class="phbtn" data-act="crop" data-target="${esc(p.id)}" title="Subir o recortar la foto">${avatar(p)}<span>${photos[p.id]?'Cambiar':'Subir'} foto</span></button>
       <div class="pf"><label>Nombre<input type="text" name="name" value="${esc(p.name)}"></label><label>Nombre completo<input type="text" name="full" value="${esc(p.full)}"></label></div>
       <div class="pf sm"><label>Orden<input type="number" name="order" value="${p.order}"></label><label>Categoría<input type="text" name="cat" value="${esc(p.cat)}"></label><label>Puntos FCT<input type="number" name="pts" value="${p.pts??0}"></label><label>Teléfono<input type="tel" name="phone" value="${esc(phones[p.id]||'')}" placeholder="+34 600 000 000"></label></div>
-      <div class="row small" style="gap:12px"><label><input type="checkbox" name="captain" value="${esc(p.id)}" ${(S.captains||[]).includes(p.id)?'checked':''} ${isAdmin?'':'disabled'}> Capitán</label><label><input type="checkbox" name="active" ${p.active!==false?'checked':''}> En plantilla</label>${photos[p.id]?`<button class="textlink" data-act="photo-del" data-target="${esc(p.id)}">Quitar foto</button>`:''}<span class="muted">${claims[p.id]? 'Entra como '+esc(claims[p.id].email) : 'Aún no ha entrado'}</span>${claims[p.id]&&isAdmin?`<button class="textlink" data-act="unclaim" data-pid="${esc(p.id)}">Liberar acceso</button>`:''}</div></div>`).join('')}</div>
+      <div class="row small" style="gap:12px"><label><input type="checkbox" name="captain" value="${esc(p.id)}" ${(S.captains||[]).includes(p.id)?'checked':''} ${isAdmin?'':'disabled'}> Capitán</label><label><input type="checkbox" name="active" ${p.active!==false?'checked':''}> En plantilla</label>${photos[p.id]?`<button class="textlink" data-act="photo-del" data-target="${esc(p.id)}">Quitar foto</button>`:''}<span class="muted">${claims[p.id]? 'Entra como '+esc(claims[p.id].email) : 'Aún no ha entrado'}</span>${accInviteCell(p)}${claims[p.id]&&isAdmin?`<button class="textlink" data-act="unclaim" data-pid="${esc(p.id)}">Liberar acceso</button>`:''}</div></div>`).join('')}</div>
     <div class="row" style="margin-top:14px"><button class="btn brass" data-act="players-save">Guardar plantilla</button></div>
     <div class="panel" style="margin-top:24px"><b>Añadir jugador</b><div class="row" style="margin-top:10px"><input type="text" id="np-name" placeholder="Nombre corto" style="max-width:200px"><input type="text" id="np-full" placeholder="Nombre completo" style="max-width:240px"><input type="text" id="np-cat" placeholder="Categoría" style="max-width:140px"><button class="btn sm" data-act="player-add">Añadir</button></div></div></section>`;
 }
@@ -2293,6 +2308,7 @@ function vClubAjustes(){
       ${mgr.length? `<ul class="insights">${mgr.map((x,i)=>`<li class="row" style="justify-content:space-between"><span><b>${esc(x.name||'')}</b> ${esc(x.email)}</span><button class="btn sm ghost" data-act="mgr-del" data-i="${i}">Quitar</button></li>`).join('')}</ul>` : '<div class="empty">Aún no hay gestores.</div>'}
       <div class="row" style="margin-top:10px"><input type="text" id="mgr-name" placeholder="Nombre (por ejemplo, Albert)" style="max-width:200px"><input type="email" id="mgr-email" placeholder="correo@gmail.com" style="max-width:260px"><button class="btn sm brass" data-act="mgr-add">Añadir gestor</button></div></section>
     ${autoReportPanel()}
+    ${accAdminPanels()}
     <section class="sec"><div class="sec-h"><h2>Equipos del club</h2></div><p class="muted small">Cada equipo tiene su propia temporada: calendario, plantilla, resultados, disponibilidad y MVP. Jugadores, fotos y fichas son del club.</p>
       <div id="ctlist">${teams.map(t=>`<div class="qedit" data-id="${esc(t.id)}" style="grid-template-columns:1fr 110px 1fr 120px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="cat" value="${esc(t.cat||'')}" aria-label="Categoría"><select name="gender" aria-label="Género"><option value="">Género</option>${['Masculino','Femenino','Mixto'].map(g=>`<option ${t.gender===g?'selected':''}>${g}</option>`).join('')}</select></div>`).join('')}</div>
       <div class="row" style="margin-top:10px"><button class="btn sm brass" data-act="cteams-save">Guardar equipos</button><input type="text" id="ct-name" placeholder="Nuevo equipo (por ejemplo, Veteranos +35)" style="max-width:280px"><input type="text" id="ct-short" placeholder="Nombre corto" style="max-width:140px"><button class="btn sm ghost" data-act="cteam-add">Añadir equipo</button></div></section></div>`;
@@ -3248,13 +3264,15 @@ function ensureIntroCss(){ if(document.getElementById('intro-css')) return; cons
 const route = () => (location.hash||'#inicio').slice(1)||'inicio';
 function render(){
   if(me && ui.sLoaded===SEASON_PATH && !ui.teamAuto && !S.players.some(p=>p.id===me)){ const hit=rosterAll().find(p=>p.id===me), other=hit?.teams.find(t=>t!==teamId); if(other){ ui.teamAuto=true; setTimeout(()=>switchTeam(other),0); } }
-  ensureHomeCss(); updRoles(); if(authReady && authUser && !me && isManager && !adminSkip){ adminSkip=true; if(!route().startsWith('club')) history.replaceState(null,'','#club'); }
-  const app=$('#app'), gate=!authReady || !authUser || (!me && !adminSkip);
+  ensureHomeCss(); updRoles(); if(authReady && authUser && !me && isManager && !adminSkip && ACC.want!=='jugador' && ACC.want!=='capitan'){ adminSkip=true; if(!route().startsWith('club')) history.replaceState(null,'','#club'); }
+  const accHtml = authReady && authUser ? accGate() : null;   // acceso por rol, invitaciones y solicitud de gestor (access.js)
+  const app=$('#app'), gate=!authReady || !authUser || !!accHtml || (!me && !adminSkip);
   document.body.classList.toggle('gate', gate);
   let html, nav=route();
   if(!authReady) html=`<div class="gatebox">${courtSVG()}</div>`;
   else if(!authUser) html=vLogin();
-  else if(!me && !adminSkip) html=vClaim();
+  else if(accHtml) html=accHtml;
+  else if(!me && !adminSkip) html=accClaimView();
   else { const r=nav;
     const split=!!document.querySelector('[data-nav="calendario"]');   // barra con Clasificación y Calendario separados
     if(r==='docs'||r.startsWith('doc-')){ ui.docBase='doc-'; ui.docBack='docs'; }   // documentos dentro del equipo
@@ -3348,8 +3366,8 @@ document.addEventListener('click', async e=>{
   const pr=e.target.closest('[data-present]'); if(pr){ const [j,i]=pr.dataset.present.split(':').map(Number); present(j,i); return; }
   const el=e.target.closest('[data-act]'); if(!el) return; const a=el.dataset.act;
   if(a==='signin') B.signIn();
-  else if(a==='signout'){ B.signOut(); closeSheet(); }
-  else if(a==='me'){ if(me) openSheet(me); else if(authUser) location.hash='yo'; }
+  else if(a==='signout'){ closeSheet(); ACC.menu=true; ACC.menuState='confirm'; accMenuDraw(); }
+  else if(a==='me'){ if(authUser) accMenuToggle(); }
   else if(a==='skip'){ adminSkip=true; render(); }
   else if(a==='unskip'){ adminSkip=false; render(); }
   else if(a==='claim'){ const id=el.dataset.id; await safe(()=>B.claim(id)); }
@@ -3667,8 +3685,9 @@ function switchSeason(id,auto){ privKey=''; docsKey=''; ui.rev=null; if(!auto) u
 B.onAuth(async u=>{
   unsubAll(); dataSubs.forEach(x=>{ try{x()}catch(e){} }); dataSubs=[];
   authUser=u; me=null; isAdmin=false; adminSkip=false; claims={}; avail={}; picks={}; ballots={}; myBallot=null; S=seed();
+  ACC.ctx=null; ACC.capTeams=null; ACC.capKey=''; ACC.req=undefined; ACC.navDone=false; ACC.menu=false; accMenuDraw();
   if(!u){ authReady=true; render(); return; }
-  isAdmin=await B.isAdmin(u.email,u.uid);
+  isAdmin=await B.isAdmin(u.email,u.uid); accLoadBrand();
   try{ const m0=await B.getDoc('meta/app'); if(m0){ meta=m0; } checkManager(m0); }catch(e){}
   try{ await B.relink(); }catch(e){}
   subs.push(B.watchColl('claims', m=>{ claims=m; softRender(); }));
