@@ -1471,3 +1471,12 @@ body.gate::before{background:#0E1216}
 .acc-reqrow select{max-width:220px}
 .acc-crest-w{display:inline-grid;place-items:center;flex:none;border-radius:12px;background:#fff;overflow:hidden}
 .acc-crest.web{object-fit:contain;padding:6px;background:#fff;border-radius:12px}
+.acc-who-f{display:grid;gap:10px}
+.acc-2c{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:480px){.acc-2c{grid-template-columns:1fr}}
+.acc-who-f .acc-lbl{display:grid;gap:6px}
+.acc-who-f input{border-radius:14px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.18);color:var(--lc-ink);padding:12px 14px;font-size:1rem;text-transform:none;letter-spacing:0;font-weight:500}
+.acc-who-f input[readonly]{opacity:.75}
+.acc-cand .av{width:52px;height:52px;flex:none}
+.acc-cand:disabled{opacity:.5;cursor:not-allowed}
+.acc-teamreq{margin:0 0 16px}

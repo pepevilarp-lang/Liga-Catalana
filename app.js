@@ -1562,7 +1562,7 @@ function aPreguntas(){
     <div class="row" style="margin-top:14px"><button class="btn ghost sm" data-act="q-add">Añadir pregunta</button><button class="btn brass" data-act="q-save">Guardar preguntas</button><button class="btn ghost sm" data-act="q-reset">Restaurar</button></div></div>`;
 }
 function aPlantilla(){
-  return `<section class="sec"><div class="sec-h"><h2>Plantilla</h2><span class="muted small">${S.players.length} jugadores</span></div><p class="muted small">Los capitanes pueden pedir disponibilidad, convocar, poner resultados y publicar el MVP. Cada jugador sube su foto y su teléfono desde «Yo»; el teléfono solo lo ven los administradores.</p>
+  return `<section class="sec"><div class="sec-h"><h2>Plantilla</h2><span class="muted small">${S.players.length} jugadores</span></div>${accTeamRequests()}<p class="muted small">Los capitanes pueden pedir disponibilidad, convocar, poner resultados y publicar el MVP. Cada jugador sube su foto y su teléfono desde «Yo»; el teléfono solo lo ven los administradores.</p>
     <div id="plist">${S.players.slice().sort((a,b)=>a.order-b.order).map(p=>`<div class="pedit" data-id="${esc(p.id)}">
       <button class="phbtn" data-act="crop" data-target="${esc(p.id)}" title="Subir o recortar la foto">${avatar(p)}<span>${photos[p.id]?'Cambiar':'Subir'} foto</span></button>
       <div class="pf"><label>Nombre<input type="text" name="name" value="${esc(p.name)}"></label><label>Nombre completo<input type="text" name="full" value="${esc(p.full)}"></label></div>
