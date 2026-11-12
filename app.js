@@ -186,7 +186,7 @@ function makeFirebase(){
       try{ await auth.signInWithPopup(p); }catch(e){ if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported'].includes(e.code)) return auth.signInWithRedirect(p); if(e.code!=='auth/popup-closed-by-user' && e.code!=='auth/cancelled-popup-request') toast(authMsg(e)); } },
     // Cierra la sesión y borra la copia local de Firestore (datos del club guardados para usarla sin conexión)
     async signOut(){ await auth.signOut(); try{ await fs.terminate(); await fs.clearPersistence(); }catch(e){ console.warn('clearPersistence',e.code||e); } },
-    watchDoc(p,cb){ return pathRef(p).onSnapshot(s=>cb(s.exists? s.data():null), e=>console.warn(p,e.code)); },
+    watchDoc(p,cb,onErr){ return pathRef(p).onSnapshot(s=>cb(s.exists? s.data():null), e=>{ console.warn(p,e.code); if(onErr) onErr(e); }); },
     watchColl(p,cb){ return fs.collection(CP(p)).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
     set:(p,d)=>pathRef(p).set(clone(d)),
     async diag(seasonPath, body){ const u=auth.currentUser, out=[];

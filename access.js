@@ -254,7 +254,9 @@ function accGestorCheck(f) {
   let ok;
   if (c.id === (window.CLUB && CLUB.id)) ok = isAdmin || isManager;
   else {
-    if (!(c.id in ACC.memberOf)) { ACC.memberOf[c.id] = undefined; B.getDoc('clubs/' + c.id + '/members/' + authUser.uid).then(d => { ACC.memberOf[c.id] = d || null; render(); }).catch(() => { ACC.memberOf[c.id] = null; render(); }); }
+    if (!(c.id in ACC.memberOf)) { ACC.memberOf[c.id] = undefined;
+      const done = d => { if (ACC.memberOf[c.id] === undefined) { ACC.memberOf[c.id] = d || null; render(); } };
+      B.getDoc('clubs/' + c.id + '/members/' + authUser.uid).then(done).catch(() => done(null)); setTimeout(() => done(null), 8000); }
     if (ACC.memberOf[c.id] === undefined) return accWait('Comprobando tu acceso a ' + c.name + '…');
     ok = (ACC.memberOf[c.id]?.roles || []).includes('gestor');
     if (ok) return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c, 76)}<div><span class="acc-k">Acceso autorizado</span><h1 class="acc-h sm">${esc(c.name)}</h1></div></div>
@@ -278,21 +280,24 @@ function accGestorCheck(f) {
 }
 function accWatchReq() {
   if (ACC.reqSub || !authUser) return;
-  ACC.reqSub = B.watchDoc('clubRequests/' + authUser.uid, d => {
+  // Si la base de datos no deja leerla (reglas sin publicar, sin conexión) no se queda esperando: sigue como «sin solicitud»
+  const fail = e => { if (ACC.req === undefined) { ACC.req = null; ACC.reqErr = e?.code || 'error'; render(); } };
+  setTimeout(() => fail({ code: 'timeout' }), 8000);
+  ACC.reqSub = B.watchDoc('clubRequests/' + authUser.uid, d => { ACC.reqErr = null;
     const was = ACC.req?.status; ACC.req = d || null;
     if (d?.status === 'aprobada' && was && was !== 'aprobada') {
       if (d.role === 'jugador' && d.invite) { ACC.invite = d.invite; ACC.inv = null; }
       else if (d.clubId === CLUB.id) { location.reload(); return; }
     }
     render();
-  });
+  }, fail);
 }
 async function accSendReq(msg, role) {
   const f = ACC.flow || {}, c = accClub(f.join?.club || f.club); if (!c) return;
   ui.accBusy = true; render();
   try { await B.set('clubRequests/' + authUser.uid, { uid: authUser.uid, email: authUser.email, name: authUser.name || '', clubId: c.id, clubName: c.name, role: role || 'gestor', msg: String(msg || '').slice(0, 300), status: 'pendiente', at: Date.now() });
     toast('Solicitud enviada'); }
-  catch (e) { toast('No se ha podido enviar: ' + (e?.code || e?.message || 'error')); }
+  catch (e) { toast(/permission/.test(e?.code || '') ? 'No se ha podido enviar: la base de datos aún no acepta solicitudes (faltan las reglas nuevas de Firestore)' : 'No se ha podido enviar: ' + (e?.code || e?.message || 'error')); }
   ui.accBusy = false; render();
 }
 // Invitación de gestor: un código de un solo uso que el club envía a su nuevo gestor
