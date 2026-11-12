@@ -42,9 +42,10 @@ La entrada es de Lliga Catalana, sin la identidad de ningún club: «¿Cómo qui
 - **Administrador**: además gestiona plantilla, capitanes y temporadas. Se da de alta en Firestore > colección `admins` > documento con su Gmail en minúsculas.
 
 ## Solicitudes de acceso
-Quien entra sin estar vinculado elige perfil y club, entra con Google (su correo) y escribe su nombre y apellidos. La app busca ese nombre en las plantillas del club y le ofrece su ficha; al elegirla se crea la solicitud y se avisa por correo:
+Quien entra sin estar vinculado elige perfil y club, entra con Google (su correo) y escribe su nombre y apellidos. La app busca ese nombre en las plantillas del club y le ofrece su ficha. **Jugadores y capitanes entran directamente al elegirla** (cada ficha solo puede estar ligada a un Gmail). Un administrador puede exigir validación en Gestión deportiva → Configuración → Acceso de jugadores; entonces, y para quien no aparece en ninguna lista, se crea una solicitud y se avisa por correo:
 - Jugador con ficha: a los **capitanes de ese equipo** y a los **gestores del club**. Los capitanes la aceptan en Gestión → Plantilla; los gestores en Gestión deportiva → Configuración → Solicitudes de acceso.
-- Gestor, o jugador sin ficha: a los **gestores del club** (o a los administradores si aún no hay gestores).
+- Jugador sin ficha: a los **gestores del club** (o a los administradores si aún no hay gestores).
+- **Gestor deportivo (cualquier club): a la plataforma**, es decir a `PLATFORM_EMAILS` en Vercel (el correo de Dossau Lab) y a los administradores. Se aprueba en Gestión deportiva → Configuración → Solicitudes de acceso.
 - Club que aún no está activo en Lliga Catalana: a los **administradores** (correos de la colección `admins`) y, si existe, a `PLATFORM_EMAILS` en Vercel (varios separados por comas).
 
 ## Reglas de seguridad (cada vez que cambie `firestore.rules`)

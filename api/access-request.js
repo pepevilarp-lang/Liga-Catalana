@@ -2,7 +2,8 @@
 // La llama la app justo después de crear clubRequests/<uid>. Destinatarios:
 //   - Club activo en esta app (club-config.js → id):
 //       · jugador con ficha propuesta: los capitanes de ese equipo y los gestores del club
-//       · gestor o jugador sin ficha: los gestores del club (meta/app.managerEmails)
+//       · jugador sin ficha: los gestores del club (meta/app.managerEmails)
+//   - Gestor (de cualquier club): la plataforma, es decir PLATFORM_EMAILS (Dossau Lab) y los administradores.
 //     y, si el club aún no tiene gestores, los administradores.
 //   - Club que todavía no está activo: los administradores de la plataforma (colección admins con correo
 //     y, opcionalmente, PLATFORM_EMAILS en Vercel, separados por comas).
@@ -19,7 +20,8 @@ const isMail = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || ''));
 async function recipients(db, r) {
   const admins = (await db.collection('admins').get()).docs.map(d => d.id).filter(isMail);
   const platform = String(process.env.PLATFORM_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(isMail);
-  if (r.clubId !== CLUB.id) return { to: [...new Set([...platform, ...admins])], who: 'plataforma' };
+  // Los gestores los valida la plataforma (Dossau Lab): PLATFORM_EMAILS y administradores
+  if (r.clubId !== CLUB.id || r.role !== 'jugador') return { to: [...new Set([...platform, ...admins])], who: 'plataforma' };
   const meta = (await db.doc('meta/app').get()).data() || {};
   const managers = (meta.managerEmails || []).filter(isMail);
   let captains = [];

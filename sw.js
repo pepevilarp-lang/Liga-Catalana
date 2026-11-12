@@ -1,5 +1,5 @@
 /* Service worker de Polo A: app instalable, funcionamiento sin conexión y notificaciones push */
-const CACHE = 'polo-a-v14';
+const CACHE = 'polo-a-v15';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/config.js', '/club-config.js', '/report-doc.js', '/access.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/badge-96.png', '/img/ball.webp', '/img/escudo.webp', '/img/escudo-sm.webp', '/img/court.jpg', '/img/felt.jpg', '/img/fuzz.webp'];
 
 // Notificaciones (Firebase Cloud Messaging)
