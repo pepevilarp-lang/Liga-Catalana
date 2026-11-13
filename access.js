@@ -419,34 +419,69 @@ function accPlayerCheck(f) {
 // club activo en Lliga Catalana (no al catálogo de la FCT); pedirlo no da nada hasta que el club lo acepta.
 const accActiveClubs = () => (window.CLUB && CLUB.id ? [{ id: CLUB.id, name: CLUB.name, town: CLUB.town || '', crest: CLUB.crestSm || '' }] : []);
 function accJoinView(f, role) {
-  if (ACC.openClaims) return vClaim();
   accWatchReq();
   if (ACC.req === undefined) return accWait();
   const R = ACC.req && ACC.req.role === 'jugador' ? ACC.req : null;
   if (R && R.status === 'aprobada' && R.invite && !ACC.inv) { ACC.invite = R.invite; return accInviteView(); }   // el club ya le ha vinculado
   if (R && R.status === 'pendiente') return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(accClub(R.clubId) || {}, 64)}<div><span class="acc-k">${esc(R.clubName)}</span><h1 class="acc-h sm">Solicitud enviada</h1></div></div>
-    <p class="acc-p">El capitán de tu equipo o la gestión del club te vinculará a tu ficha de jugador y entrarás directamente.${ACC.notify === 'plataforma' ? ' Hemos avisado por correo al equipo de Lliga Catalana.' : ACC.notify ? ' Ya les hemos avisado por correo.' : ''}</p>
+    <p class="acc-p">${R.pidName ? `Has dicho que eres <b>${esc(R.pidName)}</b>${R.teamName ? ' (' + esc(R.teamName) + ')' : ''}. Tu capitán o la gestión del club lo confirmará y entrarás directamente.` : 'El capitán de tu equipo o la gestión del club te vinculará a tu ficha de jugador y entrarás directamente.'}</p>${accNotifyLine(R)}
     <div class="acc-acts"><button class="acc-link" data-acc="req-cancel">Cancelar la solicitud</button></div>${accCodeForm('¿Te ha llegado la invitación? Introdúcela y entras ya.')}${accAccount()}`, '', 'join-pend');
-  if (f.join === 'req') {
-    const clubs = accActiveClubs(), c = accClub(f.club) || clubs[0];
-    if (!f.club && clubs.length > 1) return accShell(`${accTop(true)}<h1 class="acc-h sm">¿A qué club quieres pedir acceso?</h1><p class="acc-p">Solo aparecen los clubes que ya usan Lliga Catalana.</p>
-      <div class="acc-clubs" role="list">${clubs.map(x => `<button class="acc-club" data-acc="req-club" data-v="${esc(x.id)}">${accCrest(x, 52)}<span><b>${esc(x.name)}</b><small>${esc(x.town)}</small></span><span class="acc-arr">›</span></button>`).join('')}</div>${accAccount()}`, '', 'join-club');
-    if (!f.club) accSetFlow({ club: c?.id });
-    return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c || {}, 64)}<div><span class="acc-k">Solicitar acceso</span><h1 class="acc-h sm">${esc(c?.name || '')}</h1></div></div>
-      <p class="acc-p">Tu capitán o la gestión del club la revisará y te vinculará a tu ficha. Hasta entonces no verás ningún dato del club.</p>${accWhoForm(f, true)}${accAccount()}`, 'acc-launch', 'join-req');
+  const c = accActiveClubs()[0] || {};
+  // Resultado de buscar su nombre en las plantillas del club
+  if (f.join === 'match') {
+    const M = ACC.match || {};
+    if (M.busy) return accWait('Buscando tu ficha en las plantillas…');
+    const who = f.who || {}, list = (M.list || []).filter(x => !x.claimed), taken = (M.list || []).filter(x => x.claimed);
+    const head = `${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${esc(c.name || '')}</span><h1 class="acc-h sm">${list.length ? (list.length === 1 ? '¿Eres tú?' : '¿Cuál eres tú?') : 'No encontramos tu ficha'}</h1></div></div>`;
+    const after = ACC.openClaims ? 'Entrarás directamente en tu equipo.' : 'Tu capitán o la gestión del club lo confirmará y entrarás directamente; hasta entonces no verás ningún dato del club.';
+    return accShell(`${head}
+      ${list.length ? `<p class="acc-p">Hemos buscado <b>${esc((who.first || '') + ' ' + (who.last || ''))}</b> en las plantillas de ${esc(c.name || 'tu club')}. ${after}</p>
+        <div class="acc-clubs" role="list">${list.map(x => `<button class="acc-club" data-acc="match-pick" data-v="${esc(x.pid)}">${avatar({ id: x.pid, name: x.name })}<span><b>${esc(x.name)}</b><small>${esc(x.teams.map(t => t.name).join(', '))}</small></span><span class="acc-arr">›</span></button>`).join('')}</div>`
+        : `<p class="acc-p">${taken.length ? `La ficha de <b>${esc(taken[0].name)}</b> ya está vinculada a otra cuenta de Google. Si eres tú, pide a tu capitán que te vuelva a invitar.` : `No aparece <b>${esc((who.first || '') + ' ' + (who.last || ''))}</b> en las plantillas de ${esc(c.name || 'tu club')}. Revisa cómo lo has escrito o envía la solicitud igualmente: el club te vinculará a tu ficha.`}</p>`}
+      <div class="acc-acts">${list.length ? `<button class="acc-link" data-acc="match-none">No soy ${list.length === 1 ? 'yo' : 'ninguno'}: enviar solicitud sin ficha</button>` : `<button class="acc-btn" data-acc="match-none">Enviar solicitud</button>`}<button class="acc-link" data-acc="match-edit">Cambiar el nombre</button></div>${accAccount()}`, 'acc-launch', 'join-match');
   }
-  return accShell(`${accTop(true)}<span class="acc-k">${ACC_ROLES[role].t}</span>
-    <h1 class="acc-h sm">Necesitas una invitación de tu club</h1>
-    <p class="acc-p">${role === 'capitan' ? 'Los capitanes los asigna la gestión deportiva de cada club, que te enviará tu invitación.' : 'Tu capitán o la gestión del club te envía un enlace o un código de invitación, por correo o por WhatsApp.'} Al abrirlo entras directamente en tu equipo.</p>
-    ${accCodeForm()}
-    <div class="acc-acts"><button class="acc-btn ghost" data-acc="join-req">No tengo invitación: solicitar acceso</button>${isManager || isAdmin ? `<button class="acc-link" data-acc="enter" data-v="gestor">Entrar como gestor deportivo</button>` : ''}</div>${accAccount()}`, '', 'join');
+  // Por defecto: nombre y apellidos para encontrar su ficha (o el código de invitación, si ya lo tiene)
+  return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${ACC_ROLES[role].t} · ${esc(c.name || '')}</span><h1 class="acc-h sm">¿Cómo te llamas?</h1></div></div>
+    <p class="acc-p">Escribe tu nombre y apellidos tal como aparecen en la plantilla de tu equipo y buscaremos tu ficha.${role === 'capitan' ? ' Los capitanes los asigna la gestión deportiva del club.' : ''}</p>
+    ${accWhoForm(f)}
+    ${accCodeForm('¿Te ha llegado una invitación por correo o WhatsApp? Ábrela o escribe aquí el código.')}
+    ${isManager || isAdmin ? `<div class="acc-acts"><button class="acc-link" data-acc="enter" data-v="gestor">Entrar como gestor deportivo</button></div>` : ''}${accAccount()}`, 'acc-launch', 'join');
 }
-function accWhoForm(f, direct) {
+function accWhoForm(f) {
   const g = String(authUser?.name || '').trim().split(/\s+/), w = f.who || { first: g[0] || '', last: g.slice(1).join(' ') };
-  return `<form class="acc-who-f" data-acc-form="${direct ? 'who-req' : 'who'}"><div class="acc-2c"><label class="acc-lbl">Nombre<input name="first" required maxlength="40" value="${esc(w.first)}" autocomplete="given-name"></label><label class="acc-lbl">Apellidos<input name="last" required maxlength="60" value="${esc(w.last)}" autocomplete="family-name"></label></div>
+  return `<form class="acc-who-f" data-acc-form="who-find"><div class="acc-2c"><label class="acc-lbl">Nombre<input name="first" required maxlength="40" value="${esc(w.first)}" autocomplete="given-name"></label><label class="acc-lbl">Apellidos<input name="last" required maxlength="60" value="${esc(w.last)}" autocomplete="family-name"></label></div>
     <label class="acc-lbl">Correo<input value="${esc(authUser?.email || '')}" readonly aria-readonly="true"></label><p class="acc-p dim" style="margin-top:-4px">Es el de tu cuenta de Google: con él entrarás siempre.</p>
-    ${direct ? `<label class="acc-lbl" for="acc-msg">¿En qué equipo juegas? (opcional)</label><textarea id="acc-msg" name="msg" rows="2" maxlength="300" placeholder="Por ejemplo: Absoluto Masculino A"></textarea>` : ''}
-    <div class="acc-acts"><button class="acc-btn big" type="submit" ${ui.accBusy ? 'disabled' : ''}>${ui.accBusy ? 'Enviando…' : 'Enviar solicitud'}</button></div></form>`;
+    <div class="acc-acts"><button class="acc-btn big" type="submit">Buscar mi ficha</button></div></form>`;
+}
+// Busca la ficha por nombre y apellidos. Con la base de datos real lo hace el servidor (quien aún no es del club no puede
+// leer las plantillas) y solo devuelve fichas que coinciden en nombre y apellido; en la vista previa, aquí mismo.
+const accTok = s => accNorm(s).replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1);
+function accMatchLocal(first, last) {
+  const F = accTok(first), L = accTok(last), out = new Map();
+  rosterAll().forEach(p => { const n = accTok(p.full || p.name); if (F.length && L.length && F.every(x => n.includes(x)) && L.some(x => n.includes(x)))
+    out.set(p.id, { pid: p.id, name: p.name, claimed: !!claims[p.id], teams: (p.teams || []).map(t => ({ id: t, name: clubTeams().find(x => x.id === t)?.name || t, season: docIdFor(t, viewSeason) })) }); });
+  return [...out.values()].slice(0, 5);
+}
+async function accFindMe(who) {
+  ACC.match = { busy: true }; accSetFlow({ who, join: 'match' }); render();
+  try {
+    const t = await B.idToken();
+    if (!t) ACC.match = { list: accMatchLocal(who.first, who.last) };
+    else { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'match', first: who.first, last: who.last }) });
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'error ' + r.status); ACC.match = { list: j.matches || [] }; }
+  } catch (e) { ACC.match = { list: [], err: e.message }; }
+  render();
+}
+async function accPickMatch(pid) {
+  const x = (ACC.match?.list || []).find(m => m.pid === pid); if (!x) return;
+  const t = x.teams[0] || {};
+  if (ACC.openClaims) {   // acceso abierto por un administrador: entra directamente con su ficha
+    ui.accBusy = true; render();
+    try { await B.claim(pid); accSetFlow({ step: 'check', join: null }); toast('Ya estás en tu equipo'); }
+    catch (e) { toast('No se ha podido vincular: ' + (e?.code || e?.message || 'error')); }
+    ui.accBusy = false; render(); return;
+  }
+  accSendReq('', 'jugador', { pid, pidName: x.name, team: t.id || '', teamName: t.name || '', season: t.season || '' });
 }
 const accCodeForm = (hint) => `<form class="acc-code" data-acc-form="code">${hint ? `<p class="acc-p dim">${hint}</p>` : ''}<label for="acc-code">Código de invitación</label><div class="acc-cin"><input id="acc-code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="Por ejemplo, K7PQ2XM4" maxlength="80"><button class="acc-btn" type="submit">Continuar</button></div></form>`;
 function accClearInvite() { ACC.invite = null; ACC.inv = null; try { sessionStorage.removeItem('lc-invite'); } catch (e) {} if (route().startsWith('invitacion-')) history.replaceState(null, '', '#inicio'); }
@@ -690,6 +725,9 @@ document.addEventListener('click', async e => {
     ACC.q = ''; render(); scrollTo(0, 0);
   }
   else if (a === 'req-renotify') accNotifyReq(true);
+  else if (a === 'match-pick') accPickMatch(v);
+  else if (a === 'match-none') accSendReq('', 'jugador');
+  else if (a === 'match-edit') { accSetFlow({ join: null }); render(); }
   else if (a === 'join-req') { accSetFlow({ join: 'req' }); render(); scrollTo(0, 0); }
   else if (a === 'req-club') { accSetFlow({ club: v }); render(); }
   else if (a === 'back') accBack();
@@ -735,6 +773,7 @@ document.addEventListener('input', e => { if (e.target.id === 'acc-q') { ACC.q =
 document.addEventListener('submit', e => {
   const f = e.target.closest('[data-acc-form]'); if (!f) return; e.preventDefault();
   const kind = f.dataset.accForm, fd = new FormData(f), val = String(fd.get(kind === 'jreq' || kind === 'req' || kind === 'who-req' ? 'msg' : 'code') || '');
+  if (kind === 'who-find') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; } accFindMe(who); return; }
   if (kind === 'who' || kind === 'who-req') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; }
     accSetFlow({ who }); if (kind === 'who-req') accSendReq(val, 'jugador'); else render(); return; }
   const code = val.toUpperCase().replace(/^.*INVITACION-/, '').replace(/[^A-Z0-9]/g, '');
