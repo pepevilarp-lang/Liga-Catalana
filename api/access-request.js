@@ -40,7 +40,11 @@ module.exports = async (req, res) => {
     if (!snap.exists) return res.status(404).json({ error: 'No hay ninguna solicitud' });
     const r = snap.data();
     if (r.status !== 'pendiente') return res.status(200).json({ ok: true, skipped: 'no pendiente' });
-    if (r.notifiedAt) return res.status(200).json({ ok: true, skipped: 'ya avisado' });
+    // Un aviso por solicitud; «Reenviar el aviso» lo repite como mucho 5 veces y no antes de 2 minutos
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    if (r.notifiedAt && !body.resend) return res.status(200).json({ ok: true, skipped: 'ya avisado', who: r.notifiedWho });
+    if (r.notifiedAt && Date.now() - r.notifiedAt < 120000) return res.status(200).json({ ok: true, skipped: 'reciente', who: r.notifiedWho });
+    if ((r.notifyCount || (r.notifiedAt ? 1 : 0)) >= 5) return res.status(429).json({ ok: false, error: 'Ya se ha avisado 5 veces' });
     if (!require('./_mail.js').via()) return res.status(501).json({ error: 'El envío de correo no está configurado en Vercel' });
     const { to, who } = await recipients(db, r, await clubDbFor(db));
     if (!to.length) return res.status(200).json({ ok: false, error: 'No hay a quién avisar: añade un administrador con correo o PLATFORM_EMAILS' });
@@ -65,9 +69,10 @@ module.exports = async (req, res) => {
         : `<p style="margin:12px 0 0;color:#41534c">Este club aún no está activo en Lliga Catalana: la solicitud queda registrada para darlo de alta.</p>`}
       <p style="margin:16px 0 0;color:#6b7a73;font-size:13px">Si no conoces a esta persona, rechaza la solicitud: no tendrá acceso a ningún dato.</p></div>`;
     const out = await require('./_mail.js').sendMail({ to, replyTo: r.email, subject, text, html });
-    await ref.update({ notifiedAt: Date.now(), notifiedTo: to, notifiedWho: who });
+    await ref.update({ notifiedAt: Date.now(), notifiedTo: to, notifiedWho: who, notifyCount: (r.notifyCount || (r.notifiedAt ? 1 : 0)) + 1, notifyError: null });
     return res.status(200).json({ ok: true, to: to.length, who, provider: out.provider });
   } catch (e) {
+    console.error('access-request', e.message || e);
     return res.status(e.status || (e.code && String(e.code).startsWith('auth/') ? 401 : 500)).json({ error: e.message || 'error' });
   }
 };
