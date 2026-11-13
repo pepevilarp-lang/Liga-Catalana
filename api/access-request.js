@@ -52,6 +52,86 @@ async function findPlayers(cdb, first, last) {
   return list.map((m, i) => ({ ...m, claimed: cl[i].exists }));
 }
 
+// ---------- Orden de incorporación: estructura mínima, activación y alta verificada de jugadores ----------
+// Capitanes oficiales de un equipo: seasons.officialCaptains (los marca la gestión). Temporadas anteriores sin ese campo:
+// sus capitanes actuales (así se adaptó el Real Club de Polo sin perder nada).
+const officialOf = S => Array.isArray(S.officialCaptains) ? S.officialCaptains : (S.captains || []);
+async function seasonsOf(cdb) {
+  const R = require('./_report.js'), meta = (await cdb.doc('meta/app').get()).data() || {}, season = meta.current || '';
+  const teams = R.clubTeams(meta), out = [];
+  for (const t of teams) { const sid = season ? R.docIdFor(t.id, season) : ''; const S = sid ? (await cdb.doc('seasons/' + sid).get()).data() : null; out.push({ t, sid, S }); }
+  return { meta, season, teams: out };
+}
+// Estructura mínima para activar el registro de jugadores: temporada, y en cada equipo con temporada, plantilla con licencias y capitán oficial
+async function clubStructure(cdb) {
+  const { meta, season, teams } = await seasonsOf(cdb), withS = teams.filter(x => x.S);
+  const missing = [];
+  if (!season) missing.push('Elegir la temporada activa');
+  if (!withS.length) missing.push('Dar de alta al menos un equipo con su temporada');
+  withS.forEach(({ t, S }) => {
+    const act = (S.players || []).filter(p => p.active !== false);
+    if (!act.length) missing.push(t.name + ': importar la plantilla');
+    else if (!act.some(p => p.lic)) missing.push(t.name + ': la plantilla no tiene licencias (impórtala de la FCT)');
+    if (!officialOf(S).length) missing.push(t.name + ': marcar el capitán oficial');
+  });
+  return { ok: !missing.length, missing, teams: withS.length, season, meta };
+}
+async function captainPidsOf(cdb) {
+  const { teams } = await seasonsOf(cdb), all = new Set();
+  teams.forEach(({ S }) => (S && S.captains || []).forEach(p => all.add(p)));
+  return [...all].sort();
+}
+const normWords = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1);
+const normLic = s => String(s || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toUpperCase();
+// Coincidencia fiable = misma licencia federativa y mismo nombre y apellido. Devuelve { status, ... }
+async function verifyPlayer(cdb, first, last, lic) {
+  const F = normWords(first), L = normWords(last), Lc = normLic(lic);
+  if (!F.length || !L.length) return { status: 'datos' };
+  const { teams } = await seasonsOf(cdb), byPid = new Map();
+  teams.forEach(({ t, sid, S }) => (S && S.players || []).filter(p => p.active !== false).forEach(p => {
+    const m = byPid.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] };
+    m.teams.push({ id: t.id, name: t.name, season: sid, official: officialOf(S).includes(p.id) }); if (!m.lic && p.lic) m.lic = p.lic; byPid.set(p.id, m); }));
+  const all = [...byPid.values()];
+  const nameOk = m => { const n = normWords(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && L.some(x => n.includes(x)); };
+  if (Lc) {
+    const byLic = all.filter(m => m.lic && normLic(m.lic) === Lc);
+    if (byLic.length === 1 && nameOk(byLic[0])) return { status: 'ok', m: byLic[0] };
+    if (byLic.length) return { status: 'nombre' };          // la licencia existe pero el nombre no coincide: no se vincula
+  }
+  const byName = all.filter(nameOk);
+  if (byName.length) return { status: Lc ? 'licencia' : 'pedir-licencia', candidates: byName.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic })) };
+  return { status: 'no' };
+}
+async function linkPlayer(A, db, user, body) {
+  const cdb = await clubDbFor(db), email = String(user.email || '').toLowerCase();
+  const club = (await db.doc('clubs/' + CLUB.id).get()).data() || {};
+  if (!(club.activation && club.activation.at)) return { status: 'cerrado' };
+  // Límite de intentos por cuenta y día (evita probar licencias)
+  const day = new Date().toISOString().slice(0, 10), aref = db.doc('linkAttempts/' + user.uid), att = (await aref.get()).data() || {};
+  const n = att.day === day ? att.n || 0 : 0; if (n >= 10) return { status: 'limite' };
+  await aref.set({ day, n: n + 1, at: Date.now() });
+  const v = await verifyPlayer(cdb, body.first, body.last, body.licence);
+  if (v.status !== 'ok') { if (v.candidates) v.candidates.forEach(c => delete c.lic); return v; }
+  const m = v.m, cref = cdb.doc('claims/' + m.pid), c = await cref.get();
+  if (c.exists && c.data().uid !== user.uid) return { status: 'ocupada', name: m.name };
+  const mref = db.doc('clubs/' + CLUB.id + '/members/' + user.uid), mem = await mref.get(), cur = mem.exists ? mem.data() : {};
+  if (cur.status === 'inactivo') return { status: 'desactivado' };
+  const at = Date.now(), b = db.batch();
+  b.set(cref, { uid: user.uid, email, at, via: 'licencia' });
+  if (!cdb.P('claims').startsWith('clubs/')) b.set(db.doc('users/' + user.uid), { pid: m.pid, email });
+  b.set(mref, { ...cur, pid: m.pid, email, roles: [...new Set([...(cur.roles || []), 'jugador'])], status: 'activo', at: cur.at || at, verifiedBy: 'licencia' }, { merge: true });
+  // Capitán oficial: se le asigna el rol de capitán de ese equipo al verificar su identidad
+  const capTeams = m.teams.filter(x => x.official);
+  for (const x of capTeams) { const sref = cdb.doc('seasons/' + x.season), S = (await sref.get()).data() || {};
+    if (!(S.captains || []).includes(m.pid)) b.update(db.doc(cdb.P('seasons/' + x.season)), { captains: [...(S.captains || []), m.pid] }); }
+  await b.commit();
+  const audit = (action, data) => db.doc('clubs/' + CLUB.id + '/audit/' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex')).set({ action, data, by: user.uid, byEmail: email, at: Date.now(), via: 'servidor' }).catch(() => {});
+  await audit('jugador-verificado', { pid: m.pid, team: m.teams[0] && m.teams[0].id });
+  if (capTeams.length) { const pids = await captainPidsOf(cdb); await cdb.doc('meta/app').set({ captainPids: pids }, { merge: true });
+    for (const x of capTeams) await audit('capitan-oficial-asignado', { pid: m.pid, team: x.id }); }
+  return { status: 'vinculado', pid: m.pid, name: m.name, teams: m.teams.map(x => x.id), captain: capTeams.map(x => x.id) };
+}
+
 // ---------- Aprobar o rechazar una solicitud de gestor desde el correo (plataforma) ----------
 // El enlace lleva el uid y un código aleatorio de esa solicitud, firmados con una clave derivada de la cuenta de servicio
 // (no hace falta otra variable en Vercel). Abrir el enlace solo muestra una página de confirmación; la decisión se toma al
@@ -123,6 +203,23 @@ module.exports = async (req, res) => {
     // Buscar la ficha por nombre y apellidos (pantalla «¿Cómo te llamas?»): quien aún no es del club no puede leer las
     // plantillas, así que se busca aquí y solo se devuelven fichas que coinciden en el nombre y en algún apellido.
     const body0 = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    if (body0.action === 'link') {   // «Soy jugador»: nombre, apellidos y licencia → vínculo verificado por el servidor
+      if (user.email_verified !== true) return res.status(403).json({ error: 'Correo sin verificar' });
+      return res.status(200).json(await linkPlayer(A, db, user, body0));
+    }
+    if (body0.action === 'structure' || body0.action === 'activate' || body0.action === 'sync-captains') {
+      const ctx = await require('./_auth.js').caller(req);
+      if (body0.action === 'sync-captains') {   // la lista se calcula de las temporadas: nadie puede añadir a quien no es capitán
+        if (!(ctx.isStaff || ctx.pid)) return res.status(403).json({ error: 'Solo miembros del club' });
+        const pids = await captainPidsOf(ctx.cdb); await ctx.cdb.doc('meta/app').set({ captainPids: pids }, { merge: true }); return res.status(200).json({ ok: true, captainPids: pids });
+      }
+      if (!ctx.isStaff) return res.status(403).json({ error: 'Solo la gestión del club' });
+      const st = await clubStructure(ctx.cdb); delete st.meta;
+      if (body0.action === 'structure' || !st.ok) return res.status(200).json(st);
+      const at = Date.now(); await db.doc('clubs/' + CLUB.id).set({ activation: { at, by: ctx.email } }, { merge: true });
+      await require('./_auth.js').audit(ctx, 'club-activado', { equipos: st.teams });
+      return res.status(200).json({ ...st, activated: at });
+    }
     if (body0.action === 'match') {
       if (user.email_verified !== true) return res.status(403).json({ error: 'Correo sin verificar' });
       return res.status(200).json({ matches: await findPlayers(await clubDbFor(db), body0.first, body0.last) });
@@ -172,4 +269,4 @@ module.exports = async (req, res) => {
     return res.status(e.status || (e.code && String(e.code).startsWith('auth/') ? 401 : 500)).json({ error: e.message || 'error' });
   }
 };
-module.exports._test = { recipients, findPlayers, makeToken, readToken, page };
+module.exports._test = { recipients, findPlayers, makeToken, readToken, page, clubStructure, verifyPlayer, captainPidsOf };

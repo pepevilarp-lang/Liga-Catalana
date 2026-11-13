@@ -1578,7 +1578,7 @@ function aPlantilla(){
       <button class="phbtn" data-act="crop" data-target="${esc(p.id)}" title="Subir o recortar la foto">${avatar(p)}<span>${photos[p.id]?'Cambiar':'Subir'} foto</span></button>
       <div class="pf"><label>Nombre<input type="text" name="name" value="${esc(p.name)}"></label><label>Nombre completo<input type="text" name="full" value="${esc(p.full)}"></label></div>
       <div class="pf sm"><label>Orden<input type="number" name="order" value="${p.order}"></label><label>Categoría<input type="text" name="cat" value="${esc(p.cat)}"></label><label>Puntos FCT<input type="number" name="pts" value="${p.pts??0}"></label><label>Teléfono<input type="tel" name="phone" value="${esc(phones[p.id]||'')}" placeholder="+34 600 000 000"></label></div>
-      <div class="row small" style="gap:12px"><label><input type="checkbox" name="captain" value="${esc(p.id)}" ${(S.captains||[]).includes(p.id)?'checked':''} ${canClub()?'':'disabled'}> Capitán</label><label><input type="checkbox" name="active" ${p.active!==false?'checked':''}> En plantilla</label>${photos[p.id]?`<button class="textlink" data-act="photo-del" data-target="${esc(p.id)}">Quitar foto</button>`:''}<span class="muted">${claims[p.id]? 'Entra como '+esc(claims[p.id].email) : 'Aún no ha entrado'}</span>${accInviteCell(p)}${claims[p.id]&&isAdmin?`<button class="textlink" data-act="unclaim" data-pid="${esc(p.id)}">Liberar acceso</button>`:''}</div></div>`).join('')}</div>
+      <div class="row small" style="gap:12px">${canClub()? `<label title="Capitán oficial del equipo: al registrarse recibe el rol automáticamente"><input type="checkbox" name="official" value="${esc(p.id)}" ${accOfficial(S).includes(p.id)?'checked':''}> Capitán oficial</label>` : ''}<label ${accOfficial(S).includes(p.id)?'title="Capitán oficial"':''}><input type="checkbox" name="captain" value="${esc(p.id)}" ${(S.captains||[]).includes(p.id)||accOfficial(S).includes(p.id)?'checked':''} ${canClub()||(accIsOfficialCap()&&!accOfficial(S).includes(p.id)&&p.id!==me)?'':'disabled'}> ${accOfficial(S).includes(p.id)?'Capitán (oficial)':'Capitán'}</label><label><input type="checkbox" name="active" ${p.active!==false?'checked':''}> En plantilla</label>${photos[p.id]?`<button class="textlink" data-act="photo-del" data-target="${esc(p.id)}">Quitar foto</button>`:''}<span class="muted">${claims[p.id]? 'Entra como '+esc(claims[p.id].email) : 'Aún no ha entrado'}</span>${accInviteCell(p)}${claims[p.id]&&isAdmin?`<button class="textlink" data-act="unclaim" data-pid="${esc(p.id)}">Liberar acceso</button>`:''}</div></div>`).join('')}</div>
     <div class="row" style="margin-top:14px"><button class="btn brass" data-act="players-save">Guardar plantilla</button></div>
     <div class="panel" style="margin-top:24px"><b>Añadir jugador</b><div class="row" style="margin-top:10px"><input type="text" id="np-name" placeholder="Nombre corto" style="max-width:200px"><input type="text" id="np-full" placeholder="Nombre completo" style="max-width:240px"><input type="text" id="np-cat" placeholder="Categoría" style="max-width:140px"><button class="btn sm" data-act="player-add">Añadir</button></div></div></section>`;
 }
@@ -3511,14 +3511,21 @@ document.addEventListener('click', async e=>{
   else if(a==='q-del'){ readQuestions(); S.survey.questions.splice(+el.dataset.i,1); renderQuiet(); }
   else if(a==='q-save'){ readQuestions(); saveState('Preguntas guardadas'); }
   else if(a==='q-reset'){ S.survey.questions=DEFAULT_Q.map(q=>({...q})); saveState('Preguntas restauradas'); }
-  else if(a==='players-save'){ const caps=canClub()? [...document.querySelectorAll('input[name=captain]:checked')].map(x=>x.value) : (S.captains||[]);
+  else if(a==='players-save'){
+    // Capitanes: la gestión marca los oficiales y cualquier capitán; el capitán oficial puede nombrar capitanes adicionales
+    // de su equipo (las reglas impiden que toque a los oficiales o a jugadores de fuera del equipo)
+    const offOld=accOfficial(S), mayCaps=canClub()||accIsOfficialCap();
+    const offNew=canClub()? [...document.querySelectorAll('input[name=official]:checked')].map(x=>x.value) : offOld;
+    let caps=mayCaps? [...new Set([...document.querySelectorAll('input[name=captain]:checked')].map(x=>x.value).concat(offNew))] : (S.captains||[]);
     const ph={...phones}; const phChanged=[];
     document.querySelectorAll('#plist [data-id]').forEach(row=>{ const p=player(row.dataset.id); if(!p) return; const g=n=>row.querySelector(`[name=${n}]`);
       p.name=g('name').value.trim()||p.name; p.full=g('full').value.trim()||p.name; p.order=+g('order').value||p.order; p.cat=g('cat').value.trim(); p.pts=+g('pts').value||0; p.active=g('active').checked; p.captain=caps.includes(p.id);
       const v=g('phone').value.trim(); if((ph[p.id]||'')!==v){ phChanged.push([p.id,v]); if(v) ph[p.id]=v; else delete ph[p.id]; } });
-    const capOld=S.captains||[]; S.captains=caps; phones=ph; phChanged.forEach(([pid,v])=>safe(()=> v? B.set('phones/'+pid,{phone:v,at:Date.now()}) : B.del('phones/'+pid)));
+    if(!canClub()) caps=caps.filter(id=>S.players.some(p=>p.id===id && p.active!==false));
+    const capOld=S.captains||[]; S.captains=caps; if(canClub() || !Array.isArray(S.officialCaptains)) S.officialCaptains=offNew; phones=ph; phChanged.forEach(([pid,v])=>safe(()=> v? B.set('phones/'+pid,{phone:v,at:Date.now()}) : B.del('phones/'+pid)));
     saveState('Plantilla guardada');
-    if(canClub() && (caps.join()!==capOld.join())){ accAudit('capitanes', {team:teamId, antes:capOld, ahora:caps}); accSyncCaptainPids(true); } }
+    if(offNew.join()!==offOld.join()) accAudit('capitanes-oficiales', {team:teamId, antes:offOld, ahora:offNew});
+    if(caps.join()!==capOld.join()){ accAudit(canClub()? 'capitanes' : 'capitan-adicional', {team:teamId, antes:capOld, ahora:caps}); setTimeout(()=>accSyncCaptainPids(true),1500); } }
   else if(a==='player-add'){ const name=$('#np-name').value.trim(); if(!name) return toast('Escribe el nombre'); let id=slug(name); while(player(id)) id+='-2';
     S.players.push({id,name,full:$('#np-full').value.trim()||name,cat:$('#np-cat').value.trim(),pts:0,order:Math.max(...S.players.map(p=>p.order))+1,captain:false,active:true}); saveState(name+' añadido'); }
   else if(a==='teams-save'){ document.querySelectorAll('#tlist [data-id]').forEach(row=>{ const t=team(row.dataset.id); ['name','short','abbr'].forEach(n=>{ const v=row.querySelector(`[name=${n}]`).value.trim(); if(v) t[n]=v; }); }); saveState('Clubes guardados'); }

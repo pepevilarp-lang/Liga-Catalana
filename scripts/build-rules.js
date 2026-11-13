@@ -103,10 +103,12 @@ const DATA = (C) => `
       match /seasons/{s} {
         allow read: if teamRead(${C}, s);
         allow create: if isStaff(${C});
-        // Capitanes, plantilla con acceso (memberIds), reglas y equipo: solo la gestión (la plantilla, también el capitán)
+        // Capitanes oficiales, reglas y equipo: solo la gestión. Capitanes adicionales: también el capitán oficial, solo
+        // jugadores de su equipo y sin quitar a los oficiales. Plantilla con acceso (memberIds): gestión y capitanes.
         allow update: if canEdit(${C}, s) && (isStaff(${C}) || (
           request.resource.data.get('rules', {}) == resource.data.get('rules', {}) &&
-          request.resource.data.get('captains', []) == resource.data.get('captains', []) &&
+          officialKept(${C}, s) &&
+          (request.resource.data.get('captains', []) == resource.data.get('captains', []) || extraCaptainsOk(${C}, s)) &&
           (isCaptainOf(${C}, s) || request.resource.data.get('memberIds', null) == resource.data.get('memberIds', null)) &&
           request.resource.data.get('teamId', null) == resource.data.get('teamId', null)));
         allow delete: if isAdmin();
@@ -222,6 +224,19 @@ service cloud.firestore {
     function canEdit(c, s) { return isStaff(c) || isCaptainOf(c, s) || (teamManage(c, s) && inTeam(c, s)); }
     // Datos privados del equipo (respuestas individuales, comentarios, quién votó a quién)
     function canPrivate(c, s) { return isStaff(c) || isCaptainOf(c, s); }
+    // Capitanes oficiales (los marca la gestión). Temporadas anteriores sin el campo: sus capitanes actuales.
+    function officialOf(c, s) { return season(c, s).get('officialCaptains', season(c, s).get('captains', [])); }
+    function isOfficialCaptain(c, s) { return isMember(c) && myPid(c) in officialOf(c, s); }
+    // Quien no es de la gestión no cambia los oficiales (solo puede fijar la lista heredada la primera vez)
+    function officialKept(c, s) {
+      return request.resource.data.get('officialCaptains', null) == resource.data.get('officialCaptains', null)
+        || (resource.data.get('officialCaptains', null) == null && request.resource.data.get('officialCaptains', null) == resource.data.get('captains', []));
+    }
+    function extraCaptainsOk(c, s) {
+      return isOfficialCaptain(c, s)
+        && request.resource.data.get('captains', []).hasAll(officialOf(c, s))
+        && request.resource.data.get('captains', []).hasOnly(request.resource.data.get('memberIds', []));
+    }
 
     // Invitaciones
     function openClaims(c) { return exists(metaRef(c)) && metaOf(c).get('openClaims', false) == true; }
@@ -314,9 +329,9 @@ ${DATA("''")}
     match /clubs/{club} {
       // Identidad (nombre corto, escudo, colores, portada, temporada activa) y progreso de la configuración inicial
       allow read: if signedIn();
-      allow create: if isAdmin() || (isManager(dc(club)) && !request.resource.data.keys().hasAny(['migrated', 'status', 'plan', 'fctId']));
+      allow create: if isAdmin() || (isManager(dc(club)) && !request.resource.data.keys().hasAny(['migrated', 'status', 'plan', 'fctId', 'activation']));
       allow update: if isAdmin() || (isManager(dc(club))
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['migrated', 'status', 'plan', 'fctId']));
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['migrated', 'status', 'plan', 'fctId', 'activation']));
       allow delete: if false;
 
       // Pertenencia de cada cuenta al club: roles (gestor, jugador), ficha y estado (activo / inactivo)
