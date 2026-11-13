@@ -464,7 +464,10 @@ async function accAcceptInvite() {
   ACC.inv = { ...I, state: 'saving' }; render();
   // Alta como miembro del club en el mismo lote (si ya es gestor, se le añade el rol de jugador)
   const m = ACC.member, opt = !m ? { member: CLUB.id } : accIsMemberGestor() ? { member: CLUB.id, roles: m.roles || [] } : {};
-  try { await B.claimInvite(I.code, I.data.pid, opt); accClearInvite(); accAudit('invitacion-aceptada', { code: I.code, pid: I.data.pid, team: I.data.team || null });
+  try {
+    // Con las reglas anteriores aún publicadas no se puede crear el miembro en el mismo lote: se vincula sin él
+    try { await B.claimInvite(I.code, I.data.pid, opt); } catch (e) { if (!opt.member || !/permission/i.test(e?.code || '')) throw e; opt.member = null; await B.claimInvite(I.code, I.data.pid, {}); }
+    accClearInvite(); accAudit('invitacion-aceptada', { code: I.code, pid: I.data.pid, team: I.data.team || null });
     ACC.member = opt.member ? { ...(m || {}), pid: I.data.pid, roles: [...new Set([...((m && m.roles) || []), 'jugador'])], status: (m && m.status) || 'activo' } : m;
     if (!ACC.flow || !ACC.flow.role) accSetFlow({ role: 'jugador', step: 'check' }); else accSetFlow({ step: 'check', join: null });
     toast('Ya estás en tu equipo'); }
