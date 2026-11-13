@@ -3,11 +3,8 @@
 //  · Día antes: avisa a los convocados cuando falta poco para el partido.
 // Cada temporada decide si está activo en  rules.autoRemind = { on, every, dayBefore }.
 // Necesita en Vercel: FIREBASE_SERVICE_ACCOUNT y CRON_SECRET (cualquier texto largo y secreto).
-const admin = require('firebase-admin');
-function getAdmin() {
-  if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
-  return admin;
-}
+// Permisos: los mismos que firestore.rules (api/_auth.js). Datos: en la raíz real del club (clubDb).
+const { getAdmin, needTeam, clubDbFor, sendErr } = require('./_auth.js');
 const TZ = 'Europe/Madrid', H = 36e5, D = 864e5;
 // Hora local de España a milisegundos (los partidos se guardan como fecha y hora locales)
 function madridMs(date, time) {
@@ -79,7 +76,8 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
-    const A = getAdmin(), db = A.firestore(), now = Date.now();
+    const A = getAdmin(), now = Date.now();
+    let db = await clubDbFor(A.firestore());
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     let force = false, ids = [], origin = '';
     if (process.env.CRON_SECRET && tok === process.env.CRON_SECRET) {
@@ -87,22 +85,17 @@ module.exports = async (req, res) => {
       const snap = await db.collection('seasons').get(); snap.forEach(d => ids.push(d.id));
       origin = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '');
     } else {
-      // «Enviar ahora»: solo administradores o capitanes, y solo de su temporada
+      // «Enviar ahora»: solo quien gestiona ese equipo, y solo de su temporada
       if (req.method !== 'POST') return res.status(401).json({ error: 'unauthorized' });
-      const user = await A.auth().verifyIdToken(tok), email = String(user.email || '').toLowerCase();
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-      const season = String(body.season || ''); if (!/^[\w-]{2,20}$/.test(season)) return res.status(400).json({ error: 'season' });
-      const S = (await db.doc('seasons/' + season).get()).data(); if (!S) return res.status(404).json({ error: 'season-not-found' });
-      const [a1, a2, me] = await Promise.all([db.doc('admins/' + user.uid).get(), db.doc('admins/' + email).get(), db.doc('users/' + user.uid).get()]);
-      const myPid = me.exists ? me.data().pid : null, teamOn = (S.rules || {}).teamManage !== false;
-      if (!(a1.exists || a2.exists || (myPid && ((S.captains || []).includes(myPid) || teamOn)))) return res.status(403).json({ error: 'forbidden' });
-      force = true; ids = [season]; origin = String(body.origin || '');
+      const ctx = await needTeam(req, String(body.season || ''), 'canEdit');
+      db = ctx.cdb; force = true; ids = [String(body.season)]; origin = String(body.origin || '');
     }
     const results = [];
     for (const id of ids) { const S = (await db.doc('seasons/' + id).get()).data(); if (S) results.push(await runSeason(A, db, id, S, { force, origin, now })); }
     const n = results.reduce((a, r) => a + r.availability.length + r.dayBefore.length, 0);
     return res.status(200).json({ ok: true, avisos: n, results });
   } catch (e) {
-    return res.status(500).json({ error: e.code || e.message });
+    return sendErr(res, e);
   }
 };

@@ -14,7 +14,7 @@
       ]
     },
     {
-      "source": "/(app.js|access.js|club-config.js|report-doc.js|styles.css|config.js|index.html)",
+      "source": "/(app.js|access.js|club.js|club-config.js|report-doc.js|styles.css|config.js|index.html)",
       "headers": [
         {
           "key": "Cache-Control",

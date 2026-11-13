@@ -75,12 +75,9 @@ async function authorize(req) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) throw Object.assign(new Error('Falta la sesión'), { status: 401 });
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const A = getAdmin(), db = A.firestore();
-    const user = await A.auth().verifyIdToken(token);
-    const email = String(user.email || '').toLowerCase();
-    const [u, a1, a2, meta] = await Promise.all([db.doc('users/' + user.uid).get(), db.doc('admins/' + user.uid).get(), db.doc('admins/' + email).get(), db.doc('meta/app').get()]);
-    const isMgr = meta.exists && (meta.data().managerEmails || []).includes(email);
-    if (!u.exists && !a1.exists && !a2.exists && !isMgr) throw Object.assign(new Error('Solo miembros del equipo'), { status: 403 });
+    // Jugador activo del club o su gestión (mismos criterios que firestore.rules: api/_auth.js)
+    const ctx = await require('./_auth.js').caller(req), db = ctx.db;
+    if (!(ctx.isStaff || ctx.pid)) throw Object.assign(new Error('Solo miembros del club'), { status: 403 });
     return { db };
   }
   const pid = process.env.FIREBASE_PROJECT_ID;

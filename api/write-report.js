@@ -18,6 +18,12 @@ function provider() {
 const fsBase = () => `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(process.env.FIREBASE_PROJECT_ID || '')}/databases/(default)/documents/`;
 function tokenEmail(t) { try { return String(JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')).email || '').toLowerCase(); } catch (e) { return ''; } }
 async function authorize(token) {
+  // Con la cuenta de servicio: gestores del club (lista o miembros con rol gestor, activos) y administradores (api/_auth.js)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const ctx = await require('./_auth.js').caller({ headers: { authorization: 'Bearer ' + token } });
+    if (!ctx.isStaff) throw Object.assign(new Error('Solo gestores del club y administradores'), { status: 403 });
+    return;
+  }
   if (!process.env.FIREBASE_PROJECT_ID) throw Object.assign(new Error('Falta FIREBASE_PROJECT_ID en Vercel'), { status: 501 });
   if (!token) throw Object.assign(new Error('Falta la sesión'), { status: 401 });
   const h = { headers: { Authorization: 'Bearer ' + token } };

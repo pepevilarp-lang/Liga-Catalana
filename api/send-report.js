@@ -13,6 +13,12 @@ function tokenEmail(token) {
   catch (e) { return ''; }
 }
 async function authorize(token) {
+  // Con la cuenta de servicio: gestores del club (lista o miembros con rol gestor, activos) y administradores (api/_auth.js)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const ctx = await require('./_auth.js').caller({ headers: { authorization: 'Bearer ' + token } });
+    if (!ctx.isStaff) throw Object.assign(new Error('Solo gestores del club y administradores'), { status: 403 });
+    return { email: ctx.email, allowed: new Set([...(ctx.meta.managerEmails || []), ctx.email]) };
+  }
   if (!process.env.FIREBASE_PROJECT_ID) throw Object.assign(new Error('Falta FIREBASE_PROJECT_ID en Vercel'), { status: 501 });
   if (!token) throw Object.assign(new Error('Falta la sesión'), { status: 401 });
   const h = { headers: { Authorization: 'Bearer ' + token } };

@@ -6,11 +6,8 @@
 //  · Cambios de fecha (aplazamientos) se copian; la hora del partido del Polo solo si cambia la fecha.
 // Cada temporada indica su grupo en comp.fctGroup (por defecto, los grupos conocidos de 2026-27).
 // Necesita en Vercel: FIREBASE_SERVICE_ACCOUNT y CRON_SECRET (los mismos que /api/remind).
-const admin = require('firebase-admin');
-function getAdmin() {
-  if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
-  return admin;
-}
+// Permisos: los mismos que firestore.rules (api/_auth.js). Datos: en la raíz real del club (clubDb).
+const { getAdmin, needTeam, clubDbFor, sendErr } = require('./_auth.js');
 const FCT_API = 'https://portal.fctennis.cat/app/api/calendario.do';
 // Grupos de la 13a Lliga Catalana 2026-27 (torneo 4296)
 const CLUBCFG = require('../club-config.js');
@@ -280,25 +277,19 @@ async function weeklyReport(db, req, now = new Date()) {
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
-    const A = getAdmin(), db = A.firestore();
+    const A = getAdmin();
+    let db = await clubDbFor(A.firestore());
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     let ids = [];
     const cron = !!(process.env.CRON_SECRET && tok === process.env.CRON_SECRET);
     if (cron) {
       const snap = await db.collection('seasons').get(); snap.forEach(d => ids.push(d.id));
     } else {
-      // Botón «Actualizar desde la FCT»: administradores, gestores o quien pueda gestionar ese equipo
+      // Botón «Actualizar desde la FCT»: gestión del club o quien pueda gestionar ese equipo
       if (req.method !== 'POST') return res.status(401).json({ error: 'unauthorized' });
-      const user = await A.auth().verifyIdToken(tok), email = String(user.email || '').toLowerCase();
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-      const season = String(body.season || ''); if (!/^[\w-]{2,30}$/.test(season)) return res.status(400).json({ error: 'season' });
-      const S = (await db.doc('seasons/' + season).get()).data(); if (!S) return res.status(404).json({ error: 'season-not-found' });
-      const [a1, a2, me, club] = await Promise.all([db.doc('admins/' + user.uid).get(), db.doc('admins/' + email).get(), db.doc('users/' + user.uid).get(), db.doc('meta/app').get().catch(() => null)]);
-      const myPid = me.exists ? me.data().pid : null, teamOn = (S.rules || {}).teamManage !== false;
-      const isMgr = !!(club && club.exists && (club.data().managerEmails || []).includes(email));
-      const member = myPid && (!(S.players || []).length || (S.players || []).some(p => p.id === myPid));
-      if (!(a1.exists || a2.exists || isMgr || (member && ((S.captains || []).includes(myPid) || teamOn)))) return res.status(403).json({ error: 'forbidden' });
-      ids = [season];
+      const ctx = await needTeam(req, String(body.season || ''), 'canEdit');
+      db = ctx.cdb; ids = [String(body.season)];
     }
     const results = [];
     for (const id of ids) { try { results.push(await runSeason(db, id)); } catch (e) { results.push({ season: id, error: e.message }); await db.doc('seasons/' + id).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); } }
@@ -311,7 +302,7 @@ module.exports = async (req, res) => {
     }
     return res.status(200).json({ ok: true, results, ...extra });
   } catch (e) {
-    return res.status(500).json({ error: e.code || e.message });
+    return sendErr(res, e);
   }
 };
 

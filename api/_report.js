@@ -163,35 +163,44 @@ async function analysis(F) {
   } catch (e) { return { ...fb, _note: e.message }; }
 }
 
-function pdfBuffer(F, A) {
+// Identidad del club guardada por su gestor (clubs/<id>): nombre de uso, escudo y colores. Si no hay, la de club-config.js
+async function clubIdentity(db) {
+  const raw = (db && db.raw) || db;
+  let d = {}; try { const x = await raw.doc('clubs/' + CLUBCFG.id).get(); if (x.exists) d = x.data() || {}; } catch (e) {}
+  const hex = h => (/^#[0-9a-f]{6}$/i.test(String(h || '')) ? h : null);
+  return { name: d.name || CLUBCFG.name, medium: d.shortName || CLUBCFG.medium, crest: /^data:image\/png;base64,/.test(d.crestPng || '') ? d.crestPng : require('./_crest.js'),
+    primary: hex((d.colors || {}).primary) || '#13261F', secondary: hex((d.colors || {}).secondary) || '#94722A' };
+}
+function pdfBuffer(F, A, crest) {
   const PdfPrinter = require('pdfmake');
   const vfs = require('pdfmake/build/vfs_fonts.js'); const V = (vfs.pdfMake && vfs.pdfMake.vfs) || vfs.vfs || vfs;
   const font = n => Buffer.from(V[n], 'base64');
   const printer = new PdfPrinter({ Roboto: { normal: font('Roboto-Regular.ttf'), bold: font('Roboto-Medium.ttf'), italics: font('Roboto-Italic.ttf'), bolditalics: font('Roboto-MediumItalic.ttf') } });
-  const doc = printer.createPdfKitDocument(ReportDoc.build(F, A, require('./_crest.js')));
+  const doc = printer.createPdfKitDocument(ReportDoc.build(F, A, crest || require('./_crest.js')));
   return new Promise((ok, ko) => { const chunks = []; doc.on('data', c => chunks.push(c)); doc.on('end', () => ok(Buffer.concat(chunks))); doc.on('error', ko); doc.end(); });
 }
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Correo con el mismo aspecto que el del botón de la app
-function emailFor(F, file, appUrl) {
+function emailFor(F, file, appUrl, I) {
+  I = I || { medium: CLUBCFG.medium, primary: '#13261F', secondary: '#94722A' };
   const T = F.totales, rows = F.equipos, range = F.fin_de_semana;
   const st = x => (x.estado === 'victoria' ? 'Victoria' : x.estado === 'derrota' ? 'Derrota' : 'Pendiente de resultado') + (x.resultado && !x.validado ? ', por confirmar' : '');
-  const subject = `Resumen del fin de semana (${range}), ${CLUBCFG.medium}`;
+  const subject = `Resumen del fin de semana (${range}), ${I.medium}`;
   const link = (appUrl || '') + '/#club-resumen';
   const text = [`RESUMEN DEL FIN DE SEMANA: ${range}`, `Eliminatorias: ${rows.length}. Victorias: ${T.victorias}. Derrotas: ${T.derrotas}. Pendientes: ${T.pendientes}.`, '',
     ...rows.map(x => `${x.equipo} contra ${x.rival} (jornada ${x.jornada}, ${x.fecha}): ${x.resultado || '–'}. ${st(x)}. Individuales ${x.fin_de_semana.individuales}, dobles ${x.fin_de_semana.dobles}.`),
     '', file ? 'Se adjunta el informe completo en PDF: ' + file : '', 'Detalle completo en la app: ' + link, '', 'Envío automático del domingo. Se puede desactivar en Gestión deportiva → Configuración.'].join('\n');
   const td = 'style="padding:6px 8px;border-bottom:1px solid #e3e6df;font-size:14px"';
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#13261F;max-width:640px">
-    <p style="font-size:12px;color:#94722A;text-transform:uppercase;letter-spacing:.06em;margin:0">${CLUB}, gestión deportiva</p>
+    <p style="font-size:12px;color:${I.secondary};text-transform:uppercase;letter-spacing:.06em;margin:0">${esc(I.name)}, gestión deportiva</p>
     <h1 style="font-size:24px;margin:4px 0 2px">Resumen del fin de semana</h1><p style="margin:0 0 14px;color:#5b6b63">${esc(range)}</p>
     <p><b>${rows.length}</b> eliminatorias: <b style="color:#2F7D4F">${T.victorias} victorias</b>, <b style="color:#B4472F">${T.derrotas} derrotas</b>, ${T.pendientes} pendientes.</p>
     ${rows.length ? `<table style="border-collapse:collapse;width:100%"><tr><th align="left" ${td}>Equipo</th><th align="left" ${td}>Rival</th><th ${td}>Resultado</th><th align="left" ${td}>Estado</th><th ${td}>Ind.</th><th ${td}>Dob.</th></tr>
       ${rows.map(x => `<tr><td ${td}>${esc(x.equipo)}</td><td ${td}>${esc(x.rival)}</td><td align="center" ${td}><b>${esc(x.resultado || '–')}</b></td><td ${td}>${esc(st(x))}</td><td align="center" ${td}>${x.fin_de_semana.individuales}</td><td align="center" ${td}>${x.fin_de_semana.dobles}</td></tr>`).join('')}</table>` : '<p>No hubo eliminatorias de equipos del club este fin de semana.</p>'}
     ${rows.filter(x => x.individuales.length || x.dobles.length).map(x => `<h3 style="font-size:16px;margin:18px 0 4px">${esc(x.equipo)}</h3>${[...x.individuales.map(m => ({ ...m, k: 'individual ' + m.n })), ...x.dobles.map(m => ({ ...m, k: 'dobles' }))].filter(m => m.resultado !== 'sin resultado').map(m => `<div style="font-size:14px;padding:2px 0">${m.resultado === 'ganado' ? '✅' : '❌'} ${esc(m.jugadores.join(' y '))}, ${m.k}: ${esc(m.marcador)}</div>`).join('')}`).join('')}
     ${file ? `<p style="margin-top:18px;padding:10px 12px;border:1px solid #d9dee6;border-radius:8px">📎 Se adjunta el informe completo en PDF: <b>${esc(file)}</b></p>` : ''}
-    <p style="margin-top:20px"><a href="${esc(link)}" style="color:#94722A">Ver el detalle en la app</a></p>
+    <p style="margin-top:20px"><a href="${esc(link)}" style="color:${I.secondary}">Ver el detalle en la app</a></p>
     <p style="font-size:12px;color:#8a978f">Envío automático del domingo, generado con los resultados registrados en la app. Los marcados como pendientes aún no están confirmados. Se puede desactivar en Gestión deportiva → Configuración.</p></div>`;
   return { subject, text, html };
 }
@@ -204,9 +213,10 @@ async function sendWeekly(db, { meta, sat, to, by, appUrl, auto } = {}) {
   if (!to.length) throw Object.assign(new Error('No hay gestores con correo en Configuración'), { status: 400 });
   const F = await reportFacts(db, { meta, sat });
   const A = await analysis(F);
-  const pdf = await pdfBuffer(F, A); if (!pdf || pdf.length < 1500) throw new Error('El PDF generado está vacío');
+  const I = await clubIdentity(db);
+  const pdf = await pdfBuffer(F, A, I.crest); if (!pdf || pdf.length < 1500) throw new Error('El PDF generado está vacío');
   const file = `Weekend_Sports_Report_${CLUBCFG.fileTag}_${F.sat}.pdf`;
-  const mail = emailFor(F, file, appUrl);
+  const mail = emailFor(F, file, appUrl, I);
   const base = { at: Date.now(), by: by || 'Envío automático', to, range: F.fin_de_semana, sat: F.sat, auto: !!auto, pdf: file, ia: !!A._ia };
   try {
     const r = await sendMail({ ...mail, to, attachments: [{ filename: file, content: pdf.toString('base64'), contentType: 'application/pdf' }] });
@@ -218,4 +228,4 @@ async function sendWeekly(db, { meta, sat, to, by, appUrl, auto } = {}) {
   }
 }
 
-module.exports = { reportFacts, factualTexts, pdfBuffer, emailFor, sendWeekly, weekendSat, ymd, clubTeams, docIdFor };
+module.exports = { clubIdentity, reportFacts, factualTexts, pdfBuffer, emailFor, sendWeekly, weekendSat, ymd, clubTeams, docIdFor };
