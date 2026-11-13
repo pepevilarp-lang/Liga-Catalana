@@ -286,7 +286,7 @@ function accAudit(action, data = {}) {
 function accGestorCheck(f) {
   const c = accClub(f.club);
   if (!c) { accSetFlow({ step: 'club' }); return accLogin(); }
-  let ok;
+  let ok; const sw = c.id === (window.CLUB && CLUB.id) ? accRoleSwitch('gestor') : '';   // en un club que se da de alta no hay equipos donde entrar como jugador
   if (c.id === (window.CLUB && CLUB.id)) ok = isAdmin || isManager;
   else {
     if (!(c.id in ACC.memberOf)) { ACC.memberOf[c.id] = undefined;
@@ -295,7 +295,7 @@ function accGestorCheck(f) {
     if (ACC.memberOf[c.id] === undefined) return accWait('Comprobando tu acceso a ' + c.name + '…');
     ok = (ACC.memberOf[c.id]?.roles || []).includes('gestor');
     if (ok) return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c, 76)}<div><span class="acc-k">Acceso autorizado</span><h1 class="acc-h sm">${esc(c.name)}</h1></div></div>
-      <p class="acc-p">Eres gestor deportivo de este club. Su entorno en Lliga Catalana todavía no está activo: lo prepararemos con sus equipos y su identidad y te avisaremos.</p>${accRoleSwitch('gestor')}${accAccount()}`, 'acc-launch', 'gestor-wait');
+      <p class="acc-p">Eres gestor deportivo de este club. Su entorno en Lliga Catalana todavía no está activo: lo prepararemos con sus equipos y su identidad y te avisaremos.</p>${sw}${accAccount()}`, 'acc-launch', 'gestor-wait');
   }
   if (ok) { accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '', web: c.web || '' })); return accFinish('gestor'); }
   accWatchReq();
@@ -303,15 +303,15 @@ function accGestorCheck(f) {
   const R = ACC.req && ACC.req.clubId === c.id && ACC.req.role !== 'jugador' ? ACC.req : null;
   const head = `${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${esc(c.name)}</span><h1 class="acc-h sm">Tu acceso como gestor está pendiente de validación</h1></div></div>`;
   if (R && R.status === 'pendiente') return accShell(`${head}
-    <p class="acc-p">Hemos enviado tu solicitud al equipo de Lliga Catalana, que valida a los gestores de cada club. Cuando la aprueben entrarás directamente en el entorno de ${esc(c.name)}, con este mismo correo.</p>
-    <div class="acc-acts"><button class="acc-btn" data-acc="ginv-open">Tengo una invitación</button><button class="acc-link" data-acc="req-cancel">Cancelar la solicitud</button></div>${accRoleSwitch('gestor')}${accAccount()}`, '', 'gestor-pend');
+    <p class="acc-p">Tu solicitud está registrada. La valida el equipo de Lliga Catalana; cuando la aprueben entrarás directamente en el entorno de ${esc(c.name)}, con este mismo correo.</p>${accNotifyLine(R)}
+    <div class="acc-acts"><button class="acc-btn" data-acc="ginv-open">Tengo una invitación</button><button class="acc-link" data-acc="req-cancel">Cancelar la solicitud</button></div>${sw}${accAccount()}`, '', 'gestor-pend');
   if (R && R.status === 'rechazada') return accShell(`${head}
     <p class="acc-p">El club no ha validado tu solicitud. Si crees que es un error, habla con la gestión del club o pide una invitación.</p>
-    <div class="acc-acts"><button class="acc-btn" data-acc="ginv-open">Tengo una invitación</button><button class="acc-link" data-acc="req-form">Volver a solicitarlo</button></div>${accRoleSwitch('gestor')}${accAccount()}`, '', 'gestor-no');
+    <div class="acc-acts"><button class="acc-btn" data-acc="ginv-open">Tengo una invitación</button><button class="acc-link" data-acc="req-form">Volver a solicitarlo</button></div>${sw}${accAccount()}`, '', 'gestor-no');
   return accShell(`${head}
     <p class="acc-p">Para entrar en el entorno de ${esc(c.name)} hay que validar que eres su gestor deportivo. Envía la solicitud y te avisaremos, o usa la invitación que te hayan enviado.</p>
     <form data-acc-form="req"><label class="acc-lbl" for="acc-msg">Tu cargo en el club (opcional)</label><textarea id="acc-msg" name="msg" rows="2" maxlength="300" placeholder="Por ejemplo: soy el director deportivo de la sección de tenis"></textarea>
-    <div class="acc-acts"><button class="acc-btn big" type="submit" ${ui.accBusy ? 'disabled' : ''}>${ui.accBusy ? 'Enviando…' : 'Solicitar acceso'}</button><button class="acc-link" type="button" data-acc="ginv-open">Tengo una invitación</button></div></form>${accRoleSwitch('gestor')}${accAccount()}`, '', 'gestor-req');
+    <div class="acc-acts"><button class="acc-btn big" type="submit" ${ui.accBusy ? 'disabled' : ''}>${ui.accBusy ? 'Enviando…' : 'Solicitar acceso'}</button><button class="acc-link" type="button" data-acc="ginv-open">Tengo una invitación</button></div></form>${sw}${accAccount()}`, '', 'gestor-req');
 }
 function accWatchReq() {
   if (ACC.reqSub || !authUser) return;
@@ -372,10 +372,22 @@ async function accGestorInviteAccept() {
 }
 
 // Aviso por correo a quien tiene que validar la solicitud (api/access-request.js)
-async function accNotifyReq() {
-  try { const t = await B.idToken(); if (!t) return;
-    const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t } }); const j = await r.json().catch(() => ({}));
-    ACC.notify = j.ok ? j.who : null; render(); } catch (e) {}
+async function accNotifyReq(resend) {
+  ACC.notifyBusy = true; ACC.notifyErr = ''; render();
+  try { const t = await B.idToken(); if (!t) { ACC.notifyBusy = false; render(); return; }   // vista previa: sin servidor
+    const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ resend: !!resend }) }); const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'error ' + r.status);
+    ACC.notify = j.who || ACC.notify; if (resend) toast(j.skipped ? 'Ya se avisó hace un momento' : 'Aviso enviado de nuevo'); }
+  catch (e) { ACC.notifyErr = e.message || 'error'; }
+  ACC.notifyBusy = false; render();
+}
+// Estado real del aviso por correo de una solicitud (notifiedAt lo escribe el servidor al enviarlo)
+function accNotifyLine(R) {
+  if (!R) return '';
+  if (!R.notifiedAt && !ACC.notifyTried && !ACC.notifyBusy) { ACC.notifyTried = true; setTimeout(() => accNotifyReq(false), 0); }   // solicitudes que nunca llegaron a avisar
+  const st = ACC.notifyBusy ? 'Enviando el aviso por correo…' : ACC.notifyErr ? 'No se ha podido enviar el aviso por correo: ' + ACC.notifyErr
+    : R.notifiedAt ? 'Aviso enviado por correo ' + relTime(R.notifiedAt) + '.' : 'El aviso por correo aún no se ha enviado.';
+  return `<p class="acc-p dim">${esc(st)} ${ACC.notifyBusy ? '' : '<button class="acc-link" data-acc="req-renotify">Reenviar el aviso</button>'}</p>`;
 }
 
 /* ---------- Capitán ---------- */
@@ -677,6 +689,7 @@ document.addEventListener('click', async e => {
     accSetFlow({ club: v, step: authUser ? 'check' : 'auth' }); if (c) accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '', web: c.web || '' }));
     ACC.q = ''; render(); scrollTo(0, 0);
   }
+  else if (a === 'req-renotify') accNotifyReq(true);
   else if (a === 'join-req') { accSetFlow({ join: 'req' }); render(); scrollTo(0, 0); }
   else if (a === 'req-club') { accSetFlow({ club: v }); render(); }
   else if (a === 'back') accBack();
