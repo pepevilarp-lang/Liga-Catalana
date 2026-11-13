@@ -1,263 +1,468 @@
 rules_version = '2';
-// Reglas de Firestore de la app. Se publican a mano: Firebase > Firestore Database > Reglas > pegar este archivo > Publicar.
-// Reflejan los permisos de la app (app.js, función updRoles):
-//   - Administrador: colección admins (id = UID o correo en minúsculas). Todo.
-//   - Gestor del club: correo en meta/app.managerEmails. Todos los equipos, sin necesidad de ser jugador.
-//   - Capitán: su pid está en seasons/{temporada}.captains. Datos privados de su equipo y gestión del MVP.
-//   - Jugador del equipo: su pid está en seasons/{temporada}.memberIds (o la lista está vacía). Edita su equipo
-//     mientras rules.teamManage no sea false.
-//   - Vincular un Gmail a un jugador: directamente (cada ficha a un solo Gmail) salvo que un administrador ponga
-//     meta/app.openClaims = false; entonces exige invitación (invites/{código}) o que el club valide la solicitud. Ser gestor exige que un administrador lo añada o apruebe su solicitud (clubRequests).
-// Elegir un rol en la pantalla de entrada no da permisos: todo se decide aquí. Plan multiclub: docs/MULTICLUB.md
-// Las funciones de Vercel (api/*) usan la cuenta de servicio y no pasan por estas reglas.
+// ARCHIVO GENERADO por scripts/build-rules.js: no lo edites a mano (edita el script y ejecútalo).
+// Se publica a mano: Firebase > Firestore Database > Reglas > pegar este archivo > Publicar.
+//
+// Modelo de acceso (docs/MULTICLUB.md):
+//   - Administrador de la plataforma: colección admins (id = UID o correo en minúsculas). Todo.
+//   - Gestor de un club: clubs/<club>/members/<uid> con roles ['gestor'] (o, en el club original, meta/app.managerEmails).
+//     Gestiona solo su club.
+//   - Capitán: su ficha está en seasons/<temporada>.captains (lo asigna un gestor). Gestiona solo sus equipos.
+//   - Jugador: su ficha está en seasons/<temporada>.memberIds. Ve solo sus equipos.
+//   - Pertenencia al club: clubs/<club>/members/<uid> (status 'inactivo' = desactivado: no ve nada del club).
+//   - Entrar como jugador o capitán exige una invitación individual (invites/<código>): un uso, caducidad, revocable.
+//   - Elegir un rol en la pantalla de entrada no da permisos: todo se decide aquí.
+// Datos de cada club: en la raíz (Real Club de Polo, antes de migrar) y en clubs/<club>/ (después). Mismas reglas.
+// Las funciones de Vercel (api/*) usan la cuenta de servicio y comprueban los permisos ellas mismas (api/_auth.js).
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
     function email() { return request.auth.token.email.lower(); }
+    function D(p) { return path('/databases/' + database + '/documents/' + p); }
     function isAdmin() {
-      return signedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        exists(/databases/$(database)/documents/admins/$(email())));
+      return signedIn() && (exists(D('admins/' + request.auth.uid)) || exists(D('admins/' + email())));
     }
-    // Identificador del club de este proyecto (club-config.js → id)
-    function clubId() { return 'rcpb'; }
-    function memberDoc(c) { return /databases/$(database)/documents/clubs/$(c)/members/$(request.auth.uid); }
-    // Gestor: en la lista meta/app.managerEmails o aprobado/invitado en clubs/<club>/members/<uid>
-    function isManager() {
-      return signedIn() && (email() in get(/databases/$(database)/documents/meta/app).data.get('managerEmails', [])
-        || (exists(memberDoc(clubId())) && 'gestor' in get(memberDoc(clubId())).data.get('roles', [])));
-    }
-    function isStaff() { return isAdmin() || isManager(); }
-    function isMember() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
-    function myPid() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.pid; }
-    function isMe(pid) { return isMember() && myPid() == pid; }
-    function canRead() { return isMember() || isStaff(); }
 
-    // Temporada de un equipo
-    function season(s) { return get(/databases/$(database)/documents/seasons/$(s)).data; }
-    function isCaptainOf(s) { return isMember() && myPid() in season(s).get('captains', []); }
-    function inTeam(s) {
-      return isMember() && (season(s).get('memberIds', []).size() == 0 || myPid() in season(s).get('memberIds', []));
+    // c = dónde están los datos del club: '' = la raíz (Real Club de Polo antes de migrar), '<id>' = clubs/<id>/
+    function cid(c) { return c == '' ? 'rcpb' : c; }
+    function R(c) { return c == '' ? '' : 'clubs/' + c + '/'; }
+    // Para reglas que reciben el id del club: dónde están hoy sus datos (el Polo sigue en la raíz hasta que se marca migrated)
+    function dc(club) {
+      return club == 'rcpb' && !(exists(D('clubs/rcpb')) && get(D('clubs/rcpb')).data.get('migrated', false) == true) ? '' : club;
     }
-    function teamManage(s) { return season(s).get('rules', {}).get('teamManage', true) != false; }
+
+    // Pertenencia al club
+    function mref(c) { return D('clubs/' + cid(c) + '/members/' + request.auth.uid); }
+    function hasM(c) { return exists(mref(c)); }
+    function mdata(c) { return get(mref(c)).data; }
+    function mActive(c) { return !hasM(c) || mdata(c).get('status', 'activo') != 'inactivo'; }
+    function metaRef(c) { return D(R(c) + 'meta/app'); }
+    function metaOf(c) { return get(metaRef(c)).data; }
+    function isManager(c) {
+      return signedIn() && mActive(c) && (
+        (hasM(c) && 'gestor' in mdata(c).get('roles', []))
+        || (exists(metaRef(c)) && email() in metaOf(c).get('managerEmails', [])));
+    }
+    function isStaff(c) { return isAdmin() || isManager(c); }
+    function uref() { return D('users/' + request.auth.uid); }
+    // Jugador del club: ficha vinculada (users/<uid> en la raíz; clubs/<club>/members/<uid>.pid después de migrar) y no desactivado
+    // En la raíz, la ficha cuenta solo si su vínculo (claims/<pid>) sigue siendo de esta cuenta: desvincular quita el acceso
+    function rootLinked() {
+      return exists(uref()) && exists(D('claims/' + get(uref()).data.pid))
+        && get(D('claims/' + get(uref()).data.pid)).data.get('uid', '') == request.auth.uid;
+    }
+    function isMember(c) {
+      return signedIn() && mActive(c) && (c == '' ? rootLinked() : (hasM(c) && mdata(c).get('pid', '') != ''));
+    }
+    function myPid(c) { return c == '' ? get(uref()).data.pid : mdata(c).pid; }
+    function notLinked(c) { return c == '' ? !rootLinked() : !(hasM(c) && mdata(c).get('pid', '') != ''); }
+    function isMe(c, pid) { return isMember(c) && myPid(c) == pid; }
+    function canRead(c) { return isMember(c) || isStaff(c); }
+
+    // Equipos (una temporada por equipo)
+    function season(c, s) { return get(D(R(c) + 'seasons/' + s)).data; }
+    function isCaptainOf(c, s) { return isMember(c) && myPid(c) in season(c, s).get('captains', []); }
+    // Capitán de algún equipo del club: meta/app.captainPids (lo mantiene la app al asignar capitanes)
+    function isCaptainAny(c) { return isMember(c) && exists(metaRef(c)) && myPid(c) in metaOf(c).get('captainPids', []); }
+    // Jugador del equipo. Temporadas antiguas sin el campo memberIds: cualquier jugador del club (se rellena al guardar)
+    function inTeam(c, s) {
+      let ids = season(c, s).get('memberIds', null);
+      return isMember(c) && (ids == null || myPid(c) in ids);
+    }
+    function teamRead(c, s) { return isStaff(c) || inTeam(c, s) || isCaptainOf(c, s); }
+    function teamManage(c, s) { return season(c, s).get('rules', {}).get('teamManage', true) != false; }
     // Editar la temporada del equipo (calendario, convocatoria, resultados, documentos...)
-    function canEdit(s) { return isStaff() || isCaptainOf(s) || (teamManage(s) && inTeam(s)); }
+    function canEdit(c, s) { return isStaff(c) || isCaptainOf(c, s) || (teamManage(c, s) && inTeam(c, s)); }
     // Datos privados del equipo (respuestas individuales, comentarios, quién votó a quién)
-    function canPrivate(s) { return isStaff() || isCaptainOf(s); }
+    function canPrivate(c, s) { return isStaff(c) || isCaptainOf(c, s); }
 
-    // Invitaciones: el código existe, es de ese jugador, no ha caducado ni se ha usado, y se marca como usado en el mismo lote
-    function openClaims() { return get(/databases/$(database)/documents/meta/app).data.get('openClaims', true) != false; }
-    function inviteOk(pid) {
+    // Invitaciones
+    function openClaims(c) { return exists(metaRef(c)) && metaOf(c).get('openClaims', false) == true; }
+    function invValid(d) {
+      return d.get('usedBy', null) == null && d.get('revoked', false) != true && d.exp > request.time.toMillis()
+        && (d.get('email', '') == '' || d.email == email());
+    }
+    // El código existe, es de ese jugador, sigue siendo válido y se marca como usado en el mismo lote
+    function inviteOk(c, pid) {
       let code = request.resource.data.get('invite', '-');
-      let inv = /databases/$(database)/documents/invites/$(code);
+      let inv = D(R(c) + 'invites/' + string(code));
       return code is string && code.size() >= 6 && exists(inv)
-        && get(inv).data.pid == pid
-        && get(inv).data.get('usedBy', null) == null
-        && get(inv).data.exp > request.time.toMillis()
+        && get(inv).data.pid == pid && invValid(get(inv).data)
         && getAfter(inv).data.usedBy == request.auth.uid;
     }
-
     // Invitación de gestor válida para ese club, usada en el mismo lote por quien se da de alta
-    function gestorInviteOk(c, uid) {
+    function gestorInviteOk(club, uid) {
       let code = request.resource.data.get('invite', '-');
-      let inv = /databases/$(database)/documents/invites/$(code);
+      let inv = D(R(dc(club)) + 'invites/' + string(code));
       return signedIn() && uid == request.auth.uid && code is string && code.size() >= 6 && exists(inv)
-        && get(inv).data.get('role', '') == 'gestor' && get(inv).data.club == c
-        && get(inv).data.get('usedBy', null) == null && get(inv).data.exp > request.time.toMillis()
+        && get(inv).data.get('role', '') == 'gestor' && get(inv).data.club == club
+        && invValid(get(inv).data)
         && getAfter(inv).data.usedBy == request.auth.uid
         && request.resource.data.roles == ['gestor'];
     }
+    // Alta de un jugador como miembro del club, en el mismo lote que vincula su ficha con una invitación
+    function playerJoinOk(club, uid) {
+      let d = request.resource.data;
+      return signedIn() && uid == request.auth.uid && d.email == email()
+        && d.roles == ['jugador'] && d.get('status', 'activo') == 'activo' && d.pid is string
+        && getAfter(D(R(dc(club)) + 'claims/' + d.pid)).data.uid == uid;
+    }
 
     // El recuento solo sube en uno, y solo para el jugador del voto que se crea en el mismo lote
-    function validVoteTally(s, k) {
-      let vote = /databases/$(database)/documents/seasons/$(s)/mvp/$(k)/votes/$(myPid());
+    function validVoteTally(c, s, k) {
+      let vote = D(R(c) + 'seasons/' + s + '/mvp/' + k + '/votes/' + myPid(c));
       let v = getAfter(vote).data.v;
       let before = resource == null ? {} : resource.data;
       let t0 = before.get('t', {});
       let t1 = request.resource.data.get('t', {});
-      return isMember() && !exists(vote) && existsAfter(vote)
+      return inTeam(c, s) && !exists(vote) && existsAfter(vote)
         && request.resource.data.diff(before).affectedKeys().hasOnly(['t', 'n'])
         && request.resource.data.get('n', 0) == before.get('n', 0) + 1
         && t1.diff(t0).affectedKeys().hasOnly([v])
         && t1.get(v, 0) == t0.get(v, 0) + 1;
     }
 
+    // ---------- Plataforma ----------
     // Administradores: se crean a mano en la consola
     match /admins/{id} {
       allow read: if signedIn() && (id == request.auth.uid || id == email());
       allow write: if false;
     }
-
-    // Nombre de la lista ligado a un Gmail. Uno por jugador y uno por Gmail.
-    match /claims/{pid} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == email()
-        && (openClaims() || inviteOk(pid));
-      allow update: if signedIn()
-        && resource.data.email == email()
-        && request.resource.data.email == email()
-        && request.resource.data.uid == request.auth.uid;
-      allow delete: if isAdmin();
-    }
+    // Cuenta → ficha del club original (antes de migrar)
     match /users/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow create, update: if signedIn() && uid == request.auth.uid
+      allow create, update: if signedIn() && uid == request.auth.uid && mActive('')
         && request.resource.data.email == email()
-        && getAfter(/databases/$(database)/documents/claims/$(request.resource.data.pid)).data.uid == uid;
+        && getAfter(D('claims/' + request.resource.data.pid)).data.uid == uid;
       allow delete: if isAdmin() || uid == request.auth.uid;
     }
-
-    // Configuración del club (temporadas, equipos, gestores, informe automático). La leen también los gestores que no juegan.
-    // Los gestores cambian la configuración, pero la lista de gestores y el acceso sin invitación solo un administrador.
-    match /meta/{doc} {
-      allow read: if canRead();
-      allow create: if isAdmin();
-      allow update: if isAdmin() || (isManager()
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['managers', 'managerEmails', 'openClaims']));
-      allow delete: if isAdmin();
-    }
-    // Invitaciones: de jugador (las crean capitanes y gestión) o de gestor (solo gestión). Se leen conociendo el código
-    // y las usa el invitado una vez, en el mismo lote que crea su vínculo.
-    match /invites/{code} {
-      allow get: if signedIn();
-      allow list: if isStaff();
-      allow create: if signedIn()
-        && request.resource.data.by == request.auth.uid
-        && request.resource.data.get('usedBy', null) == null
-        && request.resource.data.exp is int
-        && request.resource.data.exp <= request.time.toMillis() + 2678400000
-        && ((request.resource.data.get('role', 'jugador') == 'gestor' && isStaff() && request.resource.data.club == clubId())
-          || (request.resource.data.get('role', 'jugador') != 'gestor' && request.resource.data.pid is string && canPrivate(request.resource.data.season)));
-      allow update: if signedIn() && resource.data.get('usedBy', null) == null
-        && resource.data.exp > request.time.toMillis()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
-        && request.resource.data.usedBy == request.auth.uid
-        && ((resource.data.get('role', 'jugador') == 'gestor'
-              && 'gestor' in getAfter(/databases/$(database)/documents/clubs/$(resource.data.club)/members/$(request.auth.uid)).data.roles)
-          || (resource.data.get('role', 'jugador') != 'gestor'
-              && getAfter(/databases/$(database)/documents/claims/$(resource.data.pid)).data.uid == request.auth.uid));
-      allow delete: if isStaff() || (resource.data.get('role', 'jugador') != 'gestor' && canPrivate(resource.data.season));
-    }
-    // Acceso sin invitación activado (copia pública de meta/app.openClaims para la pantalla de entrada)
-    match /public/access {
-      allow read: if signedIn();
-      allow write: if isAdmin();
-    }
-    // Catálogo de clubes de la FCT (importado por un administrador)
+    // Catálogo de clubes de la FCT (datos públicos; lo usa el buscador de gestores antes de iniciar sesión)
     match /catalog/{id} {
-      allow read: if true;   // datos públicos de la FCT: el buscador de clubes se usa antes de iniciar sesión
+      allow read: if true;
       allow write: if isAdmin();
     }
-    // Solicitudes para vincularse a un club (como gestor o jugador): las crea el interesado y las resuelve un
-    // administrador o un gestor de ese club; las de jugador con ficha propuesta, también el capitán de ese equipo.
-    // Un gestor solo ve las de su club y un capitán solo las de su equipo.
+    // Solicitudes de acceso: las crea el interesado; las resuelve la plataforma, un gestor de ese club
+    // o, si es de jugador con equipo, el capitán de ese equipo.
     function reqCaptain() {
-      return resource.data.get('role', '') == 'jugador' && resource.data.get('season', '') != '' && isCaptainOf(resource.data.season);
+      return resource.data.get('role', '') == 'jugador' && resource.data.get('season', '') != ''
+        && isCaptainOf(dc(resource.data.clubId), resource.data.season);
     }
     match /clubRequests/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || (isManager() && resource.data.clubId == clubId()) || reqCaptain());
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || isManager(dc(resource.data.clubId)) || reqCaptain());
       allow create, update: if signedIn() && uid == request.auth.uid
         && request.resource.data.uid == uid
         && request.resource.data.email == email()
         && request.resource.data.role in ['gestor', 'jugador']
         && request.resource.data.status == 'pendiente'
         && (resource == null || resource.data.status != 'aprobada');
-      allow update: if isAdmin() || (isManager() && resource.data.clubId == clubId() && request.resource.data.clubId == clubId())
+      allow update: if isAdmin() || (isManager(dc(resource.data.clubId)) && request.resource.data.clubId == resource.data.clubId)
         || (reqCaptain() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'invite', 'pid', 'decidedBy', 'decidedByEmail', 'decidedAt']));
       allow delete: if isAdmin() || (uid == request.auth.uid && resource.data.status != 'aprobada');
     }
-    // Identidad de cada club (colores, contacto) y sus miembros aprobados
-    match /clubs/{club} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
-      match /members/{uid} {
-        allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || (isManager() && club == clubId()));
-        allow create: if isAdmin() || (isManager() && club == clubId()) || gestorInviteOk(club, uid);
-        allow update, delete: if isAdmin() || (isManager() && club == clubId());
+
+    // ---------- Datos del club original en la raíz (Real Club de Polo) ----------
+
+      // Configuración del club (temporadas, equipos, gestores, informe automático, capitanes)
+      match /meta/{doc} {
+        allow read: if canRead('');
+        allow create: if isAdmin() || (isManager('') && !request.resource.data.keys().hasAny(['managers', 'managerEmails', 'openClaims']));
+        allow update: if isAdmin() || (isManager('')
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['managers', 'managerEmails', 'openClaims']));
+        allow delete: if isAdmin();
       }
-    }
-    // Lista pública de nombres por equipo, para elegir el tuyo al entrar
-    match /public/{doc} {
-      allow read: if signedIn();
-      allow write: if canRead() && doc != 'access';
-    }
-    // Fotos recortadas (una por jugador; _team = foto del equipo). Las sube el propio jugador o quien gestiona el equipo.
-    match /photos/{id} {
-      allow read: if canRead();
-      allow create, update: if canRead() && request.resource.data.d is string && request.resource.data.d.size() < 950000;
-      allow delete: if canRead();
-    }
-    // Ficha de tenista: la lee el club; la edita su dueño o la gestión
-    match /profiles/{pid} {
-      allow read: if canRead();
-      allow write: if isMe(pid) || isStaff();
-    }
-    // Teléfonos para recordatorios y WhatsApp: los ven y editan quienes gestionan equipos
-    match /phones/{pid} {
-      allow read, write: if canRead();
-    }
-    // Tokens de notificaciones: cada jugador añade los suyos; solo los lee el servidor
-    match /pushTokens/{pid} {
-      allow read: if isAdmin();
-      allow create, update: if isMe(pid) || isStaff();
-      allow delete: if isAdmin();
-    }
-    // Registro de envíos del resumen semanal
-    match /reports/{id} {
-      allow read: if isStaff();
-      allow create: if isStaff();
-      allow update, delete: if isAdmin();
-    }
-    // Uso antiguo, solo administradores
-    match /private/{doc} { allow read, write: if isAdmin(); }
-
-    match /seasons/{s} {
-      allow read: if canRead();
-      allow create: if isStaff();
-      // Capitanes, reglas de permisos y equipo solo los cambia la gestión
-      allow update: if canEdit(s) && (isStaff() || (
-        request.resource.data.get('rules', {}) == resource.data.get('rules', {}) &&
-        (!('captains' in resource.data) || request.resource.data.get('captains', []) == resource.data.captains) &&
-        request.resource.data.get('teamId', null) == resource.data.get('teamId', null)));
-      allow delete: if isAdmin();
-
-      // Disponibilidad: la ve el equipo, cada uno escribe la suya; quien gestiona puede anotar a mano
-      match /avail/{pid} { allow read: if canRead(); allow write: if isMe(pid) || canEdit(s); }
-      // Comentarios de disponibilidad: su autor, capitanes y gestión
-      match /availNotes/{pid} { allow read, write: if isMe(pid) || canPrivate(s); }
-      // Pronósticos
-      match /picks/{pid} { allow read: if canRead(); allow write: if isMe(pid) || isStaff(); }
-      // Encuestas postpartido: privadas
-      match /ballots/{pid} { allow read, write: if isMe(pid) || canPrivate(s); }
-      // Documentos (troceados) y fotos diarias de la temporada
-      match /docs/{id} {
-        allow read: if canRead();
-        allow write: if canEdit(s);
-        match /chunks/{n} { allow read: if canRead(); allow write: if canEdit(s); }
+      // Ficha ligada a una cuenta de Google: una por jugador y una por cuenta. Solo con invitación válida
+      // (o si un administrador abre el acceso con meta/app.openClaims = true).
+      match /claims/{pid} {
+        allow read: if isStaff('') || isCaptainAny('') || (signedIn() && resource.data.email == email());
+        allow create: if signedIn() && notLinked('') && mActive('')
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == email()
+          && (openClaims('') || inviteOk('', pid));
+        allow update: if signedIn() && mActive('')
+          && resource.data.email == email()
+          && request.resource.data.email == email()
+          && request.resource.data.uid == request.auth.uid;
+        allow delete: if isStaff('');
       }
-      match /snapshots/{d} { allow read: if canRead(); allow write: if canEdit(s); }
+      // Invitaciones individuales: de jugador (las crean capitanes de ese equipo y la gestión) o de gestor (solo la gestión).
+      // Un solo uso, caducan, se pueden revocar y, si llevan correo, solo las puede usar esa cuenta.
+      match /invites/{code} {
+        allow get: if signedIn();
+        allow list: if isStaff('') || (resource.data.get('season', '') != '' && isCaptainOf('', resource.data.season));
+        allow create: if signedIn()
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.get('usedBy', null) == null
+          && request.resource.data.get('revoked', false) == false
+          && request.resource.data.exp is int
+          && request.resource.data.exp <= request.time.toMillis() + 2678400000
+          && ((request.resource.data.get('role', 'jugador') == 'gestor' && isStaff('') && request.resource.data.club == cid(''))
+            || (request.resource.data.get('role', 'jugador') in ['jugador', 'capitan'] && request.resource.data.pid is string
+                && canPrivate('', request.resource.data.season)
+                && (request.resource.data.get('role', 'jugador') == 'jugador' || isStaff(''))));
+        // Usarla: la marca como usada quien se vincula, en el mismo lote que crea su ficha o su miembro de club
+        allow update: if signedIn() && invValid(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
+          && request.resource.data.usedBy == request.auth.uid
+          && ((resource.data.get('role', 'jugador') == 'gestor'
+                && 'gestor' in getAfter(D('clubs/' + resource.data.club + '/members/' + request.auth.uid)).data.roles)
+            || (resource.data.get('role', 'jugador') != 'gestor'
+                && getAfter(D(R('') + 'claims/' + resource.data.pid)).data.uid == request.auth.uid));
+        // Reenviar o revocar (sin poder cambiar a quién ni para qué es)
+        allow update: if resource.data.get('usedBy', null) == null
+          && (isStaff('') || (resource.data.get('role', 'jugador') != 'gestor' && canPrivate('', resource.data.season)))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked', 'revokedAt', 'revokedBy', 'email', 'sentTo', 'sentAt', 'sends', 'exp'])
+          && request.resource.data.exp <= request.time.toMillis() + 2678400000;
+        allow delete: if isStaff('') || (resource.data.get('role', 'jugador') != 'gestor' && canPrivate('', resource.data.season));
+      }
+      // Acceso sin invitación (copia de meta/app.openClaims para la pantalla de entrada)
+      match /public/access {
+        allow read: if signedIn();
+        allow write: if isAdmin();
+      }
+      // Lista de nombres por equipo (menú de equipos y nombres de la plantilla): solo miembros del club
+      match /public/{doc} {
+        allow read: if canRead('');
+        allow write: if (isStaff('') || isCaptainAny('')) && doc != 'access';
+      }
+      // Fotos recortadas (una por jugador; _team… = fotos de equipo): las sube el propio jugador, su capitán o la gestión
+      match /photos/{id} {
+        allow read: if canRead('');
+        allow create, update: if (isMe('', id) || isStaff('') || isCaptainAny(''))
+          && request.resource.data.d is string && request.resource.data.d.size() < 950000;
+        allow delete: if isMe('', id) || isStaff('') || isCaptainAny('');
+      }
+      // Ficha de tenista: la lee el club; la edita su dueño o la gestión
+      match /profiles/{pid} {
+        allow read: if canRead('');
+        allow write: if isMe('', pid) || isStaff('');
+      }
+      // Teléfonos (recordatorios y WhatsApp): el propio jugador, los capitanes y la gestión
+      match /phones/{pid} {
+        allow read, write: if isMe('', pid) || isStaff('') || isCaptainAny('');
+      }
+      // Tokens de notificaciones: cada jugador añade los suyos; solo los lee el servidor
+      match /pushTokens/{pid} {
+        allow read: if isAdmin();
+        allow create, update: if isMe('', pid) || isStaff('');
+        allow delete: if isAdmin();
+      }
+      // Registro de envíos del resumen semanal
+      match /reports/{id} {
+        allow read: if isStaff('');
+        allow create: if isStaff('');
+        allow update, delete: if isAdmin();
+      }
+      // Uso antiguo, solo administradores
+      match /private/{doc} { allow read, write: if isAdmin(); }
 
-      // MVP de cada jornada. Recuento público; quién votó a quién, privado.
-      // Un voto por jugador, nunca a uno mismo y sin poder cambiarlo. Solo capitanes y gestión anulan.
-      match /mvp/{k} {
-        allow read: if canRead();
-        allow write: if canPrivate(s) || validVoteTally(s, k);
+      // Temporada de cada equipo: la ven sus jugadores (memberIds), sus capitanes y la gestión del club
+      match /seasons/{s} {
+        allow read: if teamRead('', s);
+        allow create: if isStaff('');
+        // Capitanes, plantilla con acceso (memberIds), reglas y equipo: solo la gestión (la plantilla, también el capitán)
+        allow update: if canEdit('', s) && (isStaff('') || (
+          request.resource.data.get('rules', {}) == resource.data.get('rules', {}) &&
+          request.resource.data.get('captains', []) == resource.data.get('captains', []) &&
+          (isCaptainOf('', s) || request.resource.data.get('memberIds', null) == resource.data.get('memberIds', null)) &&
+          request.resource.data.get('teamId', null) == resource.data.get('teamId', null)));
+        allow delete: if isAdmin();
 
-        match /votes/{voter} {
-          allow read: if isMe(voter) || canPrivate(s);
-          allow create: if isMe(voter) && inTeam(s)
-            && request.resource.data.keys().hasOnly(['v', 'at'])
-            && request.resource.data.v is string
-            && request.resource.data.v != voter
-            && existsAfter(/databases/$(database)/documents/seasons/$(s)/mvp/$(k));
-          allow update: if false;
-          allow delete: if canPrivate(s);
+        // Disponibilidad: la ve el equipo, cada uno escribe la suya; quien gestiona puede anotar a mano
+        match /avail/{pid} { allow read: if teamRead('', s); allow write: if (isMe('', pid) && inTeam('', s)) || canEdit('', s); }
+        // Comentarios de disponibilidad: su autor, capitanes y gestión
+        match /availNotes/{pid} { allow read, write: if (isMe('', pid) && inTeam('', s)) || canPrivate('', s); }
+        // Pronósticos
+        match /picks/{pid} { allow read: if teamRead('', s); allow write: if (isMe('', pid) && inTeam('', s)) || isStaff(''); }
+        // Encuestas postpartido: privadas
+        match /ballots/{pid} { allow read, write: if (isMe('', pid) && inTeam('', s)) || canPrivate('', s); }
+        // Documentos (troceados) y fotos diarias de la temporada
+        match /docs/{id} {
+          allow read: if teamRead('', s);
+          allow write: if canEdit('', s);
+          match /chunks/{n} { allow read: if teamRead('', s); allow write: if canEdit('', s); }
+        }
+        match /snapshots/{d} { allow read: if teamRead('', s); allow write: if canEdit('', s); }
+
+        // MVP de cada jornada. Recuento para el equipo; quién votó a quién, privado.
+        // Un voto por jugador del equipo, nunca a uno mismo y sin poder cambiarlo. Solo capitanes y gestión anulan.
+        match /mvp/{k} {
+          allow read: if teamRead('', s);
+          allow write: if canPrivate('', s) || validVoteTally('', s, k);
+          match /votes/{voter} {
+            allow read: if isMe('', voter) || canPrivate('', s);
+            allow create: if isMe('', voter) && inTeam('', s)
+              && request.resource.data.keys().hasOnly(['v', 'at'])
+              && request.resource.data.v is string
+              && request.resource.data.v != voter
+              && existsAfter(D(R('') + 'seasons/' + s + '/mvp/' + k));
+            allow update: if false;
+            allow delete: if canPrivate('', s);
+          }
         }
       }
+
+    // ---------- Cada club: identidad, miembros, historial y (después de migrar) sus datos ----------
+    match /clubs/{club} {
+      // Identidad (nombre corto, escudo, colores, portada, temporada activa) y progreso de la configuración inicial
+      allow read: if signedIn();
+      allow create: if isAdmin() || (isManager(dc(club)) && !request.resource.data.keys().hasAny(['migrated', 'status', 'plan', 'fctId']));
+      allow update: if isAdmin() || (isManager(dc(club))
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['migrated', 'status', 'plan', 'fctId']));
+      allow delete: if false;
+
+      // Pertenencia de cada cuenta al club: roles (gestor, jugador), ficha y estado (activo / inactivo)
+      match /members/{uid} {
+        allow read: if signedIn() && (uid == request.auth.uid || isAdmin() || isManager(dc(club)));
+        allow create: if isAdmin() || isManager(dc(club)) || gestorInviteOk(club, uid) || playerJoinOk(club, uid);
+        allow update, delete: if isAdmin() || isManager(dc(club));
+      }
+      // Historial de acciones sensibles: solo se añade; nadie lo edita ni lo borra
+      match /audit/{id} {
+        allow read: if isStaff(dc(club));
+        allow create: if signedIn() && request.resource.data.by == request.auth.uid && request.resource.data.at is int
+          && request.resource.data.action is string
+          && (isStaff(dc(club)) || isCaptainAny(dc(club)) || (request.resource.data.action == 'invitacion-aceptada' && isMember(dc(club))));
+        allow update, delete: if false;
+      }
+
+        // Configuración del club (temporadas, equipos, gestores, informe automático, capitanes)
+        match /meta/{doc} {
+          allow read: if canRead(club);
+          allow create: if isAdmin() || (isManager(club) && !request.resource.data.keys().hasAny(['managers', 'managerEmails', 'openClaims']));
+          allow update: if isAdmin() || (isManager(club)
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['managers', 'managerEmails', 'openClaims']));
+          allow delete: if isAdmin();
+        }
+        // Ficha ligada a una cuenta de Google: una por jugador y una por cuenta. Solo con invitación válida
+        // (o si un administrador abre el acceso con meta/app.openClaims = true).
+        match /claims/{pid} {
+          allow read: if isStaff(club) || isCaptainAny(club) || (signedIn() && resource.data.email == email());
+          allow create: if signedIn() && notLinked(club) && mActive(club)
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.email == email()
+            && (openClaims(club) || inviteOk(club, pid));
+          allow update: if signedIn() && mActive(club)
+            && resource.data.email == email()
+            && request.resource.data.email == email()
+            && request.resource.data.uid == request.auth.uid;
+          allow delete: if isStaff(club);
+        }
+        // Invitaciones individuales: de jugador (las crean capitanes de ese equipo y la gestión) o de gestor (solo la gestión).
+        // Un solo uso, caducan, se pueden revocar y, si llevan correo, solo las puede usar esa cuenta.
+        match /invites/{code} {
+          allow get: if signedIn();
+          allow list: if isStaff(club) || (resource.data.get('season', '') != '' && isCaptainOf(club, resource.data.season));
+          allow create: if signedIn()
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.get('usedBy', null) == null
+            && request.resource.data.get('revoked', false) == false
+            && request.resource.data.exp is int
+            && request.resource.data.exp <= request.time.toMillis() + 2678400000
+            && ((request.resource.data.get('role', 'jugador') == 'gestor' && isStaff(club) && request.resource.data.club == cid(club))
+              || (request.resource.data.get('role', 'jugador') in ['jugador', 'capitan'] && request.resource.data.pid is string
+                  && canPrivate(club, request.resource.data.season)
+                  && (request.resource.data.get('role', 'jugador') == 'jugador' || isStaff(club))));
+          // Usarla: la marca como usada quien se vincula, en el mismo lote que crea su ficha o su miembro de club
+          allow update: if signedIn() && invValid(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
+            && request.resource.data.usedBy == request.auth.uid
+            && ((resource.data.get('role', 'jugador') == 'gestor'
+                  && 'gestor' in getAfter(D('clubs/' + resource.data.club + '/members/' + request.auth.uid)).data.roles)
+              || (resource.data.get('role', 'jugador') != 'gestor'
+                  && getAfter(D(R(club) + 'claims/' + resource.data.pid)).data.uid == request.auth.uid));
+          // Reenviar o revocar (sin poder cambiar a quién ni para qué es)
+          allow update: if resource.data.get('usedBy', null) == null
+            && (isStaff(club) || (resource.data.get('role', 'jugador') != 'gestor' && canPrivate(club, resource.data.season)))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked', 'revokedAt', 'revokedBy', 'email', 'sentTo', 'sentAt', 'sends', 'exp'])
+            && request.resource.data.exp <= request.time.toMillis() + 2678400000;
+          allow delete: if isStaff(club) || (resource.data.get('role', 'jugador') != 'gestor' && canPrivate(club, resource.data.season));
+        }
+        // Acceso sin invitación (copia de meta/app.openClaims para la pantalla de entrada)
+        match /public/access {
+          allow read: if signedIn();
+          allow write: if isAdmin();
+        }
+        // Lista de nombres por equipo (menú de equipos y nombres de la plantilla): solo miembros del club
+        match /public/{doc} {
+          allow read: if canRead(club);
+          allow write: if (isStaff(club) || isCaptainAny(club)) && doc != 'access';
+        }
+        // Fotos recortadas (una por jugador; _team… = fotos de equipo): las sube el propio jugador, su capitán o la gestión
+        match /photos/{id} {
+          allow read: if canRead(club);
+          allow create, update: if (isMe(club, id) || isStaff(club) || isCaptainAny(club))
+            && request.resource.data.d is string && request.resource.data.d.size() < 950000;
+          allow delete: if isMe(club, id) || isStaff(club) || isCaptainAny(club);
+        }
+        // Ficha de tenista: la lee el club; la edita su dueño o la gestión
+        match /profiles/{pid} {
+          allow read: if canRead(club);
+          allow write: if isMe(club, pid) || isStaff(club);
+        }
+        // Teléfonos (recordatorios y WhatsApp): el propio jugador, los capitanes y la gestión
+        match /phones/{pid} {
+          allow read, write: if isMe(club, pid) || isStaff(club) || isCaptainAny(club);
+        }
+        // Tokens de notificaciones: cada jugador añade los suyos; solo los lee el servidor
+        match /pushTokens/{pid} {
+          allow read: if isAdmin();
+          allow create, update: if isMe(club, pid) || isStaff(club);
+          allow delete: if isAdmin();
+        }
+        // Registro de envíos del resumen semanal
+        match /reports/{id} {
+          allow read: if isStaff(club);
+          allow create: if isStaff(club);
+          allow update, delete: if isAdmin();
+        }
+        // Uso antiguo, solo administradores
+        match /private/{doc} { allow read, write: if isAdmin(); }
+  
+        // Temporada de cada equipo: la ven sus jugadores (memberIds), sus capitanes y la gestión del club
+        match /seasons/{s} {
+          allow read: if teamRead(club, s);
+          allow create: if isStaff(club);
+          // Capitanes, plantilla con acceso (memberIds), reglas y equipo: solo la gestión (la plantilla, también el capitán)
+          allow update: if canEdit(club, s) && (isStaff(club) || (
+            request.resource.data.get('rules', {}) == resource.data.get('rules', {}) &&
+            request.resource.data.get('captains', []) == resource.data.get('captains', []) &&
+            (isCaptainOf(club, s) || request.resource.data.get('memberIds', null) == resource.data.get('memberIds', null)) &&
+            request.resource.data.get('teamId', null) == resource.data.get('teamId', null)));
+          allow delete: if isAdmin();
+  
+          // Disponibilidad: la ve el equipo, cada uno escribe la suya; quien gestiona puede anotar a mano
+          match /avail/{pid} { allow read: if teamRead(club, s); allow write: if (isMe(club, pid) && inTeam(club, s)) || canEdit(club, s); }
+          // Comentarios de disponibilidad: su autor, capitanes y gestión
+          match /availNotes/{pid} { allow read, write: if (isMe(club, pid) && inTeam(club, s)) || canPrivate(club, s); }
+          // Pronósticos
+          match /picks/{pid} { allow read: if teamRead(club, s); allow write: if (isMe(club, pid) && inTeam(club, s)) || isStaff(club); }
+          // Encuestas postpartido: privadas
+          match /ballots/{pid} { allow read, write: if (isMe(club, pid) && inTeam(club, s)) || canPrivate(club, s); }
+          // Documentos (troceados) y fotos diarias de la temporada
+          match /docs/{id} {
+            allow read: if teamRead(club, s);
+            allow write: if canEdit(club, s);
+            match /chunks/{n} { allow read: if teamRead(club, s); allow write: if canEdit(club, s); }
+          }
+          match /snapshots/{d} { allow read: if teamRead(club, s); allow write: if canEdit(club, s); }
+  
+          // MVP de cada jornada. Recuento para el equipo; quién votó a quién, privado.
+          // Un voto por jugador del equipo, nunca a uno mismo y sin poder cambiarlo. Solo capitanes y gestión anulan.
+          match /mvp/{k} {
+            allow read: if teamRead(club, s);
+            allow write: if canPrivate(club, s) || validVoteTally(club, s, k);
+            match /votes/{voter} {
+              allow read: if isMe(club, voter) || canPrivate(club, s);
+              allow create: if isMe(club, voter) && inTeam(club, s)
+                && request.resource.data.keys().hasOnly(['v', 'at'])
+                && request.resource.data.v is string
+                && request.resource.data.v != voter
+                && existsAfter(D(R(club) + 'seasons/' + s + '/mvp/' + k));
+              allow update: if false;
+              allow delete: if canPrivate(club, s);
+            }
+          }
+        }
     }
   }
 }

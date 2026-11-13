@@ -8,26 +8,22 @@
 //   - Club que todavía no está activo: los administradores de la plataforma (colección admins con correo
 //     y, opcionalmente, PLATFORM_EMAILS en Vercel, separados por comas).
 // Cada solicitud se avisa una sola vez (campo notifiedAt).
-const admin = require('firebase-admin');
 const CLUB = require('../club-config.js');
-function getAdmin() {
-  if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
-  return admin;
-}
+const { getAdmin, clubDbFor } = require('./_auth.js');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const isMail = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || ''));
 
-async function recipients(db, r) {
+async function recipients(db, r, cdb = db) {
   const admins = (await db.collection('admins').get()).docs.map(d => d.id).filter(isMail);
   const platform = String(process.env.PLATFORM_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(isMail);
   // Los gestores los valida la plataforma (Dossau Lab): PLATFORM_EMAILS y administradores
   if (r.clubId !== CLUB.id || r.role !== 'jugador') return { to: [...new Set([...platform, ...admins])], who: 'plataforma' };
-  const meta = (await db.doc('meta/app').get()).data() || {};
+  const meta = (await cdb.doc('meta/app').get()).data() || {};
   const managers = (meta.managerEmails || []).filter(isMail);
   let captains = [];
   if (r.role === 'jugador' && r.season) {
-    const s = (await db.doc('seasons/' + r.season).get()).data() || {};
-    const claims = await Promise.all((s.captains || []).map(pid => db.doc('claims/' + pid).get()));
+    const s = (await cdb.doc('seasons/' + r.season).get()).data() || {};
+    const claims = await Promise.all((s.captains || []).map(pid => cdb.doc('claims/' + pid).get()));
     captains = claims.map(c => c.exists && c.data().email).filter(isMail);
   }
   const to = [...new Set([...captains, ...managers])];
@@ -46,7 +42,7 @@ module.exports = async (req, res) => {
     if (r.status !== 'pendiente') return res.status(200).json({ ok: true, skipped: 'no pendiente' });
     if (r.notifiedAt) return res.status(200).json({ ok: true, skipped: 'ya avisado' });
     if (!require('./_mail.js').via()) return res.status(501).json({ error: 'El envío de correo no está configurado en Vercel' });
-    const { to, who } = await recipients(db, r);
+    const { to, who } = await recipients(db, r, await clubDbFor(db));
     if (!to.length) return res.status(200).json({ ok: false, error: 'No hay a quién avisar: añade un administrador con correo o PLATFORM_EMAILS' });
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const app = process.env.APP_URL || ('https://' + host);

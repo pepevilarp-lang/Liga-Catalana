@@ -69,7 +69,7 @@ La entrada es de Lliga Catalana: no muestra el nombre, el escudo ni los colores 
 
 Cada paso muestra en qué punto está y tiene «Atrás». Se recuerdan el último perfil y el último club en el dispositivo.
 
-### Fase 1, incluida (no mueve datos)
+### Base ya publicada (antes de la v3)
 1. **Cerrar sesión completo**: menú de cuenta en la cabecera (móvil y escritorio) y en Yo, con confirmación, estado de carga y errores. Cancela todas las escuchas, vacía los datos privados en memoria, borra la copia local de Firestore y vuelve a la pantalla de entrada sin dejar páginas privadas en el historial.
 2. **Pantalla de acceso con tres roles** (gestor deportivo, capitán, jugador). Tras entrar con Google se comprueban los roles reales; si no tiene el elegido se explica por qué y qué puede hacer. Con varios roles se cambia de contexto desde el menú de cuenta, y el último se recuerda en ese dispositivo.
 3. **Invitaciones para jugadores**: el capitán o la gestión genera un enlace por jugador y lo envía por WhatsApp. Elegir un nombre ya no basta: las reglas exigen la invitación. Los jugadores que ya están vinculados no se ven afectados.
@@ -78,20 +78,38 @@ Cada paso muestra en qué punto está y tiene «Atrás». Se recuerdan el últim
 6. **Identidad visual por club**: `club-config.js` y el documento del club aportan nombre, escudo, color principal y secundario, portada y contacto. La app aplica los colores sobre las variables del diseño base, sin permitir cambiar el resto de la interfaz.
 7. **Rutas por club en el cliente**: todas las lecturas y escrituras pasan por una función que antepone la raíz de datos del club. Hoy esa raíz es vacía para el Polo, así que no cambia nada; en la fase 3 basta con apuntarla a `clubs/rcpb/`.
 
-### Fase 2: entorno por club (siguiente)
-- `clubs/{clubId}` como fuente de la identidad (sustituye a `club-config.js`, que queda como valor por defecto).
-- Alta de un segundo club con sus equipos y grupos de la FCT desde Configuración.
-- Funciones de Vercel con el club como parámetro (sincronización FCT, informe semanal, recordatorios, notificaciones) recorriendo `clubs/*`.
+### Fase 0: seguridad (implementada)
+- Solo con invitación por defecto (`meta/app.openClaims` ausente = cerrado). Jugadores y capitanes no ven ningún catálogo de clubes.
+- Lectura por equipo: temporada y subcolecciones solo para sus jugadores (`memberIds`), sus capitanes y la gestión. Temporadas antiguas sin `memberIds`: cualquier jugador del club hasta que se guarden (o hasta «Preparar pertenencias»).
+- Teléfonos: dueño, capitanes (`meta/app.captainPids`) y gestión. Fotos y lista pública: dueño, capitanes y gestión. Fichas vinculadas (`claims`): gestión, capitanes y la propia.
+- Capitanes y `memberIds` solo los cambia la gestión (la plantilla con acceso, también el capitán de ese equipo).
+- Desvincular una ficha corta el acceso: en la raíz, `users/<uid>` solo cuenta si `claims/<pid>` sigue siendo de esa cuenta.
+- Servidor (`api/_auth.js`): mismas comprobaciones en notificaciones, recordatorios, sincronización FCT, lectura con IA e informes.
 
-### Fase 3: migración de los datos del Polo
-Mover los datos de la raíz a `clubs/rcpb/` sin pérdida:
-1. Script de migración en Vercel, solo administradores, con modo de prueba que cuenta documentos por colección.
-2. Copia completa a `clubs/rcpb/...` (idempotente: se puede repetir).
-3. Comprobación de recuentos y de la temporada actual en ambos sitios.
-4. Publicar las reglas nuevas y cambiar la raíz de datos del cliente y del servidor a `clubs/rcpb/`.
-5. Dejar los datos antiguos en solo lectura dos semanas como copia de seguridad y después borrarlos.
+### Fase 1: usuarios, invitaciones y auditoría (implementada)
+- Pertenencia en `clubs/<id>/members/<uid>`: `{ roles, pid, email, status }`. Se crea al aceptar la invitación (mismo lote, validado por las reglas) y con «Preparar pertenencias» para los ya vinculados.
+- Invitaciones: un uso, caducidad, `revoked`, `email` opcional (solo esa cuenta), envío y reenvío por correo con la identidad del club (`api/send-invite.js`). Las de capitán solo las crea la gestión.
+- Gestión deportiva → **Usuarios**: invitar, pendientes, reenviar, revocar, solicitudes, miembros (desactivar/reactivar, quitar de un equipo, desvincular) e historial.
+- Historial `clubs/<id>/audit`: solo se añade (reglas sin update ni delete). Lo escriben la app y el servidor.
 
-Esta fase **requiere decisión** antes de ejecutarse: cambia rutas en producción, toca el código de sincronización con la FCT y exige publicar reglas nuevas el mismo día.
+### Fase 2: datos por club, migración (herramienta lista; el cambio lo hace un administrador)
+- La raíz de datos ya no es fija: `clubs/<id>.migrated = true` hace que la app (`B.setRoot`), el servidor (`dataRoot` en `api/_auth.js`) y las reglas (`dc()`) usen `clubs/<id>/…` a la vez. Las reglas de datos se escriben una vez y se aplican en la raíz y en `clubs/{club}/` (`scripts/build-rules.js`).
+- `api/migrate.js` (solo administradores; también desde Configuración → Datos del club):
+  1. **Comprobar**: recuentos por colección en la raíz y en la copia, temporadas sin `memberIds` y fichas sin pertenencia. No escribe.
+  2. **Preparar pertenencias**: crea `members` con ficha, rellena `memberIds` y `captainPids`. Repetible.
+  3. **Copiar**: raíz → `clubs/<id>/`, documentos y subcolecciones. Repetible; la raíz no se toca.
+  4. **Verificar**: compara documento a documento (huella del contenido).
+  5. **Pasar a la copia**: solo si la verificación sale exacta. Marca `migrated`.
+  6. **Volver a la raíz** (rollback): copia a la raíz lo que haya cambiado en la copia y desmarca `migrated`.
+- Orden recomendado: publicar las reglas → Preparar pertenencias → Copiar → Verificar → Pasar a la copia en un momento sin partidos. Los datos de la raíz se conservan hasta que se decida borrarlos.
+
+### Fases 3 y 4: identidad y configuración inicial (implementadas)
+- `clubs/<id>`: nombre oficial y corto, escudo (WebP/PNG y PNG para el PDF), portada, colores, contacto. Se aplican al validar la pertenencia: cabecera, intro, carteles, PDF (cliente y servidor), correos del informe y de invitación.
+- Configuración inicial guardada en `clubs/<id>.setup` con nueve pasos que se marcan solos al ver los datos, «Marcar como hecho» y «Activar el club». Tarjeta con el siguiente paso en el Inicio hasta activarlo.
+
+### Pendiente
+- Varios clubes en el mismo despliegue: hoy cada despliegue fija `club-config.js` (id del club). Con los datos ya bajo `clubs/<id>/`, el siguiente paso es elegir el club a partir de la pertenencia del usuario en lugar del archivo, y que las tareas nocturnas recorran `clubs/*`.
+- Fichero de reglas probado con el emulador de Firestore (no disponible en este entorno): ver la lista de comprobaciones del PR.
 
 ## 5. Pruebas
 | Escenario | Fase |
