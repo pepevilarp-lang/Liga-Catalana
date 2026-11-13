@@ -78,7 +78,7 @@ async function authorize(req) {
     // Jugador activo del club o su gestión (mismos criterios que firestore.rules: api/_auth.js)
     const ctx = await require('./_auth.js').caller(req), db = ctx.db;
     if (!(ctx.isStaff || ctx.pid)) throw Object.assign(new Error('Solo miembros del club'), { status: 403 });
-    return { db };
+    return { db, cfg: ctx.cfg };
   }
   const pid = process.env.FIREBASE_PROJECT_ID;
   if (!pid) throw Object.assign(new Error('Falta FIREBASE_PROJECT_ID en Vercel'), { status: 501 });
@@ -146,7 +146,7 @@ module.exports = async (req, res) => {
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
   try {
-    const { db } = await authorize(req);
+    const auth = await authorize(req), db = auth.db;
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const kind = String(body.kind || ''); if (!SCHEMAS[kind]) return res.status(400).json({ error: 'Tipo de documento no admitido para lectura automática' });
@@ -172,7 +172,11 @@ Contexto de la app (para ayudarte a reconocer nombres; NO lo copies si no aparec
 ${ctx.jornada ? '- Jornada indicada por el usuario: ' + (+ctx.jornada) : ''}
 
 ${text ? 'TEXTO DEL DOCUMENTO:\n' + text : 'El documento va en las imágenes adjuntas.'}`;
-    const out = await extractJSON(COMMON, userText, images);
+    // Los textos para la IA nombran al club de la petición (el original o cualquier otro)
+    const C = (auth && auth.cfg) || CLUBCFG, sub = x => C === CLUBCFG ? x : x.split(CLUBCFG.name).join(C.name)
+      .split(CLUBCFG.aliases.map(a => '"' + a + '"').join(', ')).join(C.aliases.map(a => '"' + a + '"').join(', '))
+      .split([CLUBCFG.teamShort, ...CLUBCFG.aliases].map(a => '"' + a + '"').join(', ')).join([C.teamShort, ...C.aliases].map(a => '"' + a + '"').join(', '));
+    const out = await extractJSON(sub(COMMON), sub(userText), images);
     return res.status(200).json({ data: clampConf(scrub(out.data)), provider: out.provider, model: out.model, usage: out.usage, imagesUsed: out.imagesUsed });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message || 'error' });

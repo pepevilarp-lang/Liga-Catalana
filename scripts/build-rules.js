@@ -284,6 +284,11 @@ service cloud.firestore {
         && t1.get(v, 0) == t0.get(v, 0) + 1;
     }
 
+    // Índice de clubes de cada cuenta (solo orienta a la app; los permisos están en clubs/<club>/members/<uid>)
+    match /accounts/{uid} {
+      allow read, write: if signedIn() && (uid == request.auth.uid || isAdmin());
+    }
+
     // ---------- Plataforma ----------
     // Administradores: se crean a mano en la consola
     match /admins/{id} {

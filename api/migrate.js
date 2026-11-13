@@ -50,8 +50,8 @@ async function backfill(db, clubId, root) {
     const { uid, email } = c.data() || {}; if (!uid) continue;
     const ref = db.doc('clubs/' + clubId + '/members/' + uid), m = await ref.get(), cur = m.exists ? m.data() : {};
     const roles = [...new Set([...(cur.roles || []), 'jugador'])];
-    if (cur.pid === c.id && (cur.roles || []).includes('jugador') && cur.status) continue;
-    await ref.set({ ...cur, pid: c.id, email: email || cur.email || '', roles, status: cur.status || 'activo', at: cur.at || now, backfilledAt: now }, { merge: true });
+    if (cur.pid === c.id && cur.uid === uid && (cur.roles || []).includes('jugador') && cur.status) continue;
+    await ref.set({ ...cur, uid, pid: c.id, email: email || cur.email || '', roles, status: cur.status || 'activo', at: cur.at || now, backfilledAt: now }, { merge: true });
     res.members++;
   }
   // Temporadas antiguas sin memberIds: la plantilla activa

@@ -36,7 +36,7 @@ async function authorize(token) {
   const a = await fetch(fsBase() + 'admins/' + encodeURIComponent(email), h);
   if (a.status !== 200 && !managers.includes(email)) throw Object.assign(new Error('Solo gestores del club y administradores'), { status: 403 });
 }
-const SYSTEM = `Eres el redactor del informe deportivo semanal del ${require('../club-config.js').name} (tenis, Lliga Catalana por equipos).
+const SYSTEM = `Eres el redactor del informe deportivo semanal del club que indica el campo «club» de los datos (tenis, Lliga Catalana por equipos).
 Escribes en español, con tono profesional, sobrio y claro, como un informe de dirección deportiva. Sin emojis ni adjetivos exagerados.
 REGLAS ESTRICTAS:
 1. Usa SOLO los datos del JSON que recibes. No inventes resultados, marcadores, jugadores, estadísticas, rivales, opiniones, declaraciones ni incidencias.

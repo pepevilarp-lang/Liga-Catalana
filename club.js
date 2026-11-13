@@ -152,7 +152,7 @@ async function cmMemberStatus(uid, on) {
   if (!on && !confirm('¿Desactivar el acceso de esta cuenta? Dejará de ver los datos del club al instante. Se puede reactivar.')) return;
   CM.busy['m-' + uid] = true; renderQuiet();
   await safe(async () => {
-    await B.merge('clubs/' + CLUB.id + '/members/' + uid, { status: on ? 'activo' : 'inactivo', statusBy: authUser.email, statusAt: Date.now(), ...(CM.mem?.[uid] ? {} : { email: Object.values(claims).find(c => c.uid === uid)?.email || '', roles: ['jugador'], pid: Object.keys(claims).find(k => claims[k].uid === uid) || null, at: Date.now() }) });
+    await B.merge('clubs/' + CLUB.id + '/members/' + uid, { status: on ? 'activo' : 'inactivo', statusBy: authUser.email, statusAt: Date.now(), uid, ...(CM.mem?.[uid] ? {} : { email: Object.values(claims).find(c => c.uid === uid)?.email || '', roles: ['jugador'], pid: Object.keys(claims).find(k => claims[k].uid === uid) || null, at: Date.now() }) });
     accAudit(on ? 'miembro-reactivado' : 'miembro-desactivado', { uid, pid: Object.keys(claims).find(k => claims[k].uid === uid) || null });
   }, on ? 'Acceso reactivado' : 'Acceso desactivado');
   delete CM.busy['m-' + uid]; renderQuiet();

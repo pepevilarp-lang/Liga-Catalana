@@ -33,9 +33,9 @@ module.exports = async (req, res) => {
     if (I.email && I.email !== to) throw httpErr(409, 'Esta invitación es para ' + I.email + '. Revócala y crea otra para el nuevo correo.');
     if ((I.sends || 0) >= MAX_SENDS) throw httpErr(429, 'Ya se ha enviado ' + MAX_SENDS + ' veces: copia el enlace y envíalo tú');
 
-    const R = require('./_report.js'), idn = await R.clubIdentity(ctx.db);
+    const R = require('./_report.js'), idn = await R.clubIdentity(ctx.cdb);
     const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const link = (process.env.APP_URL || ('https://' + host)) + '/#invitacion-' + code;
+    const link = (process.env.APP_URL || ('https://' + host)) + '/#invitacion-' + code + (ctx.cfg && ctx.cfg.generic ? '.' + ctx.clubId : '');
     const rol = I.role === 'gestor' ? 'gestor deportivo' : I.role === 'capitan' ? 'capitán' : 'jugador';
     const who = I.role === 'gestor' ? '' : I.name ? `como <b>${esc(I.name)}</b>${I.teamName ? ', ' + esc(I.teamName) : ''}` : '';
     const days = Math.max(1, Math.round((I.exp - Date.now()) / 864e5));
