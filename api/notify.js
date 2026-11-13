@@ -11,7 +11,7 @@ module.exports = async (req, res) => {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const { type, season, j, origin } = body;
-    const { A, db, P, S } = await needTeam(req, season, 'canEdit');
+    const { A, db, P, S, clubId, cfg } = await needTeam(req, season, 'canEdit'); const US = (cfg && cfg.teamShort) || 'Polo';
 
     const k = 'j' + j, tie = (S.ties || {})[k] || {};
     const fix = (S.fixtures || []).find(f => +f.j === +j && (f.home === 'polo' || f.away === 'polo'));
@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
     const base = String(origin || '').replace(/\/$/, '') || '';
     let pids = [], title = '', text = '', url = '/';
 
-    if (type === 'avail') { pids = active; title = `¿Juegas la jornada ${j}?`; text = `Polo contra ${rival}, ${fecha} a las ${fix?.time || ''}. Responde en la app.`; url = `/#disponibilidad-${j}`; }
+    if (type === 'avail') { pids = active; title = `¿Juegas la jornada ${j}?`; text = `${US} contra ${rival}, ${fecha} a las ${fix?.time || ''}. Responde en la app.`; url = `/#disponibilidad-${j}`; }
     else if (type === 'availRem') {
       const snap = await db.collection(P(`seasons/${season}/avail`)).get(); const done = new Set();
       snap.forEach(d => { if ((d.data().j || {})[k]) done.add(d.id); });
@@ -30,13 +30,13 @@ module.exports = async (req, res) => {
     }
     else if (type === 'lineup') {
       const set = new Set([...(tie.convocados || []), ...(tie.subs || []), ...((tie.rubbers || []).flatMap(r => r.polo || []))]);
-      pids = [...set]; title = `Convocado para la jornada ${j}`; text = `Polo contra ${rival}, ${fecha}. Mira el orden de juego.`; url = `/#jornada-${j}`;
+      pids = [...set]; title = `Convocado para la jornada ${j}`; text = `${US} contra ${rival}, ${fecha}. Mira el orden de juego.`; url = `/#jornada-${j}`;
     }
     else if (type === 'survey') {
       const set = new Set(); (tie.rubbers || []).forEach(r => { if (r.res || won(r.score)) (r.polo || []).forEach(p => set.add(p)); });
       pids = [...set]; title = `Encuesta de la jornada ${j}`; text = `Has jugado contra ${rival}. Cuéntanos qué tal: 2 minutos.`; url = `/#encuesta-${j}`;
     }
-    else if (type === 'mvp') { pids = active; title = `🏆 Vota al MVP de la jornada ${j}`; text = `Polo contra ${rival}. Un voto por jugador.`; url = `/#mvp-${j}`; }
+    else if (type === 'mvp') { pids = active; title = `🏆 Vota al MVP de la jornada ${j}`; text = `${US} contra ${rival}. Un voto por jugador.`; url = `/#mvp-${j}`; }
     else if (type === 'awards') { pids = active; title = `🏆 MVP de la jornada ${j}`; text = 'Ya tenemos MVP. Entra a descubrirlo.'; url = `/#jornada-${j}`; }
     else if (type === 'custom') {
       // Mensaje libre del capitán: a todos, solo a quien no ha respondido, o solo a los convocados
@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
       if (msg.length < 3) return res.status(400).json({ error: 'text' });
       title = String(body.title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || `Jornada ${j}: mensaje del equipo`;
       text = msg; url = `/#jornada-${j}`;
-      const lg = db.doc('remLog/' + season), cur = (await lg.get()).data() || {};
+      const lg = db.doc('remLog/' + (clubId && clubId !== 'rcpb' ? clubId + '_' : '') + season), cur = (await lg.get()).data() || {};
       if (cur.lastCustom && Date.now() - cur.lastCustom < 30000) return res.status(429).json({ error: 'espera-unos-segundos' });
       await lg.set({ lastCustom: Date.now() }, { merge: true });
       if (aud === 'pending') {

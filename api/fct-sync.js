@@ -10,12 +10,14 @@
 const { getAdmin, needTeam, clubDbFor, sendErr } = require('./_auth.js');
 const FCT_API = 'https://portal.fctennis.cat/app/api/calendario.do';
 // Grupos de la 13a Lliga Catalana 2026-27 (torneo 4296)
-const CLUBCFG = require('../club-config.js');
-const KNOWN_GROUPS = CLUBCFG.fctGroups || {};
+const CLUBCFG0 = require('../club-config.js');
+// Club que se está sincronizando (useClub lo cambia antes de cada club: el original o cualquier otro dado de alta)
+let CLUBCFG = CLUBCFG0, KNOWN_GROUPS = CLUBCFG.fctGroups || {};
 const POLO = 'polo';
 const STOP = new Set(['club', 'de', 'del', 'la', 'el', 'tenis', 'tennis', 'rc', 'rst', 'ct', 'ce', 'rct', 'real', 'sant', 'sport', 'esportiu', 's', 'i', 'y', 'a', 'b', 'cd', 'cn', 'ctn', 'c', 't', 'n']);
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const CLUB_RE = new RegExp('\\b' + norm(CLUBCFG.fctMatch || 'polo') + '\\b');   // el club en los nombres de equipo de la FCT
+let CLUB_RE = new RegExp('\\b' + norm(CLUBCFG.fctMatch || 'polo') + '\\b');   // el club en los nombres de equipo de la FCT
+function useClub(cfg) { CLUBCFG = cfg || CLUBCFG0; KNOWN_GROUPS = CLUBCFG.fctGroups || {}; CLUB_RE = new RegExp('\\b' + (norm(CLUBCFG.fctMatch) || 'zzzz-sin-club') + '\\b'); }
 const toks = s => norm(s).split(' ').filter(t => t && !STOP.has(t));
 const slug = s => norm(s).replace(/ /g, '-');
 const ymd = d => { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(d || '')); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
@@ -237,7 +239,7 @@ async function runSeason(db, id) {
 const appUrl = req => process.env.APP_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host || ''));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function alertManagers(db, results, req) {
-  const meta = (await db.doc('meta/app').get()).data() || {}, teams = require('./_report.js').clubTeams(meta);
+  const meta = (await db.doc('meta/app').get()).data() || {}, teams = require('./_report.js').clubTeams(meta, db.cfg);
   const nameOf = sid => { const tid = String(sid).replace(/^\d{4}-\d{2}-?/, '') || (teams[0] || {}).id; return (teams.find(t => t.id === tid) || {}).name || sid; };
   const items = [];
   results.forEach(r => {
@@ -249,7 +251,7 @@ async function alertManagers(db, results, req) {
   });
   if (!items.length) return { sent: 0 };
   if ((meta.fctAlerts || {}).on === false) return { sent: 0, off: true, items: items.length };
-  const to = (meta.managerEmails || []).slice(0, 10); if (!to.length) return { sent: 0, noManagers: true };
+  const to = (await require('./_report.js').managerEmails(db, meta)).slice(0, 10); if (!to.length) return { sent: 0, noManagers: true };
   const { via, sendMail } = require('./_mail.js'); if (!via()) return { sent: 0, noMail: true };
   const link = appUrl(req) + '/#club-fct';
   await sendMail({ to, subject: 'Federació (FCT): hay datos que revisar, ' + CLUBCFG.medium,
@@ -267,7 +269,7 @@ async function weeklyReport(db, req, now = new Date()) {
   if (day !== (cfg.day === 'mon' ? 'Mon' : 'Sun')) return { skipped: 'no-toca' };
   const sat = R.ymd(R.weekendSat(now));
   if (cfg.lastSat === sat) return { skipped: 'ya-enviado' };
-  if (!(meta.managerEmails || []).length) return { skipped: 'sin-gestores' };
+  if (!(await R.managerEmails(db, meta)).length) return { skipped: 'sin-gestores' };
   if (!require('./_mail.js').via()) return { skipped: 'correo-sin-configurar' };
   const out = await R.sendWeekly(db, { meta, sat, appUrl: appUrl(req), auto: true });
   await db.doc('meta/app').set({ autoReport: { ...cfg, lastSat: sat, lastAt: Date.now() } }, { merge: true });
@@ -277,28 +279,31 @@ async function weeklyReport(db, req, now = new Date()) {
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
-    const A = getAdmin();
-    let db = await clubDbFor(A.firestore());
+    const A = getAdmin(), raw = A.firestore();
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    let ids = [];
     const cron = !!(process.env.CRON_SECRET && tok === process.env.CRON_SECRET);
-    if (cron) {
-      const snap = await db.collection('seasons').get(); snap.forEach(d => ids.push(d.id));
-    } else {
-      // Botón «Actualizar desde la FCT»: gestión del club o quien pueda gestionar ese equipo
+    // Por la noche: todos los clubes de la plataforma, uno detrás de otro. Botón «Actualizar desde la FCT»: el equipo pedido.
+    const jobs = [];
+    if (cron) { for (const id of await require('./_auth.js').allClubs(raw)) { const db = await clubDbFor(raw, id), ids = []; (await db.collection('seasons').get()).forEach(d => ids.push(d.id)); jobs.push({ db, ids }); } }
+    else {
       if (req.method !== 'POST') return res.status(401).json({ error: 'unauthorized' });
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
       const ctx = await needTeam(req, String(body.season || ''), 'canEdit');
-      db = ctx.cdb; ids = [String(body.season)];
+      jobs.push({ db: ctx.cdb, ids: [String(body.season)] });
     }
-    const results = [];
-    for (const id of ids) { try { results.push(await runSeason(db, id)); } catch (e) { results.push({ season: id, error: e.message }); await db.doc('seasons/' + id).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); } }
-    const extra = {};
-    if (cron) {
-      // Avisos al gestor: datos de la FCT que no cuadran con la app (solo los nuevos de esta noche)
-      try { extra.alert = await alertManagers(db, results, req); } catch (e) { extra.alert = { error: e.message }; }
-      // Informe semanal automático: el domingo por la noche, después de sincronizar
-      try { extra.report = await weeklyReport(db, req); } catch (e) { extra.report = { error: e.message }; }
+    const results = [], extra = {};
+    for (const { db, ids } of jobs) {
+      useClub(db.cfg);
+      const rs = [];
+      for (const id of ids) { try { rs.push(await runSeason(db, id)); } catch (e) { rs.push({ season: id, error: e.message }); await db.doc('seasons/' + id).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); } }
+      results.push(...rs.map(r => ({ club: db.club, ...r })));
+      if (cron) {
+        const k = db.club || 'club';
+        // Avisos al gestor: datos de la FCT que no cuadran con la app (solo los nuevos de esta noche)
+        try { extra['alert_' + k] = await alertManagers(db, rs, req); } catch (e) { extra['alert_' + k] = { error: e.message }; }
+        // Informe semanal automático: el domingo por la noche, después de sincronizar
+        try { extra['report_' + k] = await weeklyReport(db, req); } catch (e) { extra['report_' + k] = { error: e.message }; }
+      }
     }
     return res.status(200).json({ ok: true, results, ...extra });
   } catch (e) {
@@ -306,4 +311,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports._test = { syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
+module.exports._test = { useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };

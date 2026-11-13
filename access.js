@@ -19,6 +19,8 @@ const ACC_ORDER = ['gestor', 'capitan', 'jugador'];
 // Pantalla de entrada: solo dos opciones. El capitán es un jugador con permisos de su equipo (se detecta solo al entrar).
 const ACC_LOGIN = { jugador: { t: 'Soy jugador', d: 'Tu equipo, disponibilidad, convocatorias y resultados. Si eres capitán, también la gestión de tu equipo.' },
   gestor: { t: 'Soy gestor deportivo', d: 'Da de alta tu club, configura sus equipos y gestiona la competición.' } };
+// Cada llamada a /api lleva el club abierto: el servidor comprueba los permisos en ese club
+(function () { const f = window.fetch; if (!f) return; window.fetch = (u, o) => { try { if (typeof u === 'string' && u.startsWith('/api/') && window.CLUB && CLUB.id) { o = { ...(o || {}) }; o.headers = { ...(o.headers || {}), 'X-Club': CLUB.id }; } } catch (e) {} return f(u, o); }; })();
 const ACC = {
   flow: null,        // {role, club, step, join}: el recorrido de entrada en curso
   ctx: null,         // perfil con el que está dentro ahora
@@ -41,11 +43,14 @@ const accStore = {
 };
 function accFlowSave() { accStore.set('lc-flow', ACC.flow ? JSON.stringify(ACC.flow) : null); }
 function accSetFlow(patch) { ACC.flow = patch === null ? null : { ...(ACC.flow || {}), ...patch }; accFlowSave(); }
+// #invitacion-<código> (club original) o #invitacion-<código>.<club>
+const ACC_INV_RE = /^invitacion-([A-Za-z0-9]{6,})(?:\.([A-Za-z0-9_-]{2,40}))?$/;
 (function accBoot() {
   ACC.flow = accStore.json('lc-flow');
   if (ACC.flow && ACC.flow.role === 'capitan') ACC.flow.role = 'jugador';
   const h = (location.hash || '').slice(1);
-  if (/^invitacion-[A-Za-z0-9]{6,}$/.test(h)) { ACC.invite = h.slice(11).toUpperCase(); try { sessionStorage.setItem('lc-invite', ACC.invite); } catch (e) {} }
+  const iv = ACC_INV_RE.exec(h);
+  if (iv) { ACC.invite = iv[1].toUpperCase(); try { sessionStorage.setItem('lc-invite', ACC.invite); if (iv[2]) sessionStorage.setItem('lc-invite-club', iv[2]); else sessionStorage.removeItem('lc-invite-club'); } catch (e) {} }
   else { try { ACC.invite = sessionStorage.getItem('lc-invite'); } catch (e) {} }
   if (ACC.invite && !ACC.flow) ACC.flow = { role: 'jugador', step: 'auth' };
   // Una página restaurada del historial (botón atrás) no debe enseñar datos de una sesión ya cerrada
@@ -203,9 +208,41 @@ async function accCheckCaptain() {
   render();
 }
 // Gestor por aprobación o invitación: clubs/<club>/members/<uid> con el rol «gestor» (se suma a meta/app.managerEmails)
+/* ---------- Varios clubes en la misma app: el club lo decide la cuenta ---------- */
+// Pertenencias de la cuenta (clubs/*/members/<uid>), para entrar en su club o elegir entre varios
+async function accLoadClubs(u) {
+  ACC.clubs = [];
+  try { ACC.clubs = (await B.myClubs(u.uid)).filter(m => m.status !== 'inactivo' && ((m.roles || []).includes('gestor') || m.pid)); } catch (e) { ACC.clubs = []; }
+}
+// Abre otro club: guarda su configuración (de clubs/<id>) y recarga la app con ella. El original vuelve al archivo.
+async function accGoClub(id) {
+  if (!id || id === CLUB.id) return false;
+  ACC.switching = true; render();
+  try {
+    if (id === (window.CLUB_DEFAULT || {}).id) { accStore.set('lc-club', null); location.reload(); return true; }
+    const d = await B.getDoc('clubs/' + id) || {};
+    const keep = ['name', 'shortName', 'short', 'town', 'colors', 'crest', 'crestSm', 'fctId', 'fctGroups', 'fctMatch', 'aliases', 'abbr', 'teamShort', 'fileTag'];
+    accStore.set('lc-club-cfg-' + id, JSON.stringify(Object.fromEntries(keep.filter(k => d[k] != null && d[k] !== '').map(k => [k, d[k]]))));
+    accStore.set('lc-club', id); location.reload(); return true;
+  } catch (e) { ACC.switching = false; toast('No se ha podido abrir el club: ' + (e?.code || e?.message || 'error')); render(); return false; }
+}
+// La configuración guardada de este club se renueva al entrar (por si su gestión cambió nombre, escudo o grupos)
+function accRefreshClubCfg(d) {
+  if (!CLUB.generic || !d) return;
+  const keep = ['name', 'shortName', 'short', 'town', 'colors', 'crest', 'crestSm', 'fctId', 'fctGroups', 'fctMatch', 'aliases', 'abbr', 'teamShort', 'fileTag'];
+  const next = JSON.stringify(Object.fromEntries(keep.filter(k => d[k] != null && d[k] !== '').map(k => [k, d[k]])));
+  if (accStore.get('lc-club-cfg-' + CLUB.id) !== next) accStore.set('lc-club-cfg-' + CLUB.id, next);
+}
+function accClubPick() {
+  const list = ACC.clubs || [];
+  return accShell(`${accTop(false)}<h1 class="acc-h sm">¿A qué club quieres entrar?</h1><p class="acc-p">Tu cuenta tiene acceso a varios clubes. Puedes cambiar cuando quieras desde el menú de tu cuenta.</p>
+    <div class="acc-clubs" role="list">${list.map(m => `<button class="acc-club" data-acc="go-club" data-v="${esc(m.club)}">${accCrest({ name: m.clubName || m.club, crest: m.crestSm || '' }, 52)}<span><b>${esc(m.clubName || m.club)}</b><small>${esc([(m.roles || []).includes('gestor') ? 'Gestor deportivo' : '', m.pid ? 'Jugador' : ''].filter(Boolean).join(' · '))}</small></span><span class="acc-arr">›</span></button>`).join('')}</div>${accAccount()}`, '', 'club-pick');
+}
 async function accLoadMember(u) {
   ACC.member = null; if (!u || !window.CLUB || !CLUB.id) return;
+  await accLoadClubs(u);
   try { ACC.member = await B.getDoc('clubs/' + CLUB.id + '/members/' + u.uid); } catch (e) { ACC.member = null; }
+  if (ACC.member && B.noteClub && !(ACC.clubs || []).some(m => m.club === CLUB.id)) { B.noteClub(u.uid, CLUB.id); ACC.clubs = [...(ACC.clubs || []), { club: CLUB.id, clubName: CLUB.name, ...ACC.member }]; }
   try { const pa = await B.getDoc('public/access'); ACC.openClaims = pa?.openClaims === true; } catch (e) {}
 }
 const accIsMemberGestor = () => (ACC.member?.roles || []).includes('gestor') && ACC.member?.status !== 'inactivo';
@@ -238,7 +275,16 @@ function accGate() {
   if (ACC.invite && !me) { if (!ACC.flow) accSetFlow({ role: 'jugador', step: 'check' }); return accInviteView(); }
   if (ACC.invite && me) { accClearInvite(); toast('Ya estás vinculado como ' + pname(me)); }
   if (ACC.ginv) return accGestorInviteView();
+  if (ACC.switching) return accWait('Abriendo tu club…');
+  // Invitación de otro club: se abre ese club antes de leerla
+  if (ACC.invite && !me) { let ic = null; try { ic = sessionStorage.getItem('lc-invite-club'); } catch (e) {}
+    const want = ic || (window.CLUB_DEFAULT || {}).id; if (want && want !== CLUB.id) { accGoClub(want); return accWait('Abriendo tu club…'); } }
   let f = ACC.flow;
+  const here = !!(me || isManager || isAdmin), others = (ACC.clubs || []).filter(m => m.club !== CLUB.id);
+  if (!here && others.length && !(f && f.role === 'gestor')) {
+    if (others.length === 1 && !(ACC.clubs || []).some(m => m.club === CLUB.id)) { accGoClub(others[0].club); return accWait('Abriendo tu club…'); }
+    return accClubPick();
+  }
   if (!f) {
     // Sesión ya abierta sin recorrido: si no se le conoce ningún perfil, se le pregunta quién es
     if (!me && !isManager && !isAdmin) { accSetFlow({ step: 'role' }); f = ACC.flow; }
@@ -306,9 +352,8 @@ function accGestorCheck(f) {
       const done = d => { if (ACC.memberOf[c.id] === undefined) { ACC.memberOf[c.id] = d || null; render(); } };
       B.getDoc('clubs/' + c.id + '/members/' + authUser.uid).then(done).catch(() => done(null)); setTimeout(() => done(null), 8000); }
     if (ACC.memberOf[c.id] === undefined) return accWait('Comprobando tu acceso a ' + c.name + '…');
-    ok = (ACC.memberOf[c.id]?.roles || []).includes('gestor');
-    if (ok) return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c, 76)}<div><span class="acc-k">Acceso autorizado</span><h1 class="acc-h sm">${esc(c.name)}</h1></div></div>
-      <p class="acc-p">Eres gestor deportivo de este club. Su entorno en Lliga Catalana todavía no está activo: lo prepararemos con sus equipos y su identidad y te avisaremos.</p>${sw}${accAccount()}`, 'acc-launch', 'gestor-wait');
+    ok = (ACC.memberOf[c.id]?.roles || []).includes('gestor') && ACC.memberOf[c.id]?.status !== 'inactivo';
+    if (ok) { accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '', web: c.web || '' })); accGoClub(c.id); return accWait('Abriendo ' + c.name + '…'); }
   }
   if (ok) { accStore.set('lc-last-club', JSON.stringify({ id: c.id, name: c.name, town: c.town || '', crest: c.crest || '', web: c.web || '' })); return accFinish('gestor'); }
   accWatchReq();
@@ -342,6 +387,8 @@ function accWatchReq() {
 }
 async function accSendReq(msg, role, extra = {}) {
   const f = ACC.flow || {}, c = accClub(f.club) || (window.CLUB && { id: CLUB.id, name: CLUB.name }); if (!c) return;
+  // Datos oficiales del club (catálogo FCT) para crear su espacio si la plataforma aprueba al gestor
+  if (role !== 'jugador') extra = { clubShort: c.short || '', clubTown: c.town || '', clubWeb: c.web || '', ...extra };
   const name = f.who ? (f.who.first + ' ' + f.who.last).trim() : (authUser.name || '');
   ui.accBusy = true; render();
   try { await B.set('clubRequests/' + authUser.uid, { uid: authUser.uid, email: authUser.email, name, clubId: c.id, clubName: c.name, role: role || 'gestor', msg: String(msg || '').slice(0, 300), status: 'pendiente', at: Date.now(), ...extra });
@@ -440,13 +487,13 @@ function accJoinView(f, role) {
   if (R && R.status === 'pendiente') return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(accClub(R.clubId) || {}, 64)}<div><span class="acc-k">${esc(R.clubName)}</span><h1 class="acc-h sm">Solicitud enviada</h1></div></div>
     <p class="acc-p">${R.pidName ? `Has dicho que eres <b>${esc(R.pidName)}</b>${R.teamName ? ' (' + esc(R.teamName) + ')' : ''}. Tu capitán o la gestión del club lo confirmará y entrarás directamente.` : 'El capitán de tu equipo o la gestión del club te vinculará a tu ficha de jugador y entrarás directamente.'}</p>${accNotifyLine(R)}
     <div class="acc-acts"><button class="acc-link" data-acc="req-cancel">Cancelar la solicitud</button></div>${accCodeForm('¿Te ha llegado la invitación? Introdúcela y entras ya.')}${accAccount()}`, '', 'join-pend');
-  const c = accActiveClubs()[0] || {}, L = ACC.link || {}, who = f.who || {};
+  const c = { name: 'Lliga Catalana' }, L = ACC.link || {}, who = f.who || {};
   const head = (t, k) => `${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${esc(k || c.name || '')}</span><h1 class="acc-h sm">${t}</h1></div></div>`;
   const reqBtn = (pid, label) => `<button class="acc-btn ghost" data-acc="link-req" data-v="${esc(pid || '')}">${label || 'Pedir al club que me vincule'}</button>`;
   if (f.join === 'link') {
     if (L.busy) return accWait('Comprobando tus datos con la plantilla oficial…');
     const st = L.res?.status, cand = L.res?.candidates || [];
-    if (st === 'cerrado') return accShell(`${head('Tu club aún no ha abierto el registro')}<p class="acc-p">${esc(c.name || 'Tu club')} está preparando sus equipos y plantillas en Lliga Catalana. Cuando su gestor deportivo lo active podrás entrar con tus datos. Si te han enviado una invitación, úsala:</p>${accCodeForm()}${accAccount()}`, 'acc-launch', 'join-closed');
+    if (st === 'cerrado') return accShell(`${head('Tu club aún no ha abierto el registro')}<p class="acc-p">Ningún club ha abierto todavía el registro de jugadores: primero su gestor deportivo da de alta el club y prepara sus equipos y plantillas. Cuando lo active podrás entrar con tus datos. Si te han enviado una invitación, úsala:</p>${accCodeForm()}${accAccount()}`, 'acc-launch', 'join-closed');
     if (st === 'ocupada') return accShell(`${head('Esta ficha ya tiene cuenta')}<p class="acc-p">La ficha de <b>${esc(L.res.name)}</b> ya está vinculada a otra cuenta de Google. Si eres tú y no la reconoces, pide al club que la revise.</p><div class="acc-acts">${reqBtn('', 'Pedir al club que lo revise')}<button class="acc-link" data-acc="link-edit">Volver</button></div>${accAccount()}`, 'acc-launch', 'join-taken');
     if (st === 'limite' || st === 'desactivado') return accShell(`${head(st === 'limite' ? 'Demasiados intentos' : 'Tu acceso está desactivado')}<p class="acc-p">${st === 'limite' ? 'Por seguridad, hoy ya no se pueden hacer más comprobaciones con esta cuenta. Inténtalo mañana o pide al club que te vincule.' : 'La gestión del club ha desactivado el acceso de esta cuenta.'}</p><div class="acc-acts">${st === 'limite' ? reqBtn() : ''}</div>${accAccount()}`, 'acc-launch', 'join-limit');
     if (st === 'pedir-licencia' || st === 'licencia') return accShell(`${head(st === 'licencia' ? 'La licencia no coincide' : 'Hemos encontrado tu ficha')}
@@ -480,35 +527,42 @@ async function accLinkMe(who) {
       res = await r.json().catch(() => ({})); if (!r.ok) throw new Error(res.error || 'error ' + r.status); }
     else res = await accLinkLocal(who);
     ACC.link = { res };
+    if (res.status === 'vinculado' && res.club && res.club !== CLUB.id) { accSetFlow({ step: 'check', join: null }); toast('Te llevamos a ' + (res.clubName || 'tu club')); accGoClub(res.club); return; }
     if (res.status === 'vinculado') { accSetFlow({ step: 'check', join: null }); toast(res.captain?.length ? 'Ya estás dentro, como capitán de tu equipo' : 'Ya estás en tu equipo');
       ACC.capKey = ''; try { ACC.member = await B.getDoc('clubs/' + CLUB.id + '/members/' + authUser.uid); } catch (e) {} }
   } catch (e) { ACC.link = { err: e.message || 'error' }; }
   render();
 }
 async function accLinkLocal(who) {
-  const club = await B.getDoc('clubs/' + CLUB.id); if (!club?.activation?.at) return { status: 'cerrado' };
+  // Vista previa: misma lógica que el servidor, recorriendo los clubes activados (solo los accesibles desde aquí)
+  const def = (window.CLUB_DEFAULT || CLUB).id, clubs = Object.entries(await B.getColl('clubs')).filter(([, x]) => x?.activation?.at).map(([id, x]) => ({ id, name: x.name || (id === def ? (window.CLUB_DEFAULT || CLUB).name : id) }));
+  if (!clubs.length) return { status: 'cerrado' };
   const N = s => accNorm(s).replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1), lic = x => String(x || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toUpperCase();
-  const F = N(who.first), Ls = N(who.last), Lc = lic(who.licence), m0 = await B.getDoc('meta/app') || {}, all = new Map();
-  for (const t of clubTeams()) { const sid = docIdFor(t.id, m0.current || viewSeason), S = await B.getDoc('seasons/' + sid); if (!S) continue; const off = Array.isArray(S.officialCaptains) ? S.officialCaptains : (S.captains || []);
-    (S.players || []).filter(p => p.active !== false).forEach(p => { const m = all.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] }; m.teams.push({ id: t.id, name: t.name, season: sid, official: off.includes(p.id), S }); all.set(p.id, m); }); }
-  const nameOk = m => { const n = N(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && Ls.some(x => n.includes(x)); };
-  const L = [...all.values()], bl = Lc ? L.filter(m => m.lic && lic(m.lic) === Lc) : [];
-  if (bl.length === 1 && nameOk(bl[0])) {
-    const m = bl[0], cl = await B.getDoc('claims/' + m.pid); if (cl && cl.email !== authUser.email) return { status: 'ocupada', name: m.name };
-    await B.claim(m.pid); await B.merge('clubs/' + CLUB.id + '/members/' + authUser.uid, { pid: m.pid, email: authUser.email, roles: ['jugador'], status: 'activo' });
-    const caps = m.teams.filter(x => x.official); for (const x of caps) if (!(x.S.captains || []).includes(m.pid)) await B.update('seasons/' + x.season, { captains: [...(x.S.captains || []), m.pid] });
-    return { status: 'vinculado', pid: m.pid, captain: caps.map(x => x.id) };
+  const F = N(who.first), Ls = N(who.last), Lc = lic(who.licence), oks = [], cands = []; let nameBad = false;
+  for (const c of clubs) {
+    const here = c.id === CLUB.id; if (!here && c.id === def) continue;   // el club original solo se lee desde él mismo
+    const R = here ? '' : 'clubs/' + c.id + '/', m0 = await B.getDoc(R + 'meta/app') || {}, teams = here ? clubTeams() : (m0.teams || []), all = new Map();
+    for (const t of teams) { const sid = here ? docIdFor(t.id, m0.current || viewSeason) : (m0.current || viewSeason) + '-' + t.id, S = await B.getDoc(R + 'seasons/' + sid); if (!S) continue; const off = Array.isArray(S.officialCaptains) ? S.officialCaptains : (S.captains || []);
+      (S.players || []).filter(p => p.active !== false).forEach(p => { const m = all.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] }; m.teams.push({ id: t.id, name: t.name, season: sid, official: off.includes(p.id), S }); all.set(p.id, m); }); }
+    const nameOk = m => { const n = N(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && Ls.some(x => n.includes(x)); };
+    const L = [...all.values()], bl = Lc ? L.filter(m => m.lic && lic(m.lic) === Lc) : [];
+    if (bl.length === 1 && nameOk(bl[0])) oks.push({ c, R, here, m: bl[0] }); else if (bl.length) nameBad = true;
+    L.filter(nameOk).forEach(m => cands.push({ pid: m.pid, name: m.name, club: c.id, clubName: c.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) }));
   }
-  if (bl.length) return { status: 'nombre' };
-  const bn = L.filter(nameOk); if (bn.length) return { status: Lc ? 'licencia' : 'pedir-licencia', candidates: bn.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) })) };
-  return { status: 'no' };
+  if (!oks.length) return nameBad ? { status: 'nombre' } : cands.length ? { status: Lc ? 'licencia' : 'pedir-licencia', candidates: cands } : { status: 'no' };
+  const { c, R, here, m } = oks[0], cl = await B.getDoc(R + 'claims/' + m.pid); if (cl && cl.email !== authUser.email) return { status: 'ocupada', name: m.name };
+  if (here) await B.claim(m.pid); else await B.set(R + 'claims/' + m.pid, { uid: authUser.uid, email: authUser.email, at: Date.now() });
+  if (B.noteClub) await B.noteClub(authUser.uid, c.id);
+  await B.merge('clubs/' + c.id + '/members/' + authUser.uid, { uid: authUser.uid, pid: m.pid, email: authUser.email, roles: ['jugador'], status: 'activo' });
+  const caps = m.teams.filter(x => x.official); for (const x of caps) if (!(x.S.captains || []).includes(m.pid)) await B.update(R + 'seasons/' + x.season, { captains: [...(x.S.captains || []), m.pid] });
+  return { status: 'vinculado', club: c.id, clubName: c.name, pid: m.pid, captain: caps.map(x => x.id) };
 }
 async function accLinkReq(pid) {
   const x = (ACC.link?.res?.candidates || []).find(m => m.pid === pid), t = x?.teams?.[0] || {};
-  accSendReq('', 'jugador', x ? { pid, pidName: x.name, team: t.id || '', teamName: t.name || '', season: t.season || '' } : {});
+  accSendReq('', 'jugador', x ? { pid, pidName: x.name, team: t.id || '', teamName: t.name || '', season: t.season || '', ...(x.club ? { clubId: x.club, clubName: x.clubName || '' } : {}) } : {});
 }
 const accCodeForm = (hint) => `<form class="acc-code" data-acc-form="code">${hint ? `<p class="acc-p dim">${hint}</p>` : ''}<label for="acc-code">Código de invitación</label><div class="acc-cin"><input id="acc-code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="Por ejemplo, K7PQ2XM4" maxlength="80"><button class="acc-btn" type="submit">Continuar</button></div></form>`;
-function accClearInvite() { ACC.invite = null; ACC.inv = null; try { sessionStorage.removeItem('lc-invite'); } catch (e) {} if (route().startsWith('invitacion-')) history.replaceState(null, '', '#inicio'); }
+function accClearInvite() { ACC.invite = null; ACC.inv = null; try { sessionStorage.removeItem('lc-invite'); sessionStorage.removeItem('lc-invite-club'); } catch (e) {} if (route().startsWith('invitacion-')) history.replaceState(null, '', '#inicio'); }
 function accInviteView() {
   const code = ACC.invite, I = ACC.inv;
   if (!I || I.code !== code) {
@@ -562,6 +616,7 @@ function accMenuDraw() {
       <div class="acc-m-row"><button class="acc-m-b ghost" data-acc="menu-back" ${st === 'busy' ? 'disabled' : ''}>Cancelar</button><button class="acc-m-b danger" data-acc="signout-confirm" ${st === 'busy' ? 'disabled' : ''}>${st === 'busy' ? 'Cerrando sesión…' : st === 'error' ? 'Reintentar' : 'Cerrar sesión'}</button></div>`;
   else body = `<div class="acc-m-me">${p ? avatar(p) : `<span class="av">${esc((authUser.email || '?')[0].toUpperCase())}</span>`}<div><b>${esc(p?.name || authUser.name || 'Tu cuenta')}</b><small>${esc(authUser.email)}</small></div></div>
       ${roles.length > 1 ? `<p class="acc-m-k">Entrar como</p><div class="acc-m-roles">${roles.map(k => `<button data-acc="enter" data-v="${k}" aria-pressed="${ACC.ctx === k}">${accIco(k, 16)}${ACC_ROLES[k].t}</button>`).join('')}</div>` : roles.length ? `<p class="acc-m-k">Acceso: ${ACC_ROLES[roles[0]].t}</p>` : ''}
+      ${(ACC.clubs || []).filter(m => m.club !== CLUB.id).length ? `<p class="acc-m-k">Club</p><div class="acc-m-list"><button aria-pressed="true" disabled>${esc(CLUB.medium || CLUB.name)}</button>${(ACC.clubs || []).filter(m => m.club !== CLUB.id).map(m => `<button data-acc="go-club" data-v="${esc(m.club)}">Cambiar a ${esc(m.clubName || m.club)}</button>`).join('')}</div>` : ''}
       <div class="acc-m-list">${me ? `<button data-acc="go" data-v="perfil">${accIco('user', 17)}Mi perfil</button>` : ''}<button data-acc="go" data-v="yo">${accIco('settings', 17)}Yo: avisos e instalación</button><button class="danger" data-acc="signout">${accIco('logout', 17)}Cerrar sesión</button></div>`;
   el.innerHTML = body;
   el.querySelector('[data-acc="signout-confirm"],[data-acc="enter"][aria-pressed="true"],button')?.focus({ preventScroll: true });
@@ -581,7 +636,7 @@ async function accSignOut() {
 
 /* ---------- Invitaciones (Gestión > Plantilla) ---------- */
 function accCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', b = new Uint32Array(10); crypto.getRandomValues(b); return [...b].map(x => A[x % A.length]).join(''); }
-const accInviteUrl = code => location.origin + location.pathname + '#invitacion-' + code;
+const accInviteUrl = code => location.origin + location.pathname + '#invitacion-' + code + (CLUB.generic ? '.' + CLUB.id : '');
 function accInviteCell(p) {
   if (claims[p.id] || !(canPrivate || canClub())) return '';
   const i = ACC.invites[p.id];
@@ -696,7 +751,9 @@ async function accDecide(id, ok) {
       const pid = ACC.admin.link[id]; if (!pid) throw new Error('Elige el jugador de la plantilla');
       extra.invite = await accMakeInvite(pid, r.pid === pid ? r.team : undefined); extra.pid = pid;     // el solicitante entra con esta invitación (la ve al instante)
     } else if (ok) {
-      await B.set('clubs/' + r.clubId + '/members/' + r.uid, { email: r.email, roles: ['gestor'], approvedBy: authUser.email, at: by.decidedAt, request: id });
+      if (B.noteClub) B.merge('accounts/' + r.uid, { clubs: { [r.clubId]: true } }).catch(() => {});
+      if (r.clubId !== (window.CLUB_DEFAULT || CLUB).id && !(await B.getDoc('clubs/' + r.clubId))) await B.set('clubs/' + r.clubId, { name: r.clubName || '', shortName: r.clubShort || '', town: r.clubTown || '', web: r.clubWeb || '', fctId: /^\d{5,}$/.test(r.clubId) ? r.clubId : '', createdAt: Date.now(), createdBy: authUser.email, setup: { done: {} } });
+      await B.set('clubs/' + r.clubId + '/members/' + r.uid, { uid: r.uid, email: r.email, roles: ['gestor'], approvedBy: authUser.email, at: by.decidedAt, request: id });
       if (isAdmin && r.clubId === CLUB.id) {   // también en la lista de gestores (recibe el informe semanal)
         const managers = [...(meta?.managers || []).filter(x => x.email !== r.email), { name: r.name || '', email: r.email, approvedBy: authUser.email, approvedAt: by.decidedAt }];
         await saveMeta({ managers, managerEmails: managers.map(x => x.email) });
@@ -712,7 +769,7 @@ async function accLoadBrand() {
     const d = await B.getDoc('clubs/' + CLUB.id);
     // Raíz de los datos: la de club-config.js hasta que el club se migra a clubs/<id>/ (fase 2; las reglas y el servidor hacen lo mismo)
     if (B.setRoot) B.setRoot(d && d.migrated === true ? 'clubs/' + CLUB.id : (CLUB.dataRoot || ''));
-    if (d) { ACC.admin.brand = d; accStore.set('lc-brand-' + CLUB.id, d.colors ? JSON.stringify(d.colors) : null); accIdentity(d); accApplyBrand(); softRender(); }
+    if (d) { ACC.admin.brand = d; accRefreshClubCfg(d); accStore.set('lc-brand-' + CLUB.id, d.colors ? JSON.stringify(d.colors) : null); accIdentity(d); accApplyBrand(); softRender(); }
   } catch (e) {}
 }
 // Identidad del club guardada por su gestión (clubs/<id>): escudo, nombre de uso y portada, en toda la app (cabecera,
@@ -750,6 +807,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'req-renotify') accNotifyReq(true);
   else if (a === 'link-req') accLinkReq(v);
+  else if (a === 'go-club') accGoClub(v);
   else if (a === 'link-edit') { ACC.link = null; accSetFlow({ join: null }); render(); }
   else if (a === 'join-req') { accSetFlow({ join: 'req' }); render(); scrollTo(0, 0); }
   else if (a === 'req-club') { accSetFlow({ club: v }); render(); }
@@ -807,6 +865,7 @@ document.addEventListener('submit', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && ACC.menu) accMenuToggle(false); });
 window.addEventListener('hashchange', () => { const h = location.hash.slice(1);
-  if (/^invitacion-[A-Za-z0-9]{6,}$/.test(h)) { ACC.invite = h.slice(11).toUpperCase(); ACC.inv = null; try { sessionStorage.setItem('lc-invite', ACC.invite); } catch (e) {}
+  const iv = ACC_INV_RE.exec(h);
+  if (iv) { ACC.invite = iv[1].toUpperCase(); ACC.inv = null; try { sessionStorage.setItem('lc-invite', ACC.invite); if (iv[2]) sessionStorage.setItem('lc-invite-club', iv[2]); else sessionStorage.removeItem('lc-invite-club'); } catch (e) {}
     if (!authUser) accSetFlow({ role: 'jugador', step: 'auth' }); render(); }
   if (ACC.menu) accMenuToggle(false); });

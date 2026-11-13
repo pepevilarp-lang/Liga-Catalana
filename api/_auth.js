@@ -15,6 +15,13 @@ const CLUB_COLLS = ['meta', 'public', 'claims', 'profiles', 'photos', 'phones', 
 const isClubPath = p => CLUB_COLLS.includes(String(p).split('/')[0]);
 
 // Dónde están hoy los datos del club: '' (raíz) o 'clubs/<id>/'
+const validClub = id => /^[A-Za-z0-9_-]{2,40}$/.test(String(id || ''));
+// Configuración de un club: la del archivo para el Real Club de Polo; para los demás, su documento clubs/<id>
+async function clubConfig(db, clubId = CLUB.id) {
+  if (clubId === CLUB.id) return CLUB;
+  const d = await db.doc('clubs/' + clubId).get().catch(() => null);
+  return CLUB.forClub(clubId, d && d.exists ? d.data() : {});
+}
 async function dataRoot(db, clubId = CLUB.id) {
   if (clubId !== 'rcpb') return 'clubs/' + clubId + '/';
   const c = await db.doc('clubs/' + clubId).get().catch(() => null);
@@ -23,8 +30,14 @@ async function dataRoot(db, clubId = CLUB.id) {
 // Traduce una ruta de datos del club a su ruta real (la raíz se calcula una vez por petición)
 function pather(root) { return p => (root && isClubPath(p) ? root + p : p); }
 // Base de datos «del club»: doc() y collection() traducen las rutas de datos del club a su raíz real
-function clubDb(db, P) { return { doc: p => db.doc(P(p)), collection: p => db.collection(P(p)), batch: () => db.batch(), raw: db, P }; }
-async function clubDbFor(db, clubId = CLUB.id) { return clubDb(db, pather(await dataRoot(db, clubId))); }
+function clubDb(db, P, club, cfg) { return { doc: p => db.doc(P(p)), collection: p => db.collection(P(p)), batch: () => db.batch(), raw: db, P, club, cfg }; }
+async function clubDbFor(db, clubId = CLUB.id) { return clubDb(db, pather(await dataRoot(db, clubId)), clubId, await clubConfig(db, clubId)); }
+// Clubes con datos en la plataforma (para las tareas nocturnas): el original y los dados de alta con su configuración
+async function allClubs(db) {
+  const ids = new Set([CLUB.id]);
+  (await db.collection('clubs').get()).forEach(d => { const x = d.data() || {}; if (x.activation || x.setup || x.createdAt) ids.add(d.id); });
+  return [...ids];
+}
 
 const lower = s => String(s || '').toLowerCase();
 const httpErr = (status, msg) => Object.assign(new Error(msg), { status });
@@ -36,7 +49,8 @@ async function caller(req, opts = {}) {
   if (!token) throw httpErr(401, 'Falta la sesión');
   const user = await A.auth().verifyIdToken(token);
   if (user.email_verified !== true) throw httpErr(403, 'Correo sin verificar');
-  const email = lower(user.email), clubId = opts.club || CLUB.id;
+  // El club de la petición: lo envía la app en la cabecera X-Club (el que tiene abierto); por defecto, el original
+  const hdr = req.headers['x-club'], clubId = opts.club || (validClub(hdr) ? hdr : CLUB.id);
   const root = await dataRoot(db, clubId), P = pather(root);
   const [a1, a2, m, u, meta] = await Promise.all([db.doc('admins/' + user.uid).get(), db.doc('admins/' + email).get(),
     db.doc('clubs/' + clubId + '/members/' + user.uid).get(), db.doc('users/' + user.uid).get(), db.doc(P('meta/app')).get()]);
@@ -47,7 +61,8 @@ async function caller(req, opts = {}) {
   let pid = !active ? null : root ? (member && member.pid) || null : (u.exists ? u.data().pid : null) || null;
   // En la raíz, la ficha cuenta solo si su vínculo sigue siendo de esta cuenta (igual que rootLinked en firestore.rules)
   if (pid && !root) { const c = await db.doc('claims/' + pid).get(); if (!c.exists || c.data().uid !== user.uid) pid = null; }
-  return { A, db, cdb: clubDb(db, P), user, email, clubId, root, P, meta: metaD, member, active, isAdmin, isManager, isStaff: isAdmin || isManager, pid };
+  const cfg = await clubConfig(db, clubId);
+  return { A, db, cdb: clubDb(db, P, clubId, cfg), cfg, user, email, clubId, root, P, meta: metaD, member, active, isAdmin, isManager, isStaff: isAdmin || isManager, pid };
 }
 // Papel en un equipo (temporada S), con los mismos criterios que las reglas
 function teamRole(ctx, S) {
@@ -74,4 +89,4 @@ async function audit(ctx, action, data = {}) {
 }
 const sendErr = (res, e) => res.status(e.status || (e.code && String(e.code).startsWith('auth/') ? 401 : 500)).json({ error: e.message || 'error' });
 
-module.exports = { getAdmin, CLUB_COLLS, isClubPath, dataRoot, pather, clubDb, clubDbFor, caller, teamRole, needTeam, audit, httpErr, sendErr };
+module.exports = { getAdmin, CLUB_COLLS, isClubPath, dataRoot, pather, clubDb, clubDbFor, clubConfig, allClubs, validClub, caller, teamRole, needTeam, audit, httpErr, sendErr };

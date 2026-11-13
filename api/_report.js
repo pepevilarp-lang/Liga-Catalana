@@ -14,8 +14,10 @@ const DOC_ST = { subido: 'Pendiente', procesando: 'Procesando', revision: 'En re
 const CLUBCFG = require('../club-config.js'), CLUB = CLUBCFG.name;
 
 const MAIN_TEAM = (DEFAULT_CLUB_TEAMS[0] || {}).id || 'polo-a';
-const docIdFor = (tid, season) => tid === MAIN_TEAM ? season : season + '-' + tid;
-const clubTeams = meta => { const base = (Array.isArray(meta && meta.teams) && meta.teams.length) ? meta.teams : []; return [...base, ...DEFAULT_CLUB_TEAMS.filter(d => !base.some(t => t.id === d.id))].map(t => ({ gender: '', ...t })); };
+// cfg = configuración del club (cdb.cfg). Solo el club original tiene equipos por defecto y un equipo con la ruta de temporada antigua.
+const isGeneric = cfg => !!(cfg && cfg.generic);
+const docIdFor = (tid, season, cfg) => !isGeneric(cfg) && tid === MAIN_TEAM ? season : season + '-' + tid;
+const clubTeams = (meta, cfg) => { const base = (Array.isArray(meta && meta.teams) && meta.teams.length) ? meta.teams : []; const def = isGeneric(cfg) ? [] : DEFAULT_CLUB_TEAMS; return [...base, ...def.filter(d => !base.some(t => t.id === d.id))].map(t => ({ gender: '', ...t })); };
 const teamCat = t => [t && t.cat, ((t && t.gender) || '').toLowerCase()].filter(Boolean).join(' ');
 const ymd = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
 function weekendSat(ref) { const x = new Date(ref || Date.now()); x.setHours(12, 0, 0, 0); const day = x.getDay(); x.setDate(x.getDate() + (day === 6 ? 0 : day === 0 ? -1 : -(day + 1))); return x; }
@@ -129,8 +131,8 @@ async function reportFacts(db, opts = {}) {
   const seasonId = opts.season || meta.current; if (!seasonId) throw new Error('No hay temporada actual en la configuración');
   const sat = opts.sat || ymd(weekendSat()), rg = weekendRange(sat), ns = new Date(sat + 'T12:00:00'); ns.setDate(ns.getDate() + 7); const rn = weekendRange(ymd(ns));
   const out = [], next = [], docsPend = [];
-  for (const t of clubTeams(meta)) {
-    const sref = db.doc('seasons/' + docIdFor(t.id, seasonId)), snap = await sref.get(); if (!snap.exists) continue;
+  for (const t of clubTeams(meta, db.cfg)) {
+    const sref = db.doc('seasons/' + docIdFor(t.id, seasonId, db.cfg)), snap = await sref.get(); if (!snap.exists) continue;
     const X = season(snap.data()), S = X.S;
     const fx = S.fixtures.filter(f => (f.home === POLO || f.away === POLO) && f.date >= rg.from && f.date <= rg.to).map(f => ({ f, s: X.tieState(f) })).filter(x => x.s.st !== 'next');
     const av = await collMap(sref.collection('avail'));
@@ -143,7 +145,7 @@ async function reportFacts(db, opts = {}) {
   const sum = k => out.reduce((a, x) => { const [w, l] = x.fin_de_semana[k].split('-').map(Number); return [a[0] + w, a[1] + l]; }, [0, 0]);
   const tot = { equipos: out.length, victorias: out.filter(x => x.estado === 'victoria').length, derrotas: out.filter(x => x.estado === 'derrota').length, empates: 0, pendientes: out.filter(x => x.estado === 'pendiente').length,
     sin_validar: out.filter(x => x.pendientes.sin_validar).length, individuales: sum('individuales').join('-'), dobles: sum('dobles').join('-') };
-  return { club: CLUB, temporada: seasonId, fin_de_semana: weekendLabel(rg), sat, totales: tot, equipos: out, proximo_fin_de_semana: { fechas: weekendLabel(rn), eliminatorias: next }, documentacion_pendiente: docsPend };
+  return { club: (db.cfg || CLUBCFG).name, temporada: seasonId, fin_de_semana: weekendLabel(rg), sat, totales: tot, equipos: out, proximo_fin_de_semana: { fechas: weekendLabel(rn), eliminatorias: next }, documentacion_pendiente: docsPend };
 }
 
 // Textos de respaldo si la IA no está disponible: solo datos (copia de factualTexts de app.js)
@@ -165,10 +167,10 @@ async function analysis(F) {
 
 // Identidad del club guardada por su gestor (clubs/<id>): nombre de uso, escudo y colores. Si no hay, la de club-config.js
 async function clubIdentity(db) {
-  const raw = (db && db.raw) || db;
-  let d = {}; try { const x = await raw.doc('clubs/' + CLUBCFG.id).get(); if (x.exists) d = x.data() || {}; } catch (e) {}
+  const raw = (db && db.raw) || db, C = (db && db.cfg) || CLUBCFG;
+  let d = {}; try { const x = await raw.doc('clubs/' + C.id).get(); if (x.exists) d = x.data() || {}; } catch (e) {}
   const hex = h => (/^#[0-9a-f]{6}$/i.test(String(h || '')) ? h : null);
-  return { name: d.name || CLUBCFG.name, medium: d.shortName || CLUBCFG.medium, crest: /^data:image\/png;base64,/.test(d.crestPng || '') ? d.crestPng : require('./_crest.js'),
+  return { name: d.name || C.name, medium: d.shortName || C.medium, crest: /^data:image\/png;base64,/.test(d.crestPng || '') ? d.crestPng : require('./_crest.js'),
     primary: hex((d.colors || {}).primary) || '#13261F', secondary: hex((d.colors || {}).secondary) || '#94722A' };
 }
 function pdfBuffer(F, A, crest) {
@@ -206,16 +208,22 @@ function emailFor(F, file, appUrl, I) {
 }
 
 // Genera y envía el informe. Devuelve lo enviado y lo deja registrado en la colección reports.
+// Destinatarios del informe: la lista de gestores del club; si está vacía, sus miembros con rol de gestor
+async function managerEmails(db, meta) {
+  const list = (meta && meta.managerEmails) || []; if (list.length) return list;
+  const raw = (db && db.raw) || db, id = (db && db.club) || CLUBCFG.id;
+  try { const q = await raw.collection('clubs/' + id + '/members').where('roles', 'array-contains', 'gestor').get(); return q.docs.map(d => d.data()).filter(m => m.status !== 'inactivo' && m.email).map(m => String(m.email).toLowerCase()); } catch (e) { return []; }
+}
 async function sendWeekly(db, { meta, sat, to, by, appUrl, auto } = {}) {
   const { sendMail } = require('./_mail.js');
   meta = meta || ((await db.doc('meta/app').get()).data() || {});
-  to = [...new Set((to || meta.managerEmails || []).map(x => String(x).toLowerCase()).filter(Boolean))].slice(0, 10);
+  to = [...new Set((to || await managerEmails(db, meta)).map(x => String(x).toLowerCase()).filter(Boolean))].slice(0, 10);
   if (!to.length) throw Object.assign(new Error('No hay gestores con correo en Configuración'), { status: 400 });
   const F = await reportFacts(db, { meta, sat });
   const A = await analysis(F);
   const I = await clubIdentity(db);
   const pdf = await pdfBuffer(F, A, I.crest); if (!pdf || pdf.length < 1500) throw new Error('El PDF generado está vacío');
-  const file = `Weekend_Sports_Report_${CLUBCFG.fileTag}_${F.sat}.pdf`;
+  const file = `Weekend_Sports_Report_${(db.cfg || CLUBCFG).fileTag}_${F.sat}.pdf`;
   const mail = emailFor(F, file, appUrl, I);
   const base = { at: Date.now(), by: by || 'Envío automático', to, range: F.fin_de_semana, sat: F.sat, auto: !!auto, pdf: file, ia: !!A._ia };
   try {
@@ -228,4 +236,4 @@ async function sendWeekly(db, { meta, sat, to, by, appUrl, auto } = {}) {
   }
 }
 
-module.exports = { clubIdentity, reportFacts, factualTexts, pdfBuffer, emailFor, sendWeekly, weekendSat, ymd, clubTeams, docIdFor };
+module.exports = { managerEmails, clubIdentity, reportFacts, factualTexts, pdfBuffer, emailFor, sendWeekly, weekendSat, ymd, clubTeams, docIdFor };

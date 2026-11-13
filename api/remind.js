@@ -36,7 +36,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
   const out = { season: id, availability: [], dayBefore: [] };
   if (!force && !ar.on) return out;
   const every = Math.max(1, Math.min(7, +ar.every || 1));
-  const logRef = db.doc('remLog/' + id), log = (await logRef.get()).data() || {};
+  const logRef = db.raw.doc('remLog/' + (db.club && db.club !== 'rcpb' ? db.club + '_' : '') + id), log = (await logRef.get()).data() || {};
   const active = (S.players || []).filter(p => p.active !== false).map(p => p.id);
   const base = String(origin || '').replace(/\/$/, '');
   const teamName = n => ((S.teams || []).find(t => t.id === n) || {}).name || 'el rival';
@@ -64,7 +64,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
     if (ar.dayBefore !== false && tie.lineupPub && ko - now >= 6 * H && ko - now <= 36 * H && (force || !(log.dayAt || {})[k])) {
       const pids = [...new Set([...(tie.convocados || []), ...(tie.subs || []), ...((tie.rubbers || []).flatMap(r => r.polo || []))])];
       if (pids.length) {
-        const r = await push(A, db, pids, { title: `Recordatorio: jornada ${j}`, body: `Polo contra ${rival}, ${fecha} a las ${f.time || ''}. Revisa tu partido en la app.`, url: `${base}/#jornada-${j}`, tag: `dayBefore-${k}` });
+        const r = await push(A, db, pids, { title: `Recordatorio: jornada ${j}`, body: `${(db.cfg && db.cfg.teamShort) || 'Polo'} contra ${rival}, ${fecha} a las ${f.time || ''}. Revisa tu partido en la app.`, url: `${base}/#jornada-${j}`, tag: `dayBefore-${k}` });
         out.dayBefore.push({ j, ...r }); upd.dayAt = { ...(upd.dayAt || {}), [k]: now };
       }
     }
@@ -76,23 +76,22 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
-    const A = getAdmin(), now = Date.now();
-    let db = await clubDbFor(A.firestore());
+    const A = getAdmin(), now = Date.now(), raw = A.firestore();
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    let force = false, ids = [], origin = '';
+    const jobs = []; let force = false, origin = '';
     if (process.env.CRON_SECRET && tok === process.env.CRON_SECRET) {
-      // Ejecución programada por Vercel Cron: todas las temporadas con los recordatorios activados
-      const snap = await db.collection('seasons').get(); snap.forEach(d => ids.push(d.id));
+      // Ejecución programada por Vercel Cron: todas las temporadas de todos los clubes con los recordatorios activados
       origin = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '');
+      for (const id of await require('./_auth.js').allClubs(raw)) { const db = await clubDbFor(raw, id), ids = []; (await db.collection('seasons').get()).forEach(d => ids.push(d.id)); jobs.push({ db, ids }); }
     } else {
       // «Enviar ahora»: solo quien gestiona ese equipo, y solo de su temporada
       if (req.method !== 'POST') return res.status(401).json({ error: 'unauthorized' });
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
       const ctx = await needTeam(req, String(body.season || ''), 'canEdit');
-      db = ctx.cdb; force = true; ids = [String(body.season)]; origin = String(body.origin || '');
+      force = true; origin = String(body.origin || ''); jobs.push({ db: ctx.cdb, ids: [String(body.season)] });
     }
     const results = [];
-    for (const id of ids) { const S = (await db.doc('seasons/' + id).get()).data(); if (S) results.push(await runSeason(A, db, id, S, { force, origin, now })); }
+    for (const { db, ids } of jobs) for (const id of ids) { const S = (await db.doc('seasons/' + id).get()).data(); if (S) results.push({ club: db.club, ...(await runSeason(A, db, id, S, { force, origin, now })) }); }
     const n = results.reduce((a, r) => a + r.availability.length + r.dayBefore.length, 0);
     return res.status(200).json({ ok: true, avisos: n, results });
   } catch (e) {

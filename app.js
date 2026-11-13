@@ -22,8 +22,10 @@ const SEASON_ID = '2026-27';
 // Equipos del club. Polo A conserva su ruta original (seasons/2026-27); el resto: seasons/<temporada>-<equipo>
 const CLUB = window.CLUB || {name:'Club', medium:'Club', short:'Club', teamShort:'Club', abbr:'CLB', fileTag:'CLUB', crest:'', crestSm:'', teams:[], fctGroups:{}};   // identidad del club: club-config.js
 const DEFAULT_CLUB_TEAMS=CLUB.teams;
-const MAIN_TEAM = (CLUB.teams[0]||{}).id || 'polo-a';   // su temporada conserva la ruta original (seasons/2026-27)
-let teamId=(()=>{ try{ return localStorage.getItem('polo-team')||MAIN_TEAM; }catch(e){ return MAIN_TEAM; } })();
+const US = CLUB.teamShort || 'Club';   // cómo se llama al equipo propio en los textos («Polo contra…», «Sabadell contra…»)
+const IS_POLO = !CLUB.generic;   // el club original: sus datos, equipos y temporada inicial están en este código
+const MAIN_TEAM = IS_POLO? ((CLUB.teams[0]||{}).id || 'polo-a') : '-';   // su temporada conserva la ruta original (seasons/2026-27)
+let teamId=(()=>{ try{ return localStorage.getItem(IS_POLO? 'polo-team' : 'lc-team-'+CLUB.id)||(IS_POLO? MAIN_TEAM : ''); }catch(e){ return IS_POLO? MAIN_TEAM : ''; } })();
 const docIdFor=(tid,season)=> tid===MAIN_TEAM? season : season+'-'+tid;
 let SEASON_PATH = 'seasons/' + docIdFor(teamId, SEASON_ID);
 let viewSeason = SEASON_ID;
@@ -82,13 +84,13 @@ const DEFAULT_Q = [
  {id:'o_anecdota',  scope:'open', type:'text',   text:'Una anécdota o un momento de la jornada'}
 ];
 const DEFAULT_MSGS = {
-  req: '¡Buenas equipo! 🎾\n\nTenemos eliminatoria contra {rival} el próximo {fecha} a las {hora} ({lugar}).\n\nNecesitamos saber quién está disponible para organizar la convocatoria.\n\nPor favor, responded a través de este enlace antes del {limite}:\n\n{enlace}\n\n¡Vamos Polo!',
+  req: '¡Buenas equipo! 🎾\n\nTenemos eliminatoria contra {rival} el próximo {fecha} a las {hora} ({lugar}).\n\nNecesitamos saber quién está disponible para organizar la convocatoria.\n\nPor favor, responded a través de este enlace antes del {limite}:\n\n{enlace}\n\n¡Vamos '+CLUB.teamShort+'!',
   rem: 'Recordatorio 🎾\n\nAún nos falta saber si podéis jugar contra {rival} el {fecha} a las {hora}: {pendientes}.\n\nResponded antes del {limite} aquí:\n{enlace}\n\n¡Gracias!',
   remOne: '¡Hola {nombre}! 🎾 ¿Puedes jugar contra {rival} el {fecha} a las {hora}? Responde antes del {limite} aquí: {enlace}',
   survey: '🎾 Jornada {jornada} terminada: {resultado}.\n\nLos que habéis jugado ({jugadores}), os toca la encuesta postpartido. Son 2 minutos:\n{enlaceEncuesta}\n\n¡Gracias!',
   summary: '🎾 Jornada {jornada}: {resultado}.\n\n{cronica}\n\n{partidos}\n\nTodo en la app: {enlaceJornada}',
   mvp: '🏆 Ya podéis votar al MVP de la jornada {jornada} ({resultado}).\n\nUn voto por cabeza y no vale votarse a uno mismo. Hasta el {limiteMvp}:\n{enlaceMvp}',
-  lineup: '📋 Convocatoria jornada {jornada}\n\nPolo contra {rival}, {fecha} a las {hora} ({lugar}).\n\n{lista}\n\nTodo en la app: {enlaceJornada}\n\n¡Vamos Polo!'
+  lineup: '📋 Convocatoria jornada {jornada}\n\n'+CLUB.teamShort+' contra {rival}, {fecha} a las {hora} ({lugar}).\n\n{lista}\n\nTodo en la app: {enlaceJornada}\n\n¡Vamos '+CLUB.teamShort+'!'
 };
 const AV_LABEL = {yes:'Disponible', no:'No disponible', maybe:'Pendiente de confirmar', none:'Sin respuesta'};
 const AV_CHIPS = ['Puedo jugar, pero solo a partir de las 12:00','Tengo molestias','Estoy pendiente de confirmar','Puedo jugar individual o dobles','Prefiero dobles','Llego justo de tiempo'];
@@ -96,6 +98,10 @@ const SCOPE_LABEL = {team:'Sobre el equipo', self:'Sobre ti (privado)', open:'Co
 const SELF_DIMS = [['s_rend','Rendimiento'],['s_fisico','Estado físico'],['s_conc','Concentración'],['s_actitud','Actitud']];
 
 function seed(){
+  if(!IS_POLO) return { seasonId: SEASON_ID, comp:{name:'Lliga Catalana per Equips', group:'', memorial:''},
+    rules: {win:3, loss:1, availDays:6, deadlineDays:2, deadlineTime:'21:00', mvpHours:48, teamManage:true, doubles:'always'}, mvp:{}, msgs:{...DEFAULT_MSGS},
+    teams:[{id:POLO, name:CLUB.short, short:CLUB.teamShort, abbr:CLUB.abbr}], players:[], fixtures:[], ties:{}, survey:{closed:{}, questions: DEFAULT_Q.map(q=>({...q}))},
+    published:{}, official:{asOf:0, order:[]}, captains:[], updatedAt:null };
   return {
     seasonId: SEASON_ID,
     comp: {...COMP},
@@ -143,7 +149,10 @@ function makeDemo(){
   const fire=l=>{ if(l.coll){ const out={}, d=l.path.split('/').length+1; Object.keys(mem).forEach(k=>{ if(k.startsWith(l.path+'/') && k.split('/').length===d) out[k.split('/').pop()]=clone(mem[k]); }); l.cb(out); } else l.cb(clone(mem[l.path]??null)); };
   const emit=()=>setTimeout(()=>L.slice().forEach(fire),0);
   const watch=(path,cb,coll)=>{ const l={path,cb,coll}; L.push(l); setTimeout(()=>fire(l),0); return ()=>{ const i=L.indexOf(l); if(i>=0) L.splice(i,1); }; };
-  return {
+  // Igual que con Firebase: los datos de cada club viven bajo su raíz (clubs/<id>/… para los clubes nuevos)
+  const ROOT=(CLUB.dataRoot||'').replace(/^\/+|\/+$/g,''), CC=new Set(['meta','public','claims','profiles','photos','phones','pushTokens','reports','seasons','private','invites']);
+  const CP=p=> ROOT && CC.has(String(p).split('/')[0])? ROOT+'/'+p : p;
+  const api = {
     mode:'demo',
     onAuth(cb){ authCb=cb; setTimeout(()=>cb(u),0); },
     // En la vista previa se puede entrar como otra persona para probar roles: localStorage 'polo-demo-as' = {uid,email,name,noAdmin}
@@ -158,13 +167,16 @@ function makeDemo(){
     async del(p){ delete mem[p]; persist(); emit(); },
     async claim(pid){ const c=mem['claims/'+pid]; if(c && c.email!==u.email) throw new Error('Ese nombre ya está elegido'); Object.keys(mem).forEach(k=>{ if(k.startsWith('claims/') && mem[k].email===u.email) delete mem[k]; }); mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now()}; mem['users/'+u.uid]={pid,email:u.email}; persist(); emit(); },
     mePath:uid=>'users/'+uid, setRoot(){}, root:()=>'',
+    async noteClub(uid,club){ mem['accounts/'+uid]={clubs:{...((mem['accounts/'+uid]||{}).clubs||{}),[club]:true}}; persist(); },
+    async myClubs(uid){ const out=[]; for(const k of Object.keys(mem)){ const m=/^clubs\/([^/]+)\/members\/(.+)$/.exec(k); if(m && m[2]===uid){ const c=mem['clubs/'+m[1]]||{}; out.push({club:m[1], clubName:c.name||(m[1]===CLUB_DEFAULT?.id? CLUB_DEFAULT.name : m[1]), crestSm:c.crestSm||'', ...mem[k]}); } }
+      if(mem['users/'+uid]?.pid && !out.some(x=>x.club===(window.CLUB_DEFAULT||CLUB).id)) out.push({club:(window.CLUB_DEFAULT||CLUB).id, clubName:(window.CLUB_DEFAULT||CLUB).name, pid:mem['users/'+uid].pid, roles:['jugador']}); return out; },
     async claimInvite(code,pid,opt={}){ const iv=mem['invites/'+code]; if(!iv||iv.usedBy||iv.revoked||iv.pid!==pid||(iv.exp||0)<Date.now()||(iv.email&&iv.email!==u.email)) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
-      if(opt.member) mem['clubs/'+opt.member+'/members/'+u.uid]={pid,email:u.email,roles:['jugador'],status:'activo',invite:code,at:Date.now()};
+      if(opt.member) mem['clubs/'+opt.member+'/members/'+u.uid]={uid:u.uid,pid,email:u.email,roles:['jugador'],status:'activo',invite:code,at:Date.now()};
       if(mem['claims/'+pid] && mem['claims/'+pid].email!==u.email) throw Object.assign(new Error('ya vinculado'),{code:'permission-denied'});
       mem['claims/'+pid]={uid:u.uid,email:u.email,at:Date.now(),invite:code}; mem['users/'+u.uid]={pid,email:u.email}; mem['invites/'+code]={...iv,usedBy:u.uid,usedAt:Date.now()}; persist(); emit(); },
     watchWhere(p,field,val,cb){ return watch(p,m=>cb(Object.fromEntries(Object.entries(m||{}).filter(([,x])=>x&&x[field]===val))),true); },
     async acceptGestorInvite(code,club){ const iv=mem['invites/'+code]; if(!iv||iv.role!=='gestor'||iv.club!==club||iv.usedBy||(iv.exp||0)<Date.now()) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
-      mem['invites/'+code]={...iv,usedBy:u.uid,usedAt:Date.now()}; mem['clubs/'+club+'/members/'+u.uid]={email:u.email,roles:['gestor'],invite:code,approvedBy:iv.byEmail||'',at:Date.now()}; persist(); emit(); },
+      mem['invites/'+code]={...iv,usedBy:u.uid,usedAt:Date.now()}; mem['clubs/'+club+'/members/'+u.uid]={uid:u.uid,email:u.email,roles:['gestor'],invite:code,approvedBy:iv.byEmail||'',at:Date.now()}; persist(); emit(); },
     async getColl(p){ const out={}, d=p.split('/').length+1; Object.keys(mem).forEach(k=>{ if(k.startsWith(p+'/') && k.split('/').length===d) out[k.split('/').pop()]=clone(mem[k]); }); return out; },
     async relink(){ return null; },
     async isAdmin(){ try{ return !JSON.parse(localStorage.getItem('polo-demo-as')||'null')?.noAdmin; }catch(e){ return true; } },
@@ -174,6 +186,19 @@ function makeDemo(){
     async idToken(){ return null; }, async addPushToken(){ return null; },
     async reset(){ mem={}; persist(); emit(); }
   };
+  // Rutas con la raíz del club: las funciones que reciben una ruta, y las rutas internas de claim/claimInvite/acceptGestorInvite
+  ['watchDoc','watchColl','watchRecent','watchWhere','set','update','del','getDoc','getColl','merge','castVote','annulVote'].forEach(k=>{ const f=api[k]; api[k]=(p,...a)=>f(CP(p),...a); });
+  const K=k=>CP(k);
+  const claim0=api.claim, ci0=api.claimInvite, ag0=api.acceptGestorInvite;
+  api.claim=async pid=>{ if(!ROOT) return claim0(pid); const c=mem[K('claims/'+pid)]; if(c && c.email!==u.email) throw new Error('Ese nombre ya está elegido'); mem[K('claims/'+pid)]={uid:u.uid,email:u.email,at:Date.now()}; mem['clubs/'+CLUB.id+'/members/'+u.uid]={...(mem['clubs/'+CLUB.id+'/members/'+u.uid]||{}),uid:u.uid,pid,email:u.email,roles:['jugador'],status:'activo'}; persist(); emit(); };
+  api.claimInvite=async(code,pid,opt={})=>{ if(!ROOT) return ci0(code,pid,opt); const iv=mem[K('invites/'+code)]; if(!iv||iv.usedBy||iv.revoked||iv.pid!==pid||(iv.exp||0)<Date.now()||(iv.email&&iv.email!==u.email)) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
+    if(mem[K('claims/'+pid)] && mem[K('claims/'+pid)].email!==u.email) throw Object.assign(new Error('ya vinculado'),{code:'permission-denied'});
+    mem[K('claims/'+pid)]={uid:u.uid,email:u.email,at:Date.now(),invite:code}; mem['clubs/'+CLUB.id+'/members/'+u.uid]={...(mem['clubs/'+CLUB.id+'/members/'+u.uid]||{}),uid:u.uid,pid,email:u.email,roles:[...new Set([...((mem['clubs/'+CLUB.id+'/members/'+u.uid]||{}).roles||[]),'jugador'])],status:'activo',invite:code}; mem[K('invites/'+code)]={...iv,usedBy:u.uid,usedAt:Date.now()}; persist(); emit(); };
+  api.acceptGestorInvite=async(code,club)=>{ if(!ROOT) return ag0(code,club); const iv=mem[K('invites/'+code)]; if(!iv||iv.role!=='gestor'||iv.club!==club||iv.usedBy||(iv.exp||0)<Date.now()) throw Object.assign(new Error('invitación no válida'),{code:'permission-denied'});
+    mem[K('invites/'+code)]={...iv,usedBy:u.uid,usedAt:Date.now()}; mem['clubs/'+club+'/members/'+u.uid]={uid:u.uid,email:u.email,roles:['gestor'],invite:code,at:Date.now()}; persist(); emit(); };
+  api.mePath=uid=> ROOT? 'clubs/'+CLUB.id+'/members/'+uid : 'users/'+uid;
+  api.root=()=>ROOT;
+  return api;
 }
 function makeFirebase(){
   firebase.initializeApp(CFG.firebase); const auth=firebase.auth(); const fs=firebase.firestore();
@@ -186,6 +211,15 @@ function makeFirebase(){
   return {
     mode:'firebase',
     setRoot(r){ ROOT=String(r||'').replace(/^\/+|\/+$/g,''); }, root:()=>ROOT,
+    // Clubes de la cuenta: sus pertenencias (clubs/*/members con su uid) y, en el club original, su ficha en users/<uid>
+    // Clubes de la cuenta: accounts/<uid>.clubs es solo un índice; cada club se comprueba con su pertenencia real
+    async myClubs(uid){ const out=[], def=window.CLUB_DEFAULT||CLUB; let ids=[];
+      try{ const a=await fs.doc('accounts/'+uid).get(); ids=Object.keys((a.exists && a.data().clubs)||{}); }catch(e){}
+      for(const club of ids){ try{ const m=await fs.doc('clubs/'+club+'/members/'+uid).get(); if(!m.exists) continue; let c={}; try{ const x=await fs.doc('clubs/'+club).get(); c=x.exists? x.data() : {}; }catch(e){}
+        out.push({club, clubName:c.name||(club===def.id? def.name : club), crestSm:c.crestSm||'', ...m.data()}); }catch(e){} }
+      if(!out.some(x=>x.club===def.id)){ try{ const u=await fs.doc('users/'+uid).get(); if(u.exists && u.data().pid) out.push({club:def.id, clubName:def.name, pid:u.data().pid, roles:['jugador']}); }catch(e){} }
+      return out; },
+    noteClub(uid,club){ return fs.doc('accounts/'+uid).set({clubs:{[club]:true}},{merge:true}).catch(()=>{}); },
     // Ficha de la cuenta en este club: users/<uid> en la raíz; clubs/<id>/members/<uid> después de migrar
     mePath:uid=> ROOT? 'clubs/'+CLUB.id+'/members/'+uid : 'users/'+uid,
     onAuth(cb){ auth.getRedirectResult().catch(e=>toast(authMsg(e))); auth.onAuthStateChanged(x=>cb(x? {uid:x.uid,email:(x.email||'').toLowerCase(),name:x.displayName,photo:x.photoURL} : null)); },
@@ -218,13 +252,15 @@ function makeFirebase(){
     async claimInvite(code,pid,opt={}){ const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const b=fs.batch();
       b.set(pathRef('claims/'+pid),{uid:u.uid,email,at:Date.now(),invite:code});
       if(!ROOT) b.set(pathRef('users/'+u.uid),{pid,email});
-      if(opt.member) b.set(fs.doc('clubs/'+opt.member+'/members/'+u.uid), opt.roles? {pid,email,roles:[...new Set([...opt.roles,'jugador'])],invite:code} : {pid,email,roles:['jugador'],status:'activo',invite:code,at:Date.now()}, opt.roles? {merge:true} : undefined);
+      if(opt.member) b.set(fs.doc('accounts/'+u.uid),{clubs:{[opt.member]:true}},{merge:true});
+      if(opt.member) b.set(fs.doc('clubs/'+opt.member+'/members/'+u.uid), opt.roles? {uid:u.uid,pid,email,roles:[...new Set([...opt.roles,'jugador'])],invite:code} : {uid:u.uid,pid,email,roles:['jugador'],status:'activo',invite:code,at:Date.now()}, opt.roles? {merge:true} : undefined);
       b.update(pathRef('invites/'+code),{usedBy:u.uid,usedAt:Date.now()}); await b.commit(); },
     watchWhere(p,field,val,cb){ return fs.collection(CP(p)).where(field,'==',val).onSnapshot(q=>{ const o={}; q.forEach(d=>o[d.id]=d.data()); cb(o); }, e=>console.warn(p,e.code)); },
     // Invitación de gestor: se marca como usada y se crea el miembro del club en el mismo lote (lo validan las reglas)
     async acceptGestorInvite(code,club){ const u=auth.currentUser; const b=fs.batch();
       b.update(pathRef('invites/'+code),{usedBy:u.uid,usedAt:Date.now()});
-      b.set(fs.doc('clubs/'+club+'/members/'+u.uid),{email:(u.email||'').toLowerCase(),roles:['gestor'],invite:code,at:Date.now()}); await b.commit(); },
+      b.set(fs.doc('accounts/'+u.uid),{clubs:{[club]:true}},{merge:true});
+      b.set(fs.doc('clubs/'+club+'/members/'+u.uid),{uid:u.uid,email:(u.email||'').toLowerCase(),roles:['gestor'],invite:code,at:Date.now()}); await b.commit(); },
     async getColl(p){ const q=await fs.collection(CP(p)).get(); const o={}; q.forEach(d=>o[d.id]=d.data()); return o; },
     async relink(){ if(ROOT) return null; const u=auth.currentUser; const email=(u.email||'').toLowerCase(); const q=await fs.collection(CP('claims')).where('email','==',email).limit(1).get();
       if(q.empty) return null; const d=q.docs[0];
@@ -296,7 +332,7 @@ function validateRubber(r){ const errs=[], raw=String(r.score||'').trim(); if(!r
   if(sets.length>=2){ const w1=sets[0][0]>sets[0][1], w2=sets[1][0]>sets[1][1]; if(sets.length===2 && w1!==w2 && !r.res) errs.push('Un set cada uno: falta el tercer set'); if(sets.length===3 && w1===w2) errs.push('Con dos sets ganados por el mismo no hay tercer set'); }
   if(sets.length===1 && !r.res) errs.push('Falta el segundo set (si hubo abandono, elige el ganador y anótalo)');
   const c=rubberCalc({...r,res:null}); if(r.res && c.res && r.res!==c.res) errs.push('El ganador elegido no coincide con el marcador');
-  if(!(r.polo||[]).length) errs.push('Falta el jugador del Polo'); if(r.type==='D' && (r.polo||[]).length<2) errs.push('Falta la pareja de dobles');
+  if(!(r.polo||[]).length) errs.push('Falta el jugador del '+US+''); if(r.type==='D' && (r.polo||[]).length<2) errs.push('Falta la pareja de dobles');
   return errs; }
 function validateTie(t){ const out={errors:[],warnings:[]}; if(!t) return out;
   const sing=t.rubbers.filter(r=>r.type==='S').map(r=>r.polo[0]).filter(Boolean); const dup=sing.filter((x,i)=>sing.indexOf(x)!==i);
@@ -408,7 +444,7 @@ function listNames(arrs){ const n=[...new Set(arrs.map(a=>(a||[]).map(pname).joi
 function cronica(j){
   const f=poloFix(j); if(!f||!isPlayed(f)) return null; const p=persp(f); const rv=clubName(p.rival);
   const where = p.home? 'en casa ante el '+rv : 'en las pistas del '+rv;
-  let s = p.ps>p.rs? `El Polo ${p.rs===0?'arrasa':'se impone'} ${p.ps}-${p.rs} ${where}` : `El Polo ${p.ps===0?'cae con claridad':'cae'} ${p.ps}-${p.rs} ${where}`;
+  let s = p.ps>p.rs? `El ${US} ${p.rs===0?'arrasa':'se impone'} ${p.ps}-${p.rs} ${where}` : `El ${US} ${p.ps===0?'cae con claridad':'cae'} ${p.ps}-${p.rs} ${where}`;
   const t=tie(j), bits=[];
   if(t){ const calc=t.rubbers.map(r=>({r,c:rubberCalc(r)})).filter(x=>x.c.res);
     const dbl=calc.find(x=>x.r.type==='D'); const cb=calc.filter(x=>x.c.comeback); const clean=calc.filter(x=>x.c.res==='W'&&x.c.sets.length===2&&x.c.gl<=4); const three=calc.filter(x=>x.c.three);
@@ -468,7 +504,7 @@ function scoreboard(f, big=false){
     const cells=RUBBERS.map((R,i)=>{ const c=rubs[i]? rubberCalc(rubs[i]).res : null; const won=c&&((us&&c==='W')||(!us&&c==='L'));
       const na = R.type==='D' && !c && dblDecider() && !(t&&t.needsDoubles); return `<span class="cell ${won?'w':''} ${na?'na':''}" style="--i:${won?k++:0}">${won?'●':''}</span>`; }).join('');
     const tot = isPlayed(f)? (id===f.home? f.hs : f.as) : (t&&t.decided? (us? t.w : t.l) : '–');
-    return `<span class="board-n ${us?'us':''}">${esc(us? 'Polo' : team(id).short)}${id===f.home?'<i class="loc">Local</i>':''}</span>${cells}<span class="board-t ${tot==='–'?'dim':''}">${tot}</span>`; }).join('');
+    return `<span class="board-n ${us?'us':''}">${esc(us? CLUB.teamShort : team(id).short)}${id===f.home?'<i class="loc">Local</i>':''}</span>${cells}<span class="board-t ${tot==='–'?'dim':''}">${tot}</span>`; }).join('');
   const status = isPlayed(f)? (f.status==='official'? 'Final' : 'Final, provisional') : (t&&t.decided? '<span class="live">En juego</span>' : countdown(f));
   return `<a class="board ${big?'big':''}" href="#jornada-${f.j}">
     <div class="board-top"><b>Jornada ${f.j}</b><span>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</span><span>${status}</span></div>
@@ -533,7 +569,7 @@ function opsCard(){
   const pendRes=(t.rubbers||[]).filter(r=>(r.type==='S'||tr.needsDoubles) && !rubberCalc(r).res).length, after=Date.now()>new Date(f.date+'T'+(f.time||'15:00')).getTime();
   return `<section class="sec"><div class="hx-ops ${urgent?'urgent':''}" data-home-j="${j}">
     <div class="hx-ops-top"><span class="hx-k">Tu gestión, jornada ${j}</span><a class="hx-open" href="#admin" data-act="go-admin" data-j="${j}" data-t="${idx<0?'post':ph[idx].k}">Abrir gestión ${svgi('arrow',15)}</a></div>
-    <div class="hx-match"><div class="hx-side">${crest(POLO,'lg')}<b>Polo</b></div><div class="hx-vs"><span>${p.home?'en casa':'fuera'}</span><b>vs</b><em>${esc(whenTxt(f))}</em></div><div class="hx-side">${crest(p.rival,'lg')}<b>${esc(clubName(p.rival))}</b></div></div>
+    <div class="hx-match"><div class="hx-side">${crest(POLO,'lg')}<b>${esc(CLUB.teamShort)}</b></div><div class="hx-vs"><span>${p.home?'en casa':'fuera'}</span><b>vs</b><em>${esc(whenTxt(f))}</em></div><div class="hx-side">${crest(p.rival,'lg')}<b>${esc(clubName(p.rival))}</b></div></div>
     <p class="hx-date">${svgi('cal',15)} ${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h</p>
     <ol class="hx-steps">${ph.map((x,i)=>`<li class="${x.st} ${i===idx?'now':''}" title="${esc(x.l)}: ${esc(x.d)}"><i>${x.st==='done'? svgi('check',15,2.4) : svgi(icons[i],15)}</i><span>${names[i]}</span></li>`).join('')}</ol>
     ${na? `<div class="hx-next"><div><span class="hx-k2">${urgent?'Siguiente paso':'Próximo paso, aún hay margen'}</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="hx-btns">${na.b}</div></div>`
@@ -791,10 +827,10 @@ function ligaCalendar(){
   const jOrder = ui.ligaAll? Array.from({length:NJ()},(_,i)=>i+1) : Array.from({length:NJ()},(_,i)=>i+1).sort((a,b)=>{ const fa=poloFix(a)||S.fixtures.find(f=>f.j===a), fb=poloFix(b)||S.fixtures.find(f=>f.j===b); return (fa&&fb? kickoff(fa)-kickoff(fb) : 0)||a-b; });
   for(const j of jOrder){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=pf||fs[0]; if(!d) continue;
     if(!ui.ligaAll){ if(pf){ const p=persp(pf);
-        h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?'Polo contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra Polo'}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h ${movedTag(pf)}</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
-      } else h+=`<li><a class="jrow rest" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span class="vs">Descansa el Polo</span><span></span></a></li>`;
+        h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?esc(CLUB.teamShort)+' contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra '+US+''}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h ${movedTag(pf)}</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
+      } else h+=`<li><a class="jrow rest" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span class="vs">Descansa el ${US}</span><span></span></a></li>`;
     } else h+=`<li style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="#jornada-${j}" style="text-decoration:none;display:flex;justify-content:space-between"><b>Jornada ${j}</b><span class="muted small">${esc(fdate(d,{weekday:'long',day:'numeric',month:'long'}))}</span></a>
-      <table style="margin-top:4px"><tbody>${fs.map(f=>`<tr class="${f===pf?'us':''}"><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}${pf?'':'<tr><td class="muted">Descansa: Polo</td><td></td></tr>'}</tbody></table></li>`; }
+      <table style="margin-top:4px"><tbody>${fs.map(f=>`<tr class="${f===pf?'us':''}"><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}${pf?'':'<tr><td class="muted">Descansa: '+US+'</td><td></td></tr>'}</tbody></table></li>`; }
   return h+`</ul><p class="source">Fuente: calendario oficial FCT${fctAgo()? `, resultados actualizados ${esc(fctAgo())}` : ''}.</p></section>`;
 }
 function ligaTable(){
@@ -813,7 +849,7 @@ function vJornada(j){
   const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO);
   let h=`<div class="wrap"><div class="pagehead"><div class="row" style="justify-content:space-between"><a class="textlink" href="#calendario">Calendario</a><span class="row">${j>1?`<a class="chip" href="#jornada-${j-1}">J${j-1}</a>`:''}${j<NJ()?`<a class="chip" href="#jornada-${j+1}">J${j+1}</a>`:''}</span></div>
     <h1 style="margin-top:14px">Jornada ${j}</h1><p class="lede">${esc(fdate(poloFix(j)||fs[0],{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}, ${esc((poloFix(j)||fs[0]).time)} h ${movedTag(poloFix(j))}</p></div>`;
-  if(!pf) h+=`<section class="sec"><div class="empty">El Polo descansa en esta jornada.</div></section>`;
+  if(!pf) h+=`<section class="sec"><div class="empty">El ${US} descansa en esta jornada.</div></section>`;
   else { const p=persp(pf), c=cronica(j), t=tie(j);
     h+=`<section class="sec">${scoreboard(pf,true)}${c?`<p class="cronica">${esc(c.txt)}<small>Crónica generada a partir de los resultados confirmados.${c.partial?' Faltan los resultados individuales.':''}</small></p>`:''}</section>`;
     if(isPlayed(pf)) h+=`<section class="sec">${mvpCard(j)}${t?.moment?`<p class="cronica" style="font-size:1rem"><b>Momento de la jornada.</b> ${esc(t.moment)}</p>`:''}</section>`;
@@ -832,8 +868,8 @@ function porraBlock(f){
   const k=jid(f.j), locked=Date.now()>=kickoff(f).getTime(), p=persp(f), mine=me? picks[me]?.j?.[k] : null;
   const all=Object.entries(picks).map(([pid,v])=>({pid,pk:v.j?.[k]})).filter(x=>x.pk);
   let h='';
-  if(!locked && me) h+=`<p class="muted small">¿Cómo acabará? Se cierra al empezar la jornada.</p><div class="chips" style="margin:10px 0">${PORRA_OPTS.map(([a,b])=>`<button class="chip" data-act="pick" data-j="${f.j}" data-p="${a}" data-r="${b}" aria-pressed="${mine&&mine.p===a&&mine.r===b}">Polo ${a}-${b}</button>`).join('')}</div>`;
-  if(all.length) h+=`<table class="stagger" style="margin-top:6px"><tbody>${all.map(x=>{ let pts=''; if(isPlayed(f)){ const s=porraPoints(x.pk,p); pts=`<b>${s} ${s===1?'punto':'puntos'}</b>`; } return `<tr><td>${plink(x.pid)}</td><td>Polo ${x.pk.p}-${x.pk.r}</td><td>${pts}</td></tr>`; }).join('')}</tbody></table>`;
+  if(!locked && me) h+=`<p class="muted small">¿Cómo acabará? Se cierra al empezar la jornada.</p><div class="chips" style="margin:10px 0">${PORRA_OPTS.map(([a,b])=>`<button class="chip" data-act="pick" data-j="${f.j}" data-p="${a}" data-r="${b}" aria-pressed="${mine&&mine.p===a&&mine.r===b}">${US} ${a}-${b}</button>`).join('')}</div>`;
+  if(all.length) h+=`<table class="stagger" style="margin-top:6px"><tbody>${all.map(x=>{ let pts=''; if(isPlayed(f)){ const s=porraPoints(x.pk,p); pts=`<b>${s} ${s===1?'punto':'puntos'}</b>`; } return `<tr><td>${plink(x.pid)}</td><td>${US} ${x.pk.p}-${x.pk.r}</td><td>${pts}</td></tr>`; }).join('')}</tbody></table>`;
   else h+=`<p class="muted small">Todavía no hay pronósticos.</p>`;
   return h;
 }
@@ -953,7 +989,7 @@ function vJugador(id){
       <div class="hfigs five stagger"><div><b>${count(st.pj)}</b><span>partidos</span></div><div><b>${count(st.w)}</b><span>victorias</span></div><div><b>${count(st.l)}</b><span>derrotas</span></div><div><b>${st.pj? count(pct(st.w,st.pj),'%') : '–'}</b><span>win rate</span></div><div><b>${st.streak.n? (st.streak.t==='W'?'+':'−')+st.streak.n : '–'}</b><span>racha</span></div></div></div></div></section>
   <div class="wrap">
   ${fichaDisplay(id, own)}${introBlock(id, own)}
-  <section class="sec"><div class="split cardsplit"><div class="cardcol">${playerCard(id)}<p class="source" style="text-align:center">Índice Polo: se calcula solo con sus resultados, su disponibilidad y los votos publicados. Se recalcula cada jornada. No es un ranking oficial.</p></div>
+  <section class="sec"><div class="split cardsplit"><div class="cardcol">${playerCard(id)}<p class="source" style="text-align:center">Índice ${US}: se calcula solo con sus resultados, su disponibilidad y los votos publicados. Se recalcula cada jornada. No es un ranking oficial.</p></div>
     <div><div class="sec-h"><h2>Atributos</h2></div>${radar(id)}<ul class="attrlist">${ATTRS.map(([k,l,d])=>`<li><b>${k}</b> ${l}<small>${d}</small></li>`).join('')}</ul></div></div></section>
   <section class="sec"><div class="split"><div><div class="sec-h"><h2>Victorias y derrotas por jornada</h2><span class="muted small">Individuales</span></div>${wlBars(id)}</div>
     <div><div class="sec-h"><h2>Sets</h2><span class="muted small">Individuales</span></div>${setsChart(id)}</div></div></section>
@@ -1053,7 +1089,7 @@ function statsRankings(){
 function statsRecords(){
   const all=[]; S.players.forEach(p=>playerStats(p.id).matches.forEach(m=>{ if(m.r.type==='S'||m.r.polo[0]===p.id) all.push({p,...m}); }));
   const ts=teamStats(), recs=[], top=fn=>S.players.map(p=>({p,v:fn(playerStats(p.id))})).sort((a,b)=>b.v-a.v)[0];
-  const bt=ts.byJ.slice().sort((a,b)=>(b.ps-b.rs)-(a.ps-a.rs))[0]; if(bt&&bt.ps>bt.rs) recs.push(['Mayor victoria por equipos',`Polo ${bt.ps}-${bt.rs} ${clubName(bt.rival)}, J${bt.j}`]);
+  const bt=ts.byJ.slice().sort((a,b)=>(b.ps-b.rs)-(a.ps-a.rs))[0]; if(bt&&bt.ps>bt.rs) recs.push(['Mayor victoria por equipos',`${US} ${bt.ps}-${bt.rs} ${clubName(bt.rival)}, J${bt.j}`]);
   const lg=all.slice().sort((a,b)=>(b.c.gw+b.c.gl)-(a.c.gw+a.c.gl))[0]; if(lg) recs.push(['Partido con más juegos',`${lg.r.polo.map(pname).join(' y ')}: ${lg.c.sets.map(s=>s.join('-')).join(' ')}, J${lg.j}`]);
   let t=top(s=>s.bestStreak); if(t&&t.v>=2) recs.push(['Racha más larga en individuales',`${t.p.name}, ${t.v} victorias seguidas`]);
   t=top(s=>s.bagels); if(t&&t.v) recs.push(['Más sets ganados 6-0',`${t.p.name}, ${t.v}`]);
@@ -1076,7 +1112,7 @@ function vDisponibilidad(j){
   const opt=(k,ico,sub)=>`<button class="avopt ${k} press" data-act="av-pick" data-v="${k}" aria-pressed="${draft.s===k}" ${locked?'disabled':''}><span class="ico">${ico}</span><span><b>${AV_LABEL[k]}</b><small>${sub}</small></span></button>`;
   return `<div class="wrap"><div class="survey" style="padding-top:28px">
     <p class="qsec">Jornada ${j}, disponibilidad</p>
-    <div class="avhead">${crest(p.rival,'')}<div><h1 class="q" style="margin:0">Polo contra ${esc(clubName(p.rival))}</h1><p class="muted" style="margin:4px 0 0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h. ${p.home?'En casa.':'Fuera, en las pistas del '+esc(clubName(p.rival))+'.'}</p></div></div>
+    <div class="avhead">${crest(p.rival,'')}<div><h1 class="q" style="margin:0">${esc(CLUB.teamShort)} contra ${esc(clubName(p.rival))}</h1><p class="muted" style="margin:4px 0 0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h. ${p.home?'En casa.':'Fuera, en las pistas del '+esc(clubName(p.rival))+'.'}</p></div></div>
     <div class="notice" style="margin:16px 0">${locked? 'El plazo para responder terminó el '+esc(fmtDT(dl))+'. Si necesitas cambiar algo, habla con el capitán.' : 'Puedes cambiar tu respuesta hasta el <b>'+esc(fmtDT(dl))+'</b>.'}</div>
     <div class="avopts">${opt('yes','✓','Cuenta conmigo')}${opt('maybe','?','Lo confirmo antes del plazo')}${opt('no','✕','Esta vez no puedo')}</div>
     <label class="f" for="av-c">Comentario para el capitán (opcional, solo lo ven los capitanes)</label>
@@ -1104,7 +1140,7 @@ function statsDisponibilidad(){
   rows.sort((x,y)=>v(y)-v(x)||x.p.order-y.p.order);
   const js=closedJornadas(); const th=(k,l)=>`<th><button data-act="av-sort" data-v="${k}">${l}${key===k?' ↓':''}</button></th>`;
   const team=js.map(j=>{ const a=availFor(j); return {j,v:a.total? Math.round(a.yes.length*100/a.total) : 0}; });
-  return `<section class="sec"><p class="lede">Disponibilidad declarada frente a convocatoria. Cuentan las jornadas del Polo con el plazo cerrado o ya disputadas (${js.length}). «Sin respuesta» se cuenta aparte de «No disponible».</p></section>
+  return `<section class="sec"><p class="lede">Disponibilidad declarada frente a convocatoria. Cuentan las jornadas del ${US} con el plazo cerrado o ya disputadas (${js.length}). «Sin respuesta» se cuenta aparte de «No disponible».</p></section>
   <section class="sec"><div class="tscroll"><table><thead><tr><th>Jugador</th><th>Jornadas</th>${th('yes','Disp.')}<th>No</th><th>Pend.</th>${th('none','Sin resp.')}${th('pct','%')}${th('conv','Convoc.')}${th('ync','Disp. no conv.')}<th class="l">Evolución</th></tr></thead><tbody class="stagger">
     ${rows.map(({p,a})=>`<tr><td>${plink(p.id)}</td><td>${a.total}</td><td>${a.yes}</td><td>${a.no}</td><td>${a.maybe}</td><td>${a.none}</td><td><b>${a.pct==null?'–':dec(a.pct*100)+' %'}</b></td><td>${a.conv}</td><td>${a.yesNotConv}</td><td class="l">${avStrip(a.seq)}</td></tr>`).join('')}</tbody></table></div>
     <div class="legend"><span><i style="background:var(--win)"></i>Disponible</span><span><i style="background:var(--brass)"></i>Pendiente</span><span><i style="background:var(--loss)"></i>No disponible</span><span><i style="background:var(--surface2)"></i>Sin respuesta</span><span><i style="background:transparent;box-shadow:inset 0 0 0 2px var(--ink)"></i>Convocado</span></div></section>
@@ -1141,7 +1177,7 @@ const FICHA=[
     {k:'since',l:'Juega desde',t:'year',i:'📅',ph:'Año'}]},
   {sec:'Tu personalidad en pista', sub:'Lo que te hace único', fields:[
     {k:'nick',l:'Apodo',t:'text',o:[],i:'🏷️',ph:'Cómo te llaman en el equipo'},
-    {k:'motto',l:'Grito de guerra más usado',t:'text',o:['¡Vamos!','¡Come on!','¡Venga!','¡Sí señor!','¡Allez!','¡Vamos Polo!'],i:'📣',ph:'Lo que gritas tras un gran punto'},
+    {k:'motto',l:'Grito de guerra más usado',t:'text',o:['¡Vamos!','¡Come on!','¡Venga!','¡Sí señor!','¡Allez!','¡Vamos '+CLUB.teamShort+'!'],i:'📣',ph:'Lo que gritas tras un gran punto'},
     {k:'ritual',l:'Ritual antes de sacar',t:'text',o:['Tres botes y al lío','Mirar las cuerdas','Secarme con la toalla','Elegir la bola buena'],i:'🔁',ph:'Tu manía antes del saque'},
     {k:'song',l:'Canción para calentar',t:'text',o:[],i:'🎧',ph:'Lo que suena en tus cascos'},
     {k:'quote',l:'Frase que te define',t:'text',o:[],i:'💬',ph:'En una línea'},
@@ -1248,7 +1284,7 @@ function vYo(){
 }
 function vEncuesta(j){
   const f=poloFix(j); if(!f) return vNotFound(); const k=jid(j), parts=participants(j);
-  const head=`<div class="wrap"><div class="pagehead"><p class="qsec">Encuesta postpartido</p><h1>Jornada ${j}</h1><p class="lede">Polo contra ${esc(clubName(persp(f).rival))}${isPlayed(f)?', '+persp(f).ps+'-'+persp(f).rs:''}.</p></div>`;
+  const head=`<div class="wrap"><div class="pagehead"><p class="qsec">Encuesta postpartido</p><h1>Jornada ${j}</h1><p class="lede">${esc(CLUB.teamShort)} contra ${esc(clubName(persp(f).rival))}${isPlayed(f)?', '+persp(f).ps+'-'+persp(f).rs:''}.</p></div>`;
   if(!isPlayed(f)) return head+`<div class="empty">La encuesta se abre cuando se cargue el resultado de la eliminatoria.</div></div>`;
   if(!parts.includes(me)) return head+`<div class="empty">Esta encuesta es solo para los que jugaron la eliminatoria.</div></div>`;
   if(S.survey.closed?.[k]) return head+`<div class="empty">El capitán ya ha cerrado esta encuesta.</div></div>`;
@@ -1296,7 +1332,7 @@ function vAdmin(){
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
     ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():aTemporadas()}</div>`;
 }
-function jSelect(act,cur,onlyPolo=true){ const js= onlyPolo? poloOrder() : Array.from({length:NJ()},(_,i)=>i+1); return `<select data-act="${act}" style="max-width:380px">${js.map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?'Polo contra '+team(f.away).short:team(f.home).short+' contra Polo')+', '+fdate(f)+(f.moved?.from&&f.moved.from!==f.date? (f.date<f.moved.from?' (adelantada)':' (aplazada)') : ''):''}</option>`; }).join('')}</select>`; }
+function jSelect(act,cur,onlyPolo=true){ const js= onlyPolo? poloOrder() : Array.from({length:NJ()},(_,i)=>i+1); return `<select data-act="${act}" style="max-width:380px">${js.map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?''+US+' contra '+team(f.away).short:team(f.home).short+' contra '+US+'')+', '+fdate(f)+(f.moved?.from&&f.moved.from!==f.date? (f.date<f.moved.from?' (adelantada)':' (aplazada)') : ''):''}</option>`; }).join('')}</select>`; }
 function adminJ(){ if(ui.adminJ && poloFix(ui.adminJ)) return ui.adminJ; const nx=nextPoloFix(); if(nx) return nx.j; const l=lastPoloPlayed(); if(l) return l.j; const f=S.fixtures.find(x=>x.home===POLO||x.away===POLO); return f? f.j : null; }
 /* ===================== MATCHDAY MANAGEMENT ===================== */
 function phases(j){
@@ -1307,7 +1343,7 @@ function phases(j){
     {k:'disp', s:'Pedir disponibilidad', l:'Disponibilidad solicitada', st: t.availReq||closed? 'done' : 'todo', d: t.availReq? 'Pedida '+relTime(t.availReq.at) : closed? 'Plazo cerrado' : 'Sin pedir'},
     {k:'disp', s:'Cerrar disponibilidad', l:'Disponibilidad cerrada', st: closed? 'done' : (t.availReq||a.answered)? 'doing' : 'todo', d: `${a.answered} de ${a.total} respuestas`},
     {k:'conv', s:'Convocatoria', l:'Convocatoria publicada', st: t.lineupPub? 'done' : (t.convocados?.length||t.rubbers.some(r=>r.polo.length))? 'doing' : 'todo', d: t.lineupPub? 'Publicada' : t.convocados?.length? 'Borrador' : 'Pendiente'},
-    {k:'res', s:'Resultados', l:'Resultados introducidos', st: resDone? 'done' : (tr.decided||isPlayed(f))? 'doing' : 'todo', d: resDone? `Polo ${p.ps}-${p.rs}${f.status==='official'?', oficial':''}` : tr.decided? `${tr.decided} partidos con resultado` : 'Pendiente'},
+    {k:'res', s:'Resultados', l:'Resultados introducidos', st: resDone? 'done' : (tr.decided||isPlayed(f))? 'doing' : 'todo', d: resDone? `${US} ${p.ps}-${p.rs}${f.status==='official'?', oficial':''}` : tr.decided? `${tr.decided} partidos con resultado` : 'Pendiente'},
     {k:'post', s:'MVP', l:'MVP publicado', st: pub.mvp? 'done' : mvpState(j)? 'doing' : 'todo', d: pub.mvp? pname(pub.mvp) : mvpOpen(j)? `Votando: ${mvpVoteCount(jid(j))}` : mvpState(j)? 'Por publicar' : 'Tras el partido'}];
 }
 function nextAction(j){
@@ -1324,7 +1360,7 @@ function nextAction(j){
   }
 }
 function aJornada(){
-  const j=adminJ(); if(!j) return `<div class="empty">No hay eliminatorias del Polo en el calendario. Añádelas en «Calendario».</div>`;
+  const j=adminJ(); if(!j) return `<div class="empty">No hay eliminatorias del ${US} en el calendario. Añádelas en «Calendario».</div>`;
   const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), ph=phases(j), na=nextAction(j);
   if(!ui.jTabSet || ui.jTabFor!==j){ ui.jTabFor=j; ui.jTabSet=true; const c=ph.find(x=>x.st!=='done'); ui.jTab = c? c.k : 'post'; }
   const jt=ui.jTab, cur=ph.findIndex(x=>x.st!=='done'), nDocs=(ensureDocsSub(), Object.values(docs).filter(d=>d.j===j).length);
@@ -1334,7 +1370,7 @@ function aJornada(){
     : jt==='res'? aResultados(j) : aPost(j);
   return `<section class="sec" style="padding-top:6px"><div class="jhero">
     <div class="jh-top">${jSelect('admin-j',j)}<div class="jh-links"><button class="btn ghost sm" data-act="msg-open" data-j="${j}">${svgi('mega',15)} Mensaje al equipo</button><a class="btn ghost sm" href="#jornada-${j}">Ver la jornada</a><button class="btn ghost sm" data-act="docs-j" data-j="${j}">Documentos${nDocs?' ('+nDocs+')':''}</button></div></div>
-    <div class="jh-match"><div class="jh-side">${crest(POLO)}<b>Polo</b></div>
+    <div class="jh-match"><div class="jh-side">${crest(POLO)}<b>${esc(CLUB.teamShort)}</b></div>
       <div class="jh-mid">${isPlayed(f)? `<b class="jh-score">${p.ps}-${p.rs}</b><small>${f.status==='official'?'Oficial':'Provisional'}</small>` : `<b class="jh-vs">vs</b><small>${esc(countdown(f))}</small>`}</div>
       <div class="jh-side">${crest(p.rival)}<b>${esc(clubName(p.rival))}</b></div></div>
     <p class="jh-when">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${p.home?'en casa':'fuera'} ${movedTag(f)}</p>
@@ -1382,9 +1418,9 @@ const appLink = h => location.origin + location.pathname + '#' + h;
 function msgVars(j){ const f=poloFix(j), p=persp(f); return {rival:clubName(p.rival), fecha:fdate(f,{weekday:'long',day:'numeric',month:'long'}), hora:f.time, limite:fmtDT(deadline(j)), enlace:appLink('disponibilidad-'+j), enlaceJornada:appLink('jornada-'+j), jornada:j, lugar:p.home?'en casa':'fuera, en las pistas del '+clubName(p.rival)}; }
 const fillMsg = (tpl,v) => String(tpl||'').replace(/\{(\w+)\}/g,(m,k)=>v[k]!=null? v[k] : m);
 function composeText(kind,j){ const v=msgVars(j), a=availFor(j);
-  if(kind==='summary'){ const p=persp(poloFix(j)); v.resultado=p.played? `Polo ${p.ps}-${p.rs} ${clubName(p.rival)}` : ''; v.cronica=cronica(j)?.txt||''; v.partidos=(tie(j)?.rubbers||[]).filter(r=>rubberCalc(r).res).map(r=>{ const c=rubberCalc(r); return `${c.res==='W'?'✅':'❌'} ${r.type==='D'?'Dobles':'Ind. '+r.n}: ${(r.polo||[]).map(x=>pname(x)).join(' y ')} ${c.sets.map(x=>x.join('-')).join(' ')}`; }).join('\n'); }
-  if(kind==='mvp'){ const p=persp(poloFix(j)); v.resultado=p.played? `Polo ${p.ps}-${p.rs} ${clubName(p.rival)}` : ''; v.enlaceMvp=appLink('mvp-'+j); v.limiteMvp=mvpState(j)?.deadline? fmtDT(new Date(mvpState(j).deadline)) : ''; }
-  if(kind==='survey'){ const p=persp(poloFix(j)); v.resultado=p.played? `Polo ${p.ps}-${p.rs} ${clubName(p.rival)}` : 'resultado pendiente'; v.jugadores=participants(j).map(x=>pname(x).split(' ')[0]).join(', '); v.enlaceEncuesta=appLink('encuesta-'+j); }
+  if(kind==='summary'){ const p=persp(poloFix(j)); v.resultado=p.played? `${US} ${p.ps}-${p.rs} ${clubName(p.rival)}` : ''; v.cronica=cronica(j)?.txt||''; v.partidos=(tie(j)?.rubbers||[]).filter(r=>rubberCalc(r).res).map(r=>{ const c=rubberCalc(r); return `${c.res==='W'?'✅':'❌'} ${r.type==='D'?'Dobles':'Ind. '+r.n}: ${(r.polo||[]).map(x=>pname(x)).join(' y ')} ${c.sets.map(x=>x.join('-')).join(' ')}`; }).join('\n'); }
+  if(kind==='mvp'){ const p=persp(poloFix(j)); v.resultado=p.played? `${US} ${p.ps}-${p.rs} ${clubName(p.rival)}` : ''; v.enlaceMvp=appLink('mvp-'+j); v.limiteMvp=mvpState(j)?.deadline? fmtDT(new Date(mvpState(j).deadline)) : ''; }
+  if(kind==='survey'){ const p=persp(poloFix(j)); v.resultado=p.played? `${US} ${p.ps}-${p.rs} ${clubName(p.rival)}` : 'resultado pendiente'; v.jugadores=participants(j).map(x=>pname(x).split(' ')[0]).join(', '); v.enlaceEncuesta=appLink('encuesta-'+j); }
   if(kind==='rem') v.pendientes=a.none.map(pname).join(', ')||'nadie';
   if(kind==='lineup'){ const roles=rolesOf(j); v.lista=lineupList(j).map(pid=>`• ${pname(pid)}: ${(roles[pid]||[]).join(' + ')}`).join('\n'); }
   return fillMsg(S.msgs[kind], v); }
@@ -1452,7 +1488,7 @@ function aConv(j){
     ${composer('lineup',j,'Anuncio de la convocatoria')}</section>`;
 }
 function posterOpts(j){ const t=tie(j)||{}; const p=t.poster||{}; const f=poloFix(j);
-  return {fmt:p.fmt||'story', bg:p.bg||(photos._team?'team':'court'), title:p.title||'Convocatoria', sub:p.sub||`Jornada ${j}, ${S.comp.name.replace(/^\d+a /,'')}`, tagline:p.tagline||'¡Vamos Polo!', showSubs:p.showSubs!==false, order:p.order||[], hidden:p.hidden||[]}; }
+  return {fmt:p.fmt||'story', bg:p.bg||(photos._team?'team':'court'), title:p.title||'Convocatoria', sub:p.sub||`Jornada ${j}, ${S.comp.name.replace(/^\d+a /,'')}`, tagline:p.tagline||'¡Vamos '+CLUB.teamShort+'!', showSubs:p.showSubs!==false, order:p.order||[], hidden:p.hidden||[]}; }
 function aCartel(j){
   const t=tie(j); if(!t || !lineupList(j).length) return `<section class="sec"><div class="empty">Primero elige los convocados y el orden de juego en «Convocatoria».</div></section>`;
   const o=posterOpts(j), all=(()=>{ const save=t.poster; t.poster={...(save||{}),hidden:[]}; const l=lineupList(j); t.poster=save; return l; })(), roles=rolesOf(j);
@@ -1480,19 +1516,19 @@ function aResultadosManual(j){
   const popts=sel=>`<option value="">Elegir</option>`+order.map(id=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(pname(id))}</option>`).join('');
   const v=validateTie(t), tr=tieFromRubbers(j)||{}, fx=poloFix(j);
   const status = isPlayed(fx)? (fx.status==='official'? '<span class="badge ok">Oficial</span>' : '<span class="badge prov">Provisional, pendiente de validar</span>') : '<span class="badge">Sin resultado</span>';
-  const fctWarn = fx?.fctScore? `<div class="vbox warn" style="margin-bottom:12px">La FCT tiene un resultado distinto para esta jornada: <b>${esc(fx.home===POLO? fx.fctScore : fx.fctScore.split('-').reverse().join('-'))}</b> (marcador del Polo primero). Revisa el acta o avisa a la Federació.</div>` : '';
-  return `<section class="sec"><div class="resbar"><div><span class="muted small">Eliminatoria</span><b>Polo ${tr.decided? tr.w+'-'+tr.l : (p.ps??'–')+'-'+(p.rs??'–')}</b></div><div>${status}</div></div>${fctWarn}
+  const fctWarn = fx?.fctScore? `<div class="vbox warn" style="margin-bottom:12px">La FCT tiene un resultado distinto para esta jornada: <b>${esc(fx.home===POLO? fx.fctScore : fx.fctScore.split('-').reverse().join('-'))}</b> (marcador del ${US} primero). Revisa el acta o avisa a la Federació.</div>` : '';
+  return `<section class="sec"><div class="resbar"><div><span class="muted small">Eliminatoria</span><b>${US} ${tr.decided? tr.w+'-'+tr.l : (p.ps??'–')+'-'+(p.rs??'–')}</b></div><div>${status}</div></div>${fctWarn}
     ${v.errors.length? `<div class="vbox err"><b>Corrige antes de guardar</b><ul>${v.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}${v.warnings.length? `<div class="vbox warn"><ul>${v.warnings.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
-    <p class="muted small">Marcador desde el punto de vista del Polo, sets separados por espacios: <b>6-4 3-6 6-3</b>. El resultado se calcula solo; fuerza uno a mano para W.O. o abandono. Los jugadores vienen de la convocatoria; cámbialos si hubo cambios de última hora.</p>
+    <p class="muted small">Marcador desde el punto de vista del ${US}, sets separados por espacios: <b>6-4 3-6 6-3</b>. El resultado se calcula solo; fuerza uno a mano para W.O. o abandono. Los jugadores vienen de la convocatoria; cámbialos si hubo cambios de última hora.</p>
     ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span>
       <select name="p1" aria-label="Jugador">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2" aria-label="Pareja">${popts(r.polo[1])}</select>`:'<span></span>'}
       <input type="text" name="score" placeholder="6-4 6-3" value="${esc(r.score)}">
-      <select name="res"><option value="">Auto</option><option value="W" ${r.res==='W'?'selected':''}>Gana Polo</option><option value="L" ${r.res==='L'?'selected':''}>Pierde Polo</option></select>
+      <select name="res"><option value="">Auto</option><option value="W" ${r.res==='W'?'selected':''}>Gana ${US}</option><option value="L" ${r.res==='L'?'selected':''}>Pierde ${US}</option></select>
       <input type="text" name="note" placeholder="Nota: W.O., abandono…" value="${esc(r.note)}" style="grid-column:2 / -2"><button class="btn sm ghost" data-act="res-clear" data-j="${j}" data-r="${i}" ${r.score||r.res?'':'disabled'}>Borrar</button>
-      ${(()=>{ const e=validateRubber(r); return e.length&&(r.score||r.res)? `<p class="rerr">${esc(e.join('. '))}</p>` : (rubberCalc(r).res? `<p class="rok">${rubberCalc(r).res==='W'?'Gana el Polo':'Gana el rival'}</p>`:''); })()}</div>`).join('')}
+      ${(()=>{ const e=validateRubber(r); return e.length&&(r.score||r.res)? `<p class="rerr">${esc(e.join('. '))}</p>` : (rubberCalc(r).res? `<p class="rok">${rubberCalc(r).res==='W'?'Gana el '+US+'':'Gana el rival'}</p>`:''); })()}</div>`).join('')}
     <label class="f" for="moment">Momento de la jornada (público)</label><input type="text" id="moment" value="${esc(t.moment||'')}">
     <div class="panel" style="margin-top:16px"><b>Marcador por equipos</b><p class="muted small" style="margin:4px 0 10px">Se calcula solo con los 4 individuales y el dobles (${dblDecider()?'este solo si hubo 2-2':'si se jugó'}). Si solo tienes el oficial, escríbelo aquí.</p>
-      <div class="row"><label>Polo <input type="number" id="ps" min="0" max="5" value="${p.ps??''}" style="width:80px"></label><label>${esc(clubName(p.rival))} <input type="number" id="rs" min="0" max="5" value="${p.rs??''}" style="width:80px"></label></div></div>
+      <div class="row"><label>${US} <input type="number" id="ps" min="0" max="5" value="${p.ps??''}" style="width:80px"></label><label>${esc(clubName(p.rival))} <input type="number" id="rs" min="0" max="5" value="${p.rs??''}" style="width:80px"></label></div></div>
     <div class="row" style="margin-top:16px"><button class="btn brass" data-act="save-tie" data-j="${j}">Guardar resultados</button>${isPlayed(fx)&&fx.status!=='official'?`<button class="btn ghost" data-act="res-confirm" data-j="${j}">Confirmar como resultado oficial</button>`:''}${fx.status==='official'&&isPlayed(fx)?`<button class="btn ghost sm" data-act="res-unconfirm" data-j="${j}">Marcar como provisional</button>`:''}<a class="textlink" href="#jornada-${j}">Ver la jornada</a></div>
     <p class="muted small">Si corriges o borras un resultado, todas las estadísticas, rankings y perfiles se recalculan solos. «Oficial» significa que coincide con el acta de la federación.</p>
     ${isPlayed(f)&&false? `<div class="panel" style="margin-top:20px"><b>Encuesta para los que jugaron</b><p class="muted small" style="margin:4px 0 10px">Se abre sola para ${participants(j).map(pname).join(', ')||'los jugadores con resultado'}. Al guardar el resultado se les envía una notificación; aquí puedes avisarles también por WhatsApp.${t.surveyAnnounced?' Último aviso por WhatsApp '+relTime(t.surveyAnnounced)+'.':''}</p>
@@ -1544,7 +1580,7 @@ function aMvp(j){
 }
 function vMvp(j){
   const f=poloFix(j); if(!f) return vNotFound(); const k=jid(j), p=persp(f), pub=S.published[k], mine=myVotes[k], m=mvpState(j);
-  let h=`<div class="wrap"><div class="pagehead"><p class="qsec">🏆 Votación MVP</p><h1>Jornada ${j}</h1><p class="lede">Polo ${p.played? p.ps+'-'+p.rs : 'contra'} ${esc(clubName(p.rival))}, ${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}.</p></div>`;
+  let h=`<div class="wrap"><div class="pagehead"><p class="qsec">🏆 Votación MVP</p><h1>Jornada ${j}</h1><p class="lede">${US} ${p.played? p.ps+'-'+p.rs : 'contra'} ${esc(clubName(p.rival))}, ${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}.</p></div>`;
   if(pub?.mvp) return h+`<section class="sec">${mvpCard(j)}</section><section class="sec">${mvpRanking(true)}</section></div>`;
   if(!m) return h+`<div class="empty">La votación se abre cuando se cargue el resultado de la eliminatoria.</div></div>`;
   if(mine) return h+`<section class="sec"><div class="panel done"><p class="q">Has votado a ${esc(pname(mine))} ✓</p><p class="muted">Tu voto es único y ya no se puede cambiar. El resultado se publicará al cerrar la votación${mvpOpen(j)?', el '+esc(fmtDT(new Date(m.deadline))):''}.</p></div></section></div>`;
@@ -1601,7 +1637,7 @@ function aCalendario(){
     const others=fs.filter(x=>x!==f), oPlayed=others.filter(isPlayed).length;
     return `<li class="calrow ${st[0]} ${open===j?'open':''}"><button class="calhead" data-act="cal-pick" data-j="${j}" aria-expanded="${open===j}">
       <span class="cj">J${j}</span><span class="cd">${esc(fdate(f,{weekday:'short',day:'numeric',month:'short'}))}<small>${esc(f.time)} h</small></span>
-      <span class="cm">${isP? `${crest(p.rival)}<b>${p.home?'Polo – '+esc(team(p.rival).short):esc(team(p.rival).short)+' – Polo'}</b>` : '<b class="muted">Descansa el Polo</b>'}</span>
+      <span class="cm">${isP? `${crest(p.rival)}<b>${p.home?''+US+' – '+esc(team(p.rival).short):esc(team(p.rival).short)+' – '+US+''}</b>` : '<b class="muted">Descansa el '+US+'</b>'}</span>
       <span class="cr">${pl&&isP? `<b class="${p.ps>p.rs?'w':'l'}">${p.ps}-${p.rs}</b>` : ''}</span>
       <span class="cs">${st[1]?`<em class="cst ${st[0]}">${st[1]}</em>`:''}<small>${others.length? `resto ${oPlayed}/${others.length}` : ''}</small></span></button>
       ${open===j? editor(j) : ''}</li>`; };
@@ -1622,7 +1658,7 @@ function aCalendario(){
 const currentSeason = () => meta?.current || SEASON_ID;
 const clubTeams = () => { const base=(Array.isArray(meta?.teams) && meta.teams.length)? meta.teams : []; return [...base, ...DEFAULT_CLUB_TEAMS.filter(d=>!base.some(t=>t.id===d.id))].map(t=>({gender:'',...t})); };
 const curTeam = () => clubTeams().find(t=>t.id===teamId) || clubTeams()[0];
-const teamLabel = () => curTeam()?.short || 'Polo A';
+const teamLabel = () => curTeam()?.short || CLUB.teamShort;
 const teamCat = t => [t?.cat, (t?.gender||'').toLowerCase()].filter(Boolean).join(' ');
 function aTemporadas(){
   const list=meta?.seasons?.length? meta.seasons : [SEASON_ID], R=S.rules, ar=R.autoRemind||{};
@@ -1899,7 +1935,7 @@ async function enablePush(){
   }catch(e){ toast('No se han podido activar: '+(e.code||e.message)); }
 }
 let fgOn=false;
-function listenForeground(){ if(fgOn||B.mode!=='firebase'||!window.firebase?.messaging) return; try{ firebase.messaging().onMessage(pl=>{ const d=pl.data||{}; toast((d.title||'Polo A')+(d.body? ': '+d.body : '')); softRender(); }); fgOn=true; }catch(e){} }
+function listenForeground(){ if(fgOn||B.mode!=='firebase'||!window.firebase?.messaging) return; try{ firebase.messaging().onMessage(pl=>{ const d=pl.data||{}; toast((d.title||''+US+' A')+(d.body? ': '+d.body : '')); softRender(); }); fgOn=true; }catch(e){} }
 window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); installEvt=e; softRender(); });
 window.addEventListener('appinstalled',()=>{ installEvt=null; toast('App instalada'); softRender(); });
 if('serviceWorker' in navigator && B.mode==='firebase' && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').then(()=>{ if(Notification?.permission==='granted') listenForeground(); }).catch(()=>{});
@@ -2004,7 +2040,7 @@ let isManager=false, clubData={}, clubSubs=[], clubKey='', roster=null;
 // Lista de nombres de todos los equipos (solo nombre e id), para que cualquier jugador pueda elegir su nombre al entrar
 function rosterAll(){ const out=new Map(); const add=(tid,list)=>(list||[]).forEach(p=>{ if(!out.has(p.id)) out.set(p.id,{...p,teams:[tid]}); else if(!out.get(p.id).teams.includes(tid)) out.get(p.id).teams.push(tid); });
   Object.entries(roster?.teams||{}).forEach(([t,l])=>add(t,l));
-  if(!roster?.teams?.['polo-a']) add('polo-a', seed().players.map(p=>({id:p.id,name:p.name,order:p.order})));
+  if(IS_POLO && !roster?.teams?.['polo-a']) add('polo-a', seed().players.map(p=>({id:p.id,name:p.name,order:p.order})));
   if(S.players.length && !roster?.teams?.[teamId]) add(teamId, S.players.map(p=>({id:p.id,name:p.name,order:p.order})));
   return [...out.values()]; }
 function syncRoster(){ if(B.mode!=='firebase'&&B.mode!=='demo') return; const list=S.players.filter(p=>p.active!==false).map(p=>({id:p.id,name:p.name,order:p.order||0}));
@@ -2083,7 +2119,7 @@ function vClub(){
       <span class="cc-top"><b>${esc(t.name)}</b><small>${esc(teamCat(t))}</small></span>
       <span class="cc-vs">${crest(POLO,'sm')} ${esc(CLUB.medium)} <i>contra</i> ${esc(s.rival)}</span>
       <span class="cc-date">Jornada ${f.j}, ${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h, ${s.p.home?'en casa':'fuera'}</span>
-      <span class="cc-res">${s.p.played? `Polo ${s.p.ps}-${s.p.rs}` : s.partial? 'En curso' : '–'}</span>
+      <span class="cc-res">${s.p.played? `${US} ${s.p.ps}-${s.p.rs}` : s.partial? 'En curso' : '–'}</span>
       <span class="cc-badges"><span class="ccb ${s.st}">${ST_LABEL[s.st]}</span>${s.confirm?'<span class="ccb confirm">Pendiente de confirmar</span>':''}</span>
       <span class="cc-meta">${s.singles} ${s.singles===1?'individual':'individuales'} y ${s.dbl} ${s.dbl===1?'dobles':'dobles'} con resultado</span></a>`).join('')}</div>` : '<div class="empty">Ningún equipo con eliminatoria en este fin de semana con los filtros elegidos.</div>'}
     ${W.idle.length? `<div class="idle"><span class="muted small">Sin eliminatoria:</span> ${W.idle.map(x=>`<a class="chip" href="#club-equipo-${esc(x.t.id)}">${esc(x.t.short)}: <span class="muted">${esc(x.why)}</span></a>`).join('')}</div>` : ''}</section>
@@ -2135,7 +2171,7 @@ function vClubTeam(tid){
     return head+`<section class="sec"><div class="mdkpis stagger"><div><b>${(mine.pj||mine.off)? mine.pos+'º':'–'}</b><span>clasificación</span></div><div><b>${mine.pts||0}</b><span>puntos</span></div><div><b>${ts.tw}-${ts.tl}</b><span>eliminatorias</span></div><div><b>${ts.rw}-${ts.rl}</b><span>partidos</span></div><div><b>${d.players.length}</b><span>jugadores</span></div><div class="${pend.length?'warn':''}"><b>${pend.length}</b><span>por validar</span></div></div></section>
     <section class="sec"><div class="split"><div><div class="sec-h"><h2>Jornadas</h2></div>${fx.length? `<div class="tscroll"><table><thead><tr><th>J</th><th class="l">Fecha</th><th class="l">Rival</th><th>Resultado</th><th class="l">Estado</th><th>Ind.</th><th>Dob.</th></tr></thead><tbody>${fx.map(f=>{ const s=tieState(d,f); return `<tr><td>${f.j}</td><td class="l">${esc(fdate(f))}</td><td class="l">${esc(s.rival)}</td><td>${s.p.played? s.p.ps+'-'+s.p.rs : '–'}</td><td class="l"><span class="ccb ${s.st}">${ST_LABEL[s.st]}</span>${s.confirm?' <span class="ccb confirm">Por confirmar</span>':''}</td><td>${s.singles}</td><td>${s.dbl}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Sin calendario.</div>'}</div>
       <div><div class="sec-h"><h2>Clasificación</h2></div>${st.length>1? standingsTable(st,true) : '<div class="empty">Sin clasificación.</div>'}</div></div></section>
-    ${last? `<section class="sec"><div class="sec-h"><h2>Última eliminatoria: jornada ${last.j}</h2></div><p class="lede" style="margin:0 0 8px">Polo ${persp(last).ps}-${persp(last).rs} ${esc(clubName(persp(last).rival))}, ${esc(fdate(last,{day:'numeric',month:'long'}))}.</p>${(tie(last.j)?.rubbers||[]).map((r,i)=>((r.polo||[]).length||rubberCalc(r).res)? rubberRow(r,i,last) : '').join('') || '<div class="empty">Sin partidos introducidos.</div>'}</section>` : ''}
+    ${last? `<section class="sec"><div class="sec-h"><h2>Última eliminatoria: jornada ${last.j}</h2></div><p class="lede" style="margin:0 0 8px">${US} ${persp(last).ps}-${persp(last).rs} ${esc(clubName(persp(last).rival))}, ${esc(fdate(last,{day:'numeric',month:'long'}))}.</p>${(tie(last.j)?.rubbers||[]).map((r,i)=>((r.polo||[]).length||rubberCalc(r).res)? rubberRow(r,i,last) : '').join('') || '<div class="empty">Sin partidos introducidos.</div>'}</section>` : ''}
     <section class="sec"><div class="split"><div><div class="sec-h"><h2>Plantilla</h2></div><p class="muted small" style="margin-top:-6px">Capitán: ${caps.length? esc(caps.join(', ')) : 'sin asignar'}</p>
       ${d.players.length? `<div class="tscroll"><table><thead><tr><th>Jugador</th><th>Cat.</th><th>Individuales</th><th>Dobles</th></tr></thead><tbody>${d.players.filter(p=>p.active!==false).sort((a,b)=>a.order-b.order).map(p=>{ const a=playerStats(p.id), b=playerStats(p.id,null,'D'); return `<tr><td>${esc(p.name)}</td><td>${esc(p.cat||'')}</td><td>${a.w}-${a.l}</td><td>${b.w}-${b.l}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Sin plantilla.</div>'}</div>
       <div><div class="sec-h"><h2>Pendiente de validar</h2></div>${pend.length? `<ul class="insights">${pend.map(f=>{ const s=tieState(d,f); return `<li>Jornada ${f.j} contra ${esc(s.rival)}<small>${s.confirm? 'Resultado provisional, falta confirmarlo como oficial' : s.st==='pending'? 'Sin resultado' : 'Marcador sin los partidos individuales'}</small></li>`; }).join('')}</ul>` : '<div class="empty">Nada pendiente.</div>'}
@@ -2452,12 +2488,12 @@ function actaDraft(j,d){ const x=d.extraction?.data||{};
 function actaCheck(A){ const f=poloFix(A.j), t=tie(A.j)||blankTie(), issues=[], used={}, seen={};
   A.rows.forEach((r,i)=>{ r.err=[]; r.warn=[]; const idx=rubIdx(r); if(idx>=0){ if(seen[idx]) r.err.push('Partido repetido en el acta: revisa el número de fila'); seen[idx]=1; }
     if(idx<0){ r.warn.push(r.type==='S'? `Fila ${r.n||'?'} de individuales: la Lliga juega 4 individuales; no se guardará` : `Segunda pareja de dobles: la Lliga juega 1 dobles; no se guardará`); return; }
-    const need=r.type==='D'?2:1; r.pids.slice(0,need).forEach((pid,k)=>{ if(!pid) r.err.push(`Elige el jugador del Polo${r.names[k]? ' («'+r.names[k]+'»)' : ''}`); else { if(r.pconf[k] && (r.pconf[k]<.8||r.pamb[k]) && r.names[k]) r.warn.push(`Comprueba que «${r.names[k]}» es ${pname(pid)}`); if(r.type==='S'){ if(used[pid]) r.err.push(pname(pid)+' aparece en dos individuales'); used[pid]=1; } } });
+    const need=r.type==='D'?2:1; r.pids.slice(0,need).forEach((pid,k)=>{ if(!pid) r.err.push(`Elige el jugador del ${US}${r.names[k]? ' («'+r.names[k]+'»)' : ''}`); else { if(r.pconf[k] && (r.pconf[k]<.8||r.pamb[k]) && r.names[k]) r.warn.push(`Comprueba que «${r.names[k]}» es ${pname(pid)}`); if(r.type==='S'){ if(used[pid]) r.err.push(pname(pid)+' aparece en dos individuales'); used[pid]=1; } } });
     if(r.type==='D' && r.pids[0] && r.pids[0]===r.pids[1]) r.err.push('La pareja repite jugador');
     if(!r.score && !r.winner) r.err.push('Falta el marcador');
     const res = !r.score && r.winner? (r.winner==='polo'?'W':'L') : null;
     validateRubber({type:r.type, polo:r.pids.filter(Boolean), score:r.score, res}).filter(e=>!/Falta el jugador|Falta la pareja/.test(e)).forEach(e=>r.err.push(e));
-    const c=rubberCalc({score:r.score}); if(r.winner && c.res && (c.res==='W')!==(r.winner==='polo')) r.err.push('El ganador no coincide con el marcador: revisa si el marcador está escrito desde el lado del Polo');
+    const c=rubberCalc({score:r.score}); if(r.winner && c.res && (c.res==='W')!==(r.winner==='polo')) r.err.push('El ganador no coincide con el marcador: revisa si el marcador está escrito desde el lado del '+US+'');
     if(r.conf<.75) r.warn.push('Lectura dudosa: compáralo con el acta');
     const ex=t.rubbers[idx]; if(ex && (ex.score||ex.res) && ex.score!==r.score) r.warn.push(`Ya había otro marcador guardado (${ex.score||ex.res}); se sustituirá`); });
   // resultado global: suma de los partidos frente a la «Puntuació» del acta
@@ -2478,7 +2514,7 @@ function actaPanel(j){
   const cur=d? (d.status==='error'?'subido':d.status) : null, ci=steps.findIndex(s=>s[0]===cur);
   const stepper=`<ol class="actasteps">${steps.map(([k,l],i)=>`<li class="${i<ci?'done':i===ci?'cur':''}"><span>${i<ci?'✓':i+1}</span>${l}</li>`).join('')}${d?.status==='completado' && f?.status!=='official'? '<li class="cur"><span>!</span>Pendiente de validación</li>' : ''}</ol>`;
   const pick=`<label class="btn brass big actapick"><input type="file" accept="image/*,application/pdf" data-acta-file="${j}" hidden>📷 ${d?'Subir otra acta':'Hacer foto o elegir el acta'}</label>`;
-  if(!d) return `<section class="sec"><div class="panel actapanel"><b>Subir el acta oficial de la jornada ${j}</b><p class="muted small" style="margin:4px 0 12px">Haz una foto del acta firmada o sube el PDF. La app lee los nombres del Polo, los marcadores y quién gana cada partido. No se guarda nada hasta que lo revises y lo confirmes.</p>${pick}<div id="doc-prog"></div></div></section>`;
+  if(!d) return `<section class="sec"><div class="panel actapanel"><b>Subir el acta oficial de la jornada ${j}</b><p class="muted small" style="margin:4px 0 12px">Haz una foto del acta firmada o sube el PDF. La app lee los nombres del ${US}, los marcadores y quién gana cada partido. No se guarda nada hasta que lo revises y lo confirmes.</p>${pick}<div id="doc-prog"></div></div></section>`;
   const prev=`<div class="actaprev">${ui.docUrls?.[d.id]? (/image/.test(d.mime)? `<a href="${ui.docUrls[d.id]}" target="_blank" rel="noopener"><img src="${ui.docUrls[d.id]}" alt="Acta de la jornada ${j}"></a>` : `<a class="btn ghost" href="${ui.docUrls[d.id]}" target="_blank" rel="noopener">Abrir el acta (PDF)</a>`) : `<button class="btn ghost sm" data-act="acta-preview" data-id="${esc(d.id)}">Ver el acta</button>`}
     <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="doc-dl" data-id="${esc(d.id)}">Descargar</button><span class="muted small">${esc(d.name)}, subida por ${esc(d.byName||d.by||'')} ${relTime(d.at)}</span></div></div>`;
   let body='';
@@ -2499,16 +2535,16 @@ function actaReview(j,d){
   const rows=A.rows.map((r,i)=>{ const idx=rubIdx(r), need=r.type==='D'?2:1;
     return `<div class="actarow ${r.err.length?'bad':r.warn.length?'warn':''} ${idx<0?'extra':''}">
       <div class="ar-h"><b>${r.type==='S'? 'Individual '+(r.n||'?') : 'Dobles '+(r.n||'?')}</b>${confChip(r.conf)}</div>
-      <div class="ar-g">${Array.from({length:need},(_,k)=>`<label><span>Jugador del Polo${need>1?' '+(k+1):''}${r.names[k]? ` <i>«${esc(r.names[k])}»</i>` : ''}</span><select data-acta-row="${i}" data-k="pid${k}" ${idx<0?'disabled':''}>${popts(r.pids[k])}</select></label>`).join('')}
+      <div class="ar-g">${Array.from({length:need},(_,k)=>`<label><span>Jugador del ${US}${need>1?' '+(k+1):''}${r.names[k]? ` <i>«${esc(r.names[k])}»</i>` : ''}</span><select data-acta-row="${i}" data-k="pid${k}" ${idx<0?'disabled':''}>${popts(r.pids[k])}</select></label>`).join('')}
         <label><span>Rival</span><input type="text" value="${esc(r.rival)}" disabled></label>
-        <label><span>Marcador (Polo primero)${r.written? ` <i>escrito: «${esc(r.written)}»</i>` : ''}</span><input type="text" inputmode="numeric" data-acta-row="${i}" data-k="score" value="${esc(r.score)}" placeholder="6-4 6-3" ${idx<0?'disabled':''}></label>
-        <label><span>Ganador</span><select data-acta-row="${i}" data-k="winner" ${idx<0?'disabled':''}><option value="">–</option><option value="polo" ${r.winner==='polo'?'selected':''}>Polo</option><option value="rival" ${r.winner==='rival'?'selected':''}>Rival</option></select></label></div>
+        <label><span>Marcador (${US} primero)${r.written? ` <i>escrito: «${esc(r.written)}»</i>` : ''}</span><input type="text" inputmode="numeric" data-acta-row="${i}" data-k="score" value="${esc(r.score)}" placeholder="6-4 6-3" ${idx<0?'disabled':''}></label>
+        <label><span>Ganador</span><select data-acta-row="${i}" data-k="winner" ${idx<0?'disabled':''}><option value="">–</option><option value="polo" ${r.winner==='polo'?'selected':''}>${US}</option><option value="rival" ${r.winner==='rival'?'selected':''}>Rival</option></select></label></div>
       ${r.note? `<p class="small" style="margin:4px 0 0">Anotación: <b>${esc(r.note)}</b></p>` : ''}
       ${r.err.map(e=>`<p class="rerr">${esc(e)}</p>`).join('')}${r.warn.map(e=>`<p class="rwarn">${esc(e)}</p>`).join('')}</div>`; }).join('');
   const pp=A.punt||{};
-  return `<div class="actarev ${justRead(d.id)?'fadein':''}">${justRead(d.id)? '<p class="readok">✓ Lectura completada</p>' : ''}<p class="muted small" style="margin:0 0 10px">Revisa cada partido con el acta delante. Puedes cambiar cualquier dato. El marcador se guarda desde el lado del Polo (si ganó el rival, sus juegos van segundos).</p>
+  return `<div class="actarev ${justRead(d.id)?'fadein':''}">${justRead(d.id)? '<p class="readok">✓ Lectura completada</p>' : ''}<p class="muted small" style="margin:0 0 10px">Revisa cada partido con el acta delante. Puedes cambiar cualquier dato. El marcador se guarda desde el lado del ${US} (si ganó el rival, sus juegos van segundos).</p>
     ${rows || '<div class="empty">La IA no ha encontrado partidos en el acta. Prueba con una foto más nítida o introduce los resultados a mano.</div>'}
-    <div class="actatot ${chk.issues.some(x=>x.lvl==='err')?'bad':''}"><div><span class="muted small">Suma de los partidos</span><b>Polo ${chk.w}-${chk.l}</b></div><div><span class="muted small">Puntuació del acta</span><b>${pp.polo!=null&&pp.rival!=null? `Polo ${pp.polo}-${pp.rival}` : 'No se lee'}</b></div><div>${pp.polo!=null&&pp.rival!=null? (+pp.polo===chk.w && +pp.rival===chk.l? '<span class="ccb win">Coincide</span>' : '<span class="ccb loss">No coincide</span>') : '<span class="ccb confirm">Sin comprobar</span>'}</div></div>
+    <div class="actatot ${chk.issues.some(x=>x.lvl==='err')?'bad':''}"><div><span class="muted small">Suma de los partidos</span><b>${US} ${chk.w}-${chk.l}</b></div><div><span class="muted small">Puntuació del acta</span><b>${pp.polo!=null&&pp.rival!=null? `${US} ${pp.polo}-${pp.rival}` : 'No se lee'}</b></div><div>${pp.polo!=null&&pp.rival!=null? (+pp.polo===chk.w && +pp.rival===chk.l? '<span class="ccb win">Coincide</span>' : '<span class="ccb loss">No coincide</span>') : '<span class="ccb confirm">Sin comprobar</span>'}</div></div>
     ${chk.issues.map(x=>`<div class="vbox ${x.lvl==='err'?'err':'warn'}">${esc(x.t)}${x.lvl==='auth'? `<label class="row" style="margin-top:6px;gap:8px"><input type="checkbox" data-act="acta-override" ${A.override?'checked':''}> Autorizo sustituir el resultado oficial</label>` : ''}</div>`).join('')}
     <div class="revbar"><button class="btn brass" data-act="acta-confirm" data-j="${j}" ${chk.blocking?'disabled':''}>Confirmar resultados</button><button class="btn ghost" data-act="acta-manual" data-j="${j}">Corregir manualmente</button><button class="btn ghost sm" data-act="acta-read" data-id="${esc(d.id)}">Volver a leer</button></div>
     ${chk.blocking? '<p class="muted small" style="margin:6px 0 0">Corrige lo marcado en rojo para poder confirmar.</p>' : ''}</div>`;
@@ -2609,12 +2645,12 @@ function vDoc(id){
   if(rv.kind==='calendario'){ body=`<table><thead><tr><th></th><th>J</th><th>Fecha</th><th class="l">Local</th><th class="l">Visitante</th><th>Marcador</th><th>Conf.</th><th class="l">En la app</th></tr></thead><tbody>${rv.rows.map((r,i)=>{ const ex=S.fixtures.find(f=>f.j===+r.jornada && ((f.home===r.h&&f.away===r.a))); const st=!ex? 'Nuevo' : (ex.date!==r.date||ex.time!==(r.time||ex.time))? 'Cambia fecha u hora' : (r.home_score!=null && isPlayed(ex) && (ex.hs!==r.home_score||ex.as!==r.away_score))? 'Marcador distinto' : 'Igual';
       if(st==='Marcador distinto') warn.push(`J${r.jornada}: el marcador del documento no coincide con el de la app`);
       return `<tr><td><input type="checkbox" data-rev="use" data-i="${i}" ${r.use?'checked':''}></td><td>${r.jornada??'?'}</td><td>${esc(r.date||'?')} ${esc(r.time||'')}</td><td class="l">${esc(r.home)}<br><select data-rev="h" data-i="${i}" style="width:auto">${tOpts(r.h)}</select></td><td class="l">${esc(r.away)}<br><select data-rev="a" data-i="${i}" style="width:auto">${tOpts(r.a)}</select></td><td>${r.home_score!=null? r.home_score+'-'+r.away_score : '–'}</td><td>${confBadge(r.confidence)}</td><td class="l small">${st}</td></tr>`; }).join('')}</tbody></table>`;
-    if(!rv.rows.some(r=>r.h===POLO||r.a===POLO)) warn.push('No se ha encontrado al Polo en ningún enfrentamiento: revisa los clubes'); }
+    if(!rv.rows.some(r=>r.h===POLO||r.a===POLO)) warn.push('No se ha encontrado al '+US+' en ningún enfrentamiento: revisa los clubes'); }
   if(rv.kind==='orden'||rv.kind==='acta'||rv.kind==='resultados'){ const fx=rv.j? poloFix(+rv.j) : null; if(!fx) warn.push('Elige la jornada a la que corresponde');
     if(fx && isPlayed(fx) && fx.status==='official' && rv.kind!=='orden') warn.push('Esta jornada tiene un resultado confirmado como oficial: solo se sobrescribirá si lo marcas abajo');
     const t=fx? tie(fx.j) : null;
     body=`<div class="row" style="margin-bottom:10px"><label class="small">Jornada <select data-rev="j" style="width:auto"><option value="">Elegir</option>${S.fixtures.filter(f=>f.home===POLO||f.away===POLO).map(f=>`<option value="${f.j}" ${+rv.j===f.j?'selected':''}>Jornada ${f.j}, contra ${esc(clubName(persp(f).rival))}</option>`).join('')}</select></label></div>
-      <table><thead><tr><th class="l">Partido</th><th class="l">En el documento</th><th class="l">Jugadores en la app</th>${rv.kind!=='orden'?'<th>Marcador (Polo primero)</th>':''}<th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>{ const cur=t? t.rubbers.find(x=>x.n===r.n) : null; const e=rv.kind!=='orden'? validateRubber({type:r.type,polo:r.pids.filter(Boolean),score:r.score,res:null}) : [];
+      <table><thead><tr><th class="l">Partido</th><th class="l">En el documento</th><th class="l">Jugadores en la app</th>${rv.kind!=='orden'?'<th>Marcador ('+US+' primero)</th>':''}<th>Conf.</th></tr></thead><tbody>${rv.rows.map((r,i)=>{ const cur=t? t.rubbers.find(x=>x.n===r.n) : null; const e=rv.kind!=='orden'? validateRubber({type:r.type,polo:r.pids.filter(Boolean),score:r.score,res:null}) : [];
         if(cur && rv.kind!=='orden' && cur.score && cur.score!==r.score) warn.push(`${r.type==='D'?'Dobles':'Individual '+r.n}: en la app ya hay «${cur.score}»`);
         return `<tr><td class="l">${r.type==='D'?'Dobles':'Individual '+r.n}</td><td class="l">${esc((r.names||[]).join(' y ')||'?')}</td><td class="l">${(r.type==='D'?[0,1]:[0]).map(k=>`<select data-rev="rp" data-i="${i}" data-k="${k}" style="width:auto">${pOpts(r.pids[k])}</select>`).join(' ')}</td>${rv.kind!=='orden'?`<td><input type="text" data-rev="score" data-i="${i}" value="${esc(r.score||'')}" style="width:120px">${e.length&&r.score?`<small class="dup">${esc(e[0])}</small>`:''}</td>`:''}<td>${confBadge(r.confidence)}</td></tr>`; }).join('')}</tbody></table>
       ${rv.kind!=='orden'&&fx&&fx.status==='official'? `<label class="small" style="display:block;margin-top:10px"><input type="checkbox" data-rev="force" ${rv.force?'checked':''}> Sí, quiero sustituir el resultado oficial de esta jornada</label>`:''}`; }
@@ -2696,11 +2732,11 @@ let profilesLoaded=false;
 const tourKey = () => 'polo-tour-'+(me||authUser?.email||'');
 const onbKey  = () => 'polo-onb-'+(me||authUser?.email||'');
 function tourDone(){ try{ if(localStorage.getItem(tourKey())) return true; }catch(e){} return !!(me && profiles[me]?.tourAt); }
-const DEMO={ team:'Polo A', rivals:['CT Mirador','Tennis Atalaya','Club Brisamar','CT Sant Roc'],
+const DEMO={ team:''+US+' A', rivals:['CT Mirador','Tennis Atalaya','Club Brisamar','CT Sant Roc'],
   players:[['Marc Soler','1a',['#2b5876','#4e4376'],1],['Pau Ferrer','1a',['#614385','#516395']],['Àlex Puig','2a',['#134E5E','#71B280']],['Jordi Vidal','2a',['#8e6b56','#c9a27e']],
            ['Oriol Mas','2a',['#3a6186','#89253e']],['Nil Serra','3a',['#4b6cb7','#182848']],['Biel Roca','3a',['#9d4b62','#d7a08f']],['Hugo Costa','3a',['#0f2027','#2c5364']]],
   results:[[1,'Tennis Atalaya','4-1','W','17 oct'],[2,'Club Brisamar','2-3','L','24 oct'],[3,'CT Sant Roc','3-2','W','31 oct']],
-  table:[['CT Mirador',9],['Polo',6,1],['Club Brisamar',6],['Tennis Atalaya',3],['CT Sant Roc',0]] };
+  table:[['CT Mirador',9],[''+US+'',6,1],['Club Brisamar',6],['Tennis Atalaya',3],['CT Sant Roc',0]] };
 // Retrato ilustrado de demostración (no son fotos reales de nadie)
 function demoFace(i,size=44,label=true){ const p=DEMO.players[i%DEMO.players.length], id='df'+i+'_'+size;
   return `<span class="dm-face" style="width:${size}px;height:${size}px"><svg viewBox="0 0 40 40" width="${size}" height="${size}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p[2][0]}"/><stop offset="1" stop-color="${p[2][1]}"/></linearGradient></defs><rect width="40" height="40" fill="url(#${id})"/><circle cx="20" cy="15.5" r="7" fill="rgba(255,255,255,.88)"/><path d="M6 40c1.6-8 7.4-12 14-12s12.4 4 14 12z" fill="rgba(255,255,255,.88)"/></svg>${label&&p[3]? '<i class="dm-cap">C</i>' : ''}</span>`; }
@@ -2711,7 +2747,7 @@ function dmBar(on){ const t=[['Inicio','M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H
 const dmRow = (a,b,cls='') => `<div class="dm-row ${cls}"><span>${a}</span><b>${b}</b></div>`;
 // ---- pantallas del tour, por perfil (texto corto + ejemplo completo)
 function slidesPlayer(){ return [
-  {t:'Inicio: tu jornada de un vistazo', d:'Próximo rival, si estás disponible, si estás convocado y lo último del equipo.', w:'Pestaña Inicio', m:dmScreen('Inicio',`<div class="dm-match"><div>${demoFace(0,34,false)}<b>Polo</b></div><em>vs</em><div><span class="dm-crest">CM</span><b>CT Mirador</b></div></div><p class="dm-sub">Sábado, 15:00 h, en casa · En 3 días</p>
+  {t:'Inicio: tu jornada de un vistazo', d:'Próximo rival, si estás disponible, si estás convocado y lo último del equipo.', w:'Pestaña Inicio', m:dmScreen('Inicio',`<div class="dm-match"><div>${demoFace(0,34,false)}<b>${US}</b></div><em>vs</em><div><span class="dm-crest">CM</span><b>CT Mirador</b></div></div><p class="dm-sub">Sábado, 15:00 h, en casa · En 3 días</p>
      <div class="dm-tiles"><div class="ok">${svgi('check',15,2.4)}<span>Disponible</span></div><div class="ok">${svgi('list',15,2.2)}<span>Individual 2</span></div></div>
      <div class="dm-feed"><div><i class="w">${svgi('score',13)}</i>Victoria 3-2 contra CT Sant Roc</div><div><i class="g">${svgi('trophy',13)}</i>Pau Ferrer, MVP de la jornada 3</div></div>`,0)},
   {t:'Equipo: tus compañeros', d:'La plantilla con fotos, categoría y capitán. Toca a cualquiera para ver su perfil.', w:'Pestaña Equipo', m:dmScreen('Equipo',`<div class="dm-grid">${DEMO.players.map((p,i)=>`<div>${demoFace(i,46)}<b>${p[0].split(' ')[0]}</b><span>${p[1]}</span></div>`).join('')}</div>`,3)},
@@ -2721,17 +2757,17 @@ function slidesPlayer(){ return [
   {t:'Estadísticas: tu temporada', d:'Win rate, individuales y dobles por separado, tu racha y tus MVP.', w:'Stats y tu perfil', m:dmScreen('Tus estadísticas',`<div class="dm-st"><div class="dm-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="bg"/><circle cx="50" cy="50" r="42" class="fg" stroke-dasharray="264" stroke-dashoffset="77"/></svg><b>71%</b></div><div class="dm-sg"><div><b>5-2</b><span>individuales</span></div><div><b>3-1</b><span>dobles</span></div><div><span class="dm-seq"><i class="w"></i><i class="w"></i><i></i><i class="w"></i><i class="w"></i></span><span>racha</span></div><div><b>2</b><span>MVP</span></div></div></div><div class="dm-bars">${[2,1,2,1].map((w,i)=>`<i style="height:${w*22}px" class="${i===1||i===3?'l':''}"></i>`).join('')}</div>`,4)},
   {t:'Tu perfil: tu ficha deportiva', d:'Tu carta, foto, golpe favorito y todo tu historial. Lo rellenas en un momento.', w:'Yo, Mi ficha', m:dmScreen('Perfil',`<div class="dm-prof"><div class="dm-card">${demoFace(1,64,false)}<b>78</b><span>PAU FERRER</span><em>VIC 82 · SET 76</em></div><div class="dm-pf">${dmRow('Golpe favorito','Revés')}${dmRow('Ídolo','Federer')}${dmRow('Grito','¡Vamos!')}</div></div>`,5)} ]; }
 function slidesCaptain(){ return [
-  {t:'Gestión: tu centro de operaciones', d:'Como capitán ves en Inicio el estado de la jornada y el siguiente paso.', w:'Arriba a la derecha: «Gestión» (punto rojo si hay algo pendiente)', m:`<div class="dm-ops">${EJ}<div class="dm-hd"><img src="${ASSET.crestSm}" alt=""><b>Polo A</b><span class="dm-gest">Gestión<i></i></span></div><div class="dm-k">Tu gestión, jornada 4</div><div class="dm-osteps">${['cal','mega','lock','team','score','trophy'].map((k,i)=>`<i class="${i<2?'done':i===2?'now':''}">${i<2? svgi('check',12,2.6) : svgi(k,12)}</i>`).join('')}</div><div class="dm-onext"><span>Siguiente paso</span><b>Cierra la disponibilidad</b><em>8 disponibles, 2 sin responder</em></div></div>`},
+  {t:'Gestión: tu centro de operaciones', d:'Como capitán ves en Inicio el estado de la jornada y el siguiente paso.', w:'Arriba a la derecha: «Gestión» (punto rojo si hay algo pendiente)', m:`<div class="dm-ops">${EJ}<div class="dm-hd"><img src="${ASSET.crestSm}" alt=""><b>${US} A</b><span class="dm-gest">Gestión<i></i></span></div><div class="dm-k">Tu gestión, jornada 4</div><div class="dm-osteps">${['cal','mega','lock','team','score','trophy'].map((k,i)=>`<i class="${i<2?'done':i===2?'now':''}">${i<2? svgi('check',12,2.6) : svgi(k,12)}</i>`).join('')}</div><div class="dm-onext"><span>Siguiente paso</span><b>Cierra la disponibilidad</b><em>8 disponibles, 2 sin responder</em></div></div>`},
   {t:'Una jornada completa, paso a paso', d:'Toca cada fase para ver cómo queda: disponibilidad, convocatoria, orden de juego, resultados y cierre.', w:'Gestión, Jornada', cycle:true, m:`<div class="dm-cycle" id="dm-cycle">${EJ}<div class="dm-ctabs">${['Disponibilidad','Convocatoria','Orden','Resultados','Final'].map((l,i)=>`<button data-cyc="${i}" class="${i===0?'on':''}">${l}</button>`).join('')}</div><div class="dm-cbody">${cyclePane(0)}</div></div>`},
-  {t:'Resultados: sube el acta', d:'Foto del acta y la IA lee nombres, marcadores y ganador. Tú revisas y confirmas.', w:'Gestión, Jornada, Resultados', m:`<div class="dm-acta">${EJ}<div class="dm-doc"><b>ACTA DE RESULTATS</b>${'<i></i>'.repeat(8)}<div class="dm-laser"></div></div><div class="dm-rev">${dmRow('Individual 1','6-3 6-4 · Marc','ok')}${dmRow('Individual 2','4-6 2-6 · Tú','ko')}${dmRow('Total','Polo 4-1','ok')}</div></div>`} ]; }
+  {t:'Resultados: sube el acta', d:'Foto del acta y la IA lee nombres, marcadores y ganador. Tú revisas y confirmas.', w:'Gestión, Jornada, Resultados', m:`<div class="dm-acta">${EJ}<div class="dm-doc"><b>ACTA DE RESULTATS</b>${'<i></i>'.repeat(8)}<div class="dm-laser"></div></div><div class="dm-rev">${dmRow('Individual 1','6-3 6-4 · Marc','ok')}${dmRow('Individual 2','4-6 2-6 · Tú','ko')}${dmRow('Total',''+US+' 4-1','ok')}</div></div>`} ]; }
 function cyclePane(i){ const P=DEMO.players;
   return [`<div class="dm-resp">${P.slice(0,8).map((p,k)=>`<div>${demoFace(k,30,false)}<i class="${k<6?'y':k===6?'m':'n'}">${k<6? svgi('check',10,3) : k===6? '?' : svgi('x',10,3)}</i></div>`).join('')}</div><p class="dm-sub">6 disponibles, 1 por confirmar, 1 no puede</p>`,
     `<div class="dm-sel">${P.slice(0,7).map((p,k)=>`<label class="${k<6?'on':''}">${demoFace(k,24,false)}<span>${p[0]}</span><i>${k<6? svgi('check',11,3) : ''}</i></label>`).join('')}</div>`,
     `<div class="dm-lu">${['Individual 1','Individual 2','Individual 3','Individual 4','Dobles'].map((l,k)=>`<div>${demoFace(k,24,false)}<span>${l}</span><b>${k<4? P[k][0] : P[4][0].split(' ')[0]+' y '+P[1][0].split(' ')[0]}</b></div>`).join('')}</div>`,
-    `<div class="dm-sb"><div><b>Polo</b><span><i class="w"></i><i class="w"></i><i></i><i class="w"></i><i class="w"></i></span><strong>4</strong></div><div><b>CT Mirador</b><span><i></i><i></i><i class="w"></i><i></i><i></i></span><strong>1</strong></div></div>`,
+    `<div class="dm-sb"><div><b>${US}</b><span><i class="w"></i><i class="w"></i><i></i><i class="w"></i><i class="w"></i></span><strong>4</strong></div><div><b>CT Mirador</b><span><i></i><i></i><i class="w"></i><i></i><i></i></span><strong>1</strong></div></div>`,
     `<div class="dm-final">${svgi('trophy',30,1.7)}<b>Jornada finalizada</b><span>MVP: ${P[1][0]} · Informe del capitán enviado</span></div>`][i]; }
 function slidesManager(){ return [
-  {t:'Gestión deportiva: todo el club', d:'Primero lo que requiere atención; después cómo fue el fin de semana.', w:'Icono de la casa, arriba', m:`<div class="dm-club">${EJ}<div class="dm-hd dark"><b>Gestión deportiva</b><span class="dm-house">${svgi('cal',13)}</span></div>${['Polo B, jornada 4: sin resultado','Femenino A: resultado por validar','Polo A: 2 documentos por revisar'].map(x=>`<div class="dm-at">${x}<span>›</span></div>`).join('')}<div class="dm-kp"><div><b>3/4</b><span>compitieron</span></div><div><b class="w">2</b><span>victorias</span></div><div><b class="l">1</b><span>derrotas</span></div></div></div>`},
+  {t:'Gestión deportiva: todo el club', d:'Primero lo que requiere atención; después cómo fue el fin de semana.', w:'Icono de la casa, arriba', m:`<div class="dm-club">${EJ}<div class="dm-hd dark"><b>Gestión deportiva</b><span class="dm-house">${svgi('cal',13)}</span></div>${[''+US+' B, jornada 4: sin resultado','Femenino A: resultado por validar',''+US+' A: 2 documentos por revisar'].map(x=>`<div class="dm-at">${x}<span>›</span></div>`).join('')}<div class="dm-kp"><div><b>3/4</b><span>compitieron</span></div><div><b class="w">2</b><span>victorias</span></div><div><b class="l">1</b><span>derrotas</span></div></div></div>`},
   {t:'Equipos y resultados', d:'Todos los equipos en tarjetas o en tabla, con su clasificación y próxima jornada.', w:'Gestión deportiva, Equipos', m:`<div class="dm-club">${EJ}${[['Absoluto Masculino A','2º','J4 vs CT Mirador'],['Absoluto Masculino B','5º','J4 vs Club Brisamar'],['Absoluto Femenino A','1º','J4 vs Tennis Atalaya'],['Veteranos +35','3º','J4 vs CT Sant Roc']].map(r=>`<div class="dm-team"><b>${r[0]}</b><em>${r[1]}</em><span>${r[2]}</span></div>`).join('')}</div>`},
   {t:'Documentación con IA', d:'Elige equipo, sube actas o listados, la IA los lee y tú validas.', w:'Gestión deportiva, Documentación', m:`<div class="dm-club">${EJ}${[['Acta jornada 3.pdf','Incorporado','ok'],['Listado jugadores.xlsx','Por revisar','mid'],['Orden de juego J4.jpg','Leyendo…','scan']].map(r=>`<div class="dm-docrow"><i>${svgi('list',14)}</i><b>${r[0]}</b><em class="${r[2]}">${r[1]}</em></div>`).join('')}</div>`},
   {t:'Informe del fin de semana', d:'Un botón genera el PDF profesional y lo envía por correo a los gestores.', w:'Gestión deportiva, Resumen', m:`<div class="dm-pdf">${EJ}<div class="dm-cover"><img src="${ASSET.crestSm}" alt=""><b>WEEKEND SPORTS REPORT</b><span>7–8 noviembre 2026</span></div><div class="dm-sent">${svgi('check',14,2.6)} Enviado a Albert con el PDF adjunto</div></div>`} ]; }
@@ -2931,7 +2967,7 @@ function spotSteps(){ const R=ui.onb?.roles||[], st=[];
     st.push({r:'admin', sel:'.mdtabs', t:'Las fases de cada jornada', d:'Preparar (disponibilidad), Convocar (orden de juego y cartel), Resultados (con el acta y la IA) y Postpartido (informe y MVP).'}); }
   if(R.includes('manager')){
     st.push({r:me?'inicio':'club', sel:'.clublink', t:'Gestión deportiva', d:'El icono de la casa abre la vista de todo el club, separada de la de tu equipo.'});
-    st.push({r:'club', sel:'.attn, .attn-ok', t:'Lo que requiere atención', d:'Resultados sin poner, por validar y documentos por revisar de todos los equipos, lo primero.', ex:`<div style="display:grid;gap:6px">${['Polo B, jornada 4: sin resultado','Femenino A: resultado por validar','Polo A: 2 documentos por revisar'].map(x=>`<div class="dm-at">${x}<span>›</span></div>`).join('')}</div>`});
+    st.push({r:'club', sel:'.attn, .attn-ok', t:'Lo que requiere atención', d:'Resultados sin poner, por validar y documentos por revisar de todos los equipos, lo primero.', ex:`<div style="display:grid;gap:6px">${[''+US+' B, jornada 4: sin resultado','Femenino A: resultado por validar',''+US+' A: 2 documentos por revisar'].map(x=>`<div class="dm-at">${x}<span>›</span></div>`).join('')}</div>`});
     st.push({r:'club-resumen', sel:'[data-act=mail-toggle]', t:'Informe del fin de semana', d:'Genera el PDF profesional y lo envía por correo a los gestores, con un botón.'}); }
   return st; }
 function visibleEl(sel){ return [...document.querySelectorAll(sel)].find(e=>{ const r=e.getBoundingClientRect(); const cs=getComputedStyle(e); return r.width>0 && r.height>0 && cs.visibility!=='hidden' && cs.display!=='none'; }); }
@@ -3031,7 +3067,7 @@ function drawMsg(){ const M=ui.msg; let el=document.getElementById('msgm');
     el.addEventListener('input',e=>{ if(e.target.id!=='mg-text'||!ui.msg) return; ui.msg.text=e.target.value; const c=el.querySelector('.mg-cnt'); if(c) c.textContent=e.target.value.length+'/220'; msgBtns(); }); }
   const T=msgTemplates(M.j), au=msgAudience(M.j), p=persp(poloFix(M.j)), log=((tie(M.j)||{}).msgLog||[]).slice(-3).reverse();
   el.innerHTML=`<div class="mg-back" data-mg="close"></div><div class="mg-sheet" role="dialog" aria-modal="true" aria-label="Mensaje al equipo">
-    <div class="mg-h"><div><b>Mensaje al equipo</b><span>Jornada ${M.j}, Polo contra ${esc(clubName(p.rival))}</span></div><button class="mg-x" data-mg="close" aria-label="Cerrar">✕</button></div>
+    <div class="mg-h"><div><b>Mensaje al equipo</b><span>Jornada ${M.j}, ${esc(CLUB.teamShort)} contra ${esc(clubName(p.rival))}</span></div><button class="mg-x" data-mg="close" aria-label="Cerrar">✕</button></div>
     <div class="mg-chips">${T.map(t=>`<button data-mg="tpl" data-k="${t.k}" aria-pressed="${t.k===M.tpl}">${esc(t.l)}</button>`).join('')}</div>
     <div class="mg-aud"><span>Para</span>${Object.entries(MSG_AUD).map(([k,l])=>`<button data-mg="aud" data-k="${k}" aria-pressed="${k===M.aud}">${l}<em>${au[k].length}</em></button>`).join('')}</div>
     <label class="mg-f"><span>Mensaje <i class="mg-cnt">${M.text.length}/220</i></span><textarea id="mg-text" rows="4" maxlength="220" placeholder="Escribe el mensaje para el equipo">${esc(M.text)}</textarea></label>
@@ -3135,8 +3171,8 @@ function vClubFct(){
   <section class="sec"><div class="sec-h"><h2>Qué se sincroniza</h2></div><ul class="fcth-what">
     <li><b>Calendario</b><span>Fechas, horas y aplazamientos de toda la liga. Lo que alguien cambia a mano en la app no se toca; la diferencia queda como aviso.</span></li>
     <li><b>Resultados</b><span>De todos los equipos del grupo. Pasan a oficiales cuando la FCT cierra el acta.</span></li>
-    <li><b>Actas y plantillas</b><span>Quién jugó cada partido del Polo, marcadores, licencias y puntos.</span></li>
-    <li><b>El Polo manda</b><span>Si un resultado del Polo ya está en la app, no se sobrescribe: si la FCT dice otra cosa, aparece aquí y en «Requiere atención».</span></li></ul></section>
+    <li><b>Actas y plantillas</b><span>Quién jugó cada partido del ${US}, marcadores, licencias y puntos.</span></li>
+    <li><b>El ${US} manda</b><span>Si un resultado del ${US} ya está en la app, no se sobrescribe: si la FCT dice otra cosa, aparece aquí y en «Requiere atención».</span></li></ul></section>
   <section class="sec"><div class="sec-h"><h2>Avisos por correo</h2></div><div class="panel">
     <label class="chkline"><input type="checkbox" data-act="fct-alerts" ${al?'checked':''}> <span>Enviar un correo a los gestores cuando la sincronización de la noche encuentre datos que no cuadran o falle</span></label>
     <p class="muted small" style="margin:6px 0 0">${(m.managerEmails||[]).length? 'Se envía a: '+esc(m.managerEmails.join(', ')) : 'Aún no hay gestores con correo: añádelos en Configuración.'}</p></div></section></div>`; }
@@ -3620,7 +3656,7 @@ document.addEventListener('click', async e=>{
   else if(a==='ratings-pub'){ const j=+el.dataset.j, k=jid(j), agg=aggregate(k); S.published[k]={...(S.published[k]||{}),ratings:agg.ratings,n:agg.n}; saveState('Nota del equipo publicada'); }
   else if(a==='install'){ if(!installEvt) return; installEvt.prompt(); const c=await installEvt.userChoice.catch(()=>null); installEvt=null; renderQuiet(); if(c?.outcome==='accepted') toast('Instalando…'); }
   else if(a==='push-on') enablePush();
-  else if(a==='push-test'){ try{ const reg=await navigator.serviceWorker.ready; reg.showNotification('Polo A',{body:'Así te llegarán los avisos del equipo 🎾',icon:'/icons/icon-192.png',badge:'/icons/badge-96.png'}); }catch(e){ toast('No se ha podido mostrar la prueba'); } }
+  else if(a==='push-test'){ try{ const reg=await navigator.serviceWorker.ready; reg.showNotification(teamLabel(),{body:'Así te llegarán los avisos del equipo 🎾',icon:'/icons/icon-192.png',badge:'/icons/badge-96.png'}); }catch(e){ toast('No se ha podido mostrar la prueba'); } }
   else if(a==='phone-save'){ const v=$('#my-phone').value.trim(); phones[me]=v; await safe(()=> v? B.set('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me),'Teléfono guardado'); }
   else if(a==='tf-save'){ const o={}; document.querySelectorAll('[data-tf]').forEach(x=>{ const v=x.value.trim(); if(v) o[x.dataset.tf]=v; }); o.at=Date.now(); profiles[me]=o; await safe(()=>B.set('profiles/'+me,o),'Ficha guardada'); renderQuiet(); }
   else if(a==='notify'){ notify(el.dataset.type,+el.dataset.j); }
@@ -3683,10 +3719,11 @@ function subscribePriv(){ const key=(canManage?1:0)+'|'+(canPrivate?1:0)+'|'+SEA
 function subscribeData(){ // se rehace al identificarse o al cambiar de temporada
   dataSubs.forEach(u=>{ try{u()}catch(e){} }); dataSubs=[];
   if(!me && !isAdmin && !isManager) return;
-  dataSubs.push(B.watchDoc('meta/app', d=>{ meta=d; checkManager(d); if(!ui.seasonPicked && d?.current && d.current!==viewSeason){ switchSeason(d.current,true); return; } softRender(); }));
+  dataSubs.push(B.watchDoc('meta/app', d=>{ meta=d; checkManager(d);
+    if(!IS_POLO && clubTeams().length && !clubTeams().some(t=>t.id===teamId)){ setTimeout(()=>switchTeam(clubTeams()[0].id),0); } if(!ui.seasonPicked && d?.current && d.current!==viewSeason){ switchSeason(d.current,true); return; } softRender(); }));
   dataSubs.push(B.watchColl('photos', m=>{ photos=m; softRender(); }));
   dataSubs.push(B.watchColl('profiles', m=>{ profiles=m; profilesLoaded=true; softRender(); }));
-  dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ ui.sLoaded=SEASON_PATH; serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (teamId!=='polo-a'? emptyTeamSeed(teamId) : viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
+  dataSubs.push(B.watchDoc(SEASON_PATH, d=>{ ui.sLoaded=SEASON_PATH; serverS= d? normalize(clone(d)) : null; S=d? normalize(clone(d)) : (!IS_POLO || teamId!=='polo-a'? emptyTeamSeed(teamId) : viewSeason===SEASON_ID? seed() : normalize({seasonId:viewSeason,fixtures:[],ties:{},published:{},official:{asOf:0,order:[]}}));
     updRoles(); subscribePriv(); syncMvpSubs(); softRender(); }));
   dataSubs.push(B.watchColl(SEASON_PATH+'/avail', m=>{ avail=m; softRender(); }));
   if(me){ dataSubs.push(B.watchDoc(SEASON_PATH+'/availNotes/'+me, d=>{ if(!canPrivate){ notes={[me]:d||{}}; softRender(); } }));
@@ -3703,10 +3740,10 @@ function syncMvpSubs(force){
     if(canPrivate) mvpSubs.push(B.watchColl(SEASON_PATH+'/mvp/'+k+'/votes', m=>{ mvpVotes[k]=m; softRender(); }));   // quién votó a quién (privado)
   });
 }
-function emptyTeamSeed(tid){ const t=clubTeams().find(x=>x.id===tid)||{short:'Polo',cat:''};
+function emptyTeamSeed(tid){ const t=clubTeams().find(x=>x.id===tid)||{short:CLUB.teamShort,cat:''};
   return normalize({seasonId:viewSeason, teamId:tid, comp:{name:'Lliga Catalana per Equips', group:teamCat(t), memorial:''}, teams:[{id:POLO,name:CLUB.short+' '+String(t.short||'').replace(new RegExp('^'+CLUB.teamShort+'\\s*'),''),short:t.short||CLUB.teamShort,abbr:CLUB.abbr}],
     players:[], fixtures:[], ties:{}, published:{}, official:{asOf:0,order:[]}, captains:[], mvp:{}}); }
-function switchTeam(tid){ ui.teamAuto=true; if(tid===teamId) return; teamId=tid; try{ localStorage.setItem('polo-team',tid); }catch(e){} S=emptyTeamSeed(tid); serverS=null; ui.fe=null; switchSeason(viewSeason, !ui.seasonPicked); }
+function switchTeam(tid){ ui.teamAuto=true; if(tid===teamId) return; teamId=tid; try{ localStorage.setItem(IS_POLO? 'polo-team' : 'lc-team-'+CLUB.id,tid); }catch(e){} S=emptyTeamSeed(tid); serverS=null; ui.fe=null; switchSeason(viewSeason, !ui.seasonPicked); }
 function switchSeason(id,auto){ privKey=''; docsKey=''; ui.rev=null; if(!auto) ui.seasonPicked=true; viewSeason=id; SEASON_PATH='seasons/'+docIdFor(teamId,id); avail={}; picks={}; ballots={}; notes={}; myBallot=null; privSubs.forEach(u=>{ try{u()}catch(e){} }); privSubs=[]; ui.adminJ=null; ui.calJ=null; subscribeData(); watchMine(); render(); }
 // Fichas vinculadas (quién entra con qué cuenta): la gestión y los capitanes ven todas; un jugador, solo la suya
 let claimsSub=null;

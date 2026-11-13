@@ -107,10 +107,14 @@ Cada paso muestra en qué punto está y tiene «Atrás». Se recuerdan el últim
 - `clubs/<id>`: nombre oficial y corto, escudo (WebP/PNG y PNG para el PDF), portada, colores, contacto. Se aplican al validar la pertenencia: cabecera, intro, carteles, PDF (cliente y servidor), correos del informe y de invitación.
 - Configuración inicial guardada en `clubs/<id>.setup` con nueve pasos que se marcan solos al ver los datos, «Marcar como hecho» y «Activar el club». Tarjeta con el siguiente paso en el Inicio hasta activarlo.
 
-### Pendiente
-- Varios clubes en el mismo despliegue: hoy cada despliegue fija `club-config.js` (id del club). Con los datos ya bajo `clubs/<id>/`, el siguiente paso es elegir el club a partir de la pertenencia del usuario en lugar del archivo, y que las tareas nocturnas recorran `clubs/*`.
-- Fichero de reglas probado con el emulador de Firestore (no disponible en este entorno): ver la lista de comprobaciones del PR.
-
+### Varios clubes en la misma app (implementado)
+- **El club lo decide la cuenta.** `club-config.js` es la configuración del club original; cualquier otro club se construye con `forClub(id, clubs/<id>)` (nombre, nombre corto, escudo o iniciales, colores, grupos FCT, palabra FCT) y sus datos viven en `clubs/<id>/…`.
+- **Cómo se elige**: `accounts/<uid>.clubs` es un índice de los clubes de cada cuenta (solo orienta; los permisos están en `clubs/<id>/members/<uid>`). Al entrar: si la cuenta solo es de otro club, la app lo abre sola; si es de varios, pregunta; el menú de la cuenta tiene «Cambiar a…». El club abierto se guarda en el dispositivo (`lc-club`) con su configuración y la app se recarga con ella.
+- **Gestor**: al aprobarlo (correo o app) se crea `clubs/<id>` con los datos oficiales de la FCT de la solicitud. Al entrar y elegir su club, la app abre ese club y su configuración inicial.
+- **Jugador**: «Soy jugador» busca su ficha (nombre + licencia) en **todos los clubes activados**; lo vincula en el suyo y la app abre ese club. Una cuenta puede estar en varios clubes.
+- **Invitaciones**: los enlaces llevan el club (`#invitacion-<código>.<club>`).
+- **Servidor**: la app manda el club abierto en la cabecera `X-Club`; `api/_auth.js` comprueba los permisos en ese club y usa su raíz de datos y su configuración. Las tareas nocturnas (FCT, recordatorios, informe) recorren todos los clubes.
+- **Textos**: el equipo propio se llama como el club (`US`, «Sabadell contra…»); en el Polo sigue diciendo «Polo».
 
 ## Orden de incorporación (obligatorio, igual para todos los clubes)
 1. **Gestor**: «Soy gestor deportivo» → busca su club en el catálogo FCT → solicitud. Llega a la plataforma (`PLATFORM_EMAILS`) con «Dar acceso» / «Rechazar»: enlace firmado, de un solo uso, con página de confirmación (`api/access-request.js`, GET muestra, POST decide). Al aprobar: miembro gestor y correo al solicitante.

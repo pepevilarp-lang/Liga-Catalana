@@ -17,7 +17,7 @@ async function recipients(db, r, cdb = db) {
   const admins = (await db.collection('admins').get()).docs.map(d => d.id).filter(isMail);
   const platform = String(process.env.PLATFORM_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(isMail);
   // Los gestores los valida la plataforma (Dossau Lab): PLATFORM_EMAILS y administradores
-  if (r.clubId !== CLUB.id || r.role !== 'jugador') return { to: [...new Set([...platform, ...admins])], who: 'plataforma' };
+  if (r.role !== 'jugador') return { to: [...new Set([...platform, ...admins])], who: 'plataforma' };
   const meta = (await cdb.doc('meta/app').get()).data() || {};
   const managers = (meta.managerEmails || []).filter(isMail);
   let captains = [];
@@ -35,16 +35,16 @@ async function findPlayers(cdb, first, last) {
   const F = norm(first), L = norm(last);
   if (!F.length || !L.length || String(first).length > 40 || String(last).length > 60) return [];
   const meta = (await cdb.doc('meta/app').get()).data() || {}, season = meta.current || '';
-  const R = require('./_report.js'), teams = R.clubTeams(meta), roster = ((await cdb.doc('public/roster').get()).data() || {}).teams || {};
+  const R = require('./_report.js'), teams = R.clubTeams(meta, cdb.cfg), roster = ((await cdb.doc('public/roster').get()).data() || {}).teams || {};
   const out = new Map();
   for (const t of teams) {
     let list = roster[t.id] || [];
-    if (!list.length && season) { const S = (await cdb.doc('seasons/' + R.docIdFor(t.id, season)).get()).data() || {}; list = (S.players || []).filter(p => p.active !== false); }
+    if (!list.length && season) { const S = (await cdb.doc('seasons/' + R.docIdFor(t.id, season, cdb.cfg)).get()).data() || {}; list = (S.players || []).filter(p => p.active !== false); }
     for (const p of list) {
       const n = norm(p.full || p.name);
       if (!(F.every(x => n.includes(x)) && L.some(x => n.includes(x)))) continue;
       const m = out.get(p.id) || { pid: p.id, name: p.name, teams: [] };
-      m.teams.push({ id: t.id, name: t.name, season: season ? R.docIdFor(t.id, season) : '' }); out.set(p.id, m);
+      m.teams.push({ id: t.id, name: t.name, season: season ? R.docIdFor(t.id, season, cdb.cfg) : '' }); out.set(p.id, m);
     }
   }
   const list = [...out.values()].slice(0, 5);
@@ -58,8 +58,8 @@ async function findPlayers(cdb, first, last) {
 const officialOf = S => Array.isArray(S.officialCaptains) ? S.officialCaptains : (S.captains || []);
 async function seasonsOf(cdb) {
   const R = require('./_report.js'), meta = (await cdb.doc('meta/app').get()).data() || {}, season = meta.current || '';
-  const teams = R.clubTeams(meta), out = [];
-  for (const t of teams) { const sid = season ? R.docIdFor(t.id, season) : ''; const S = sid ? (await cdb.doc('seasons/' + sid).get()).data() : null; out.push({ t, sid, S }); }
+  const teams = R.clubTeams(meta, cdb.cfg), out = [];
+  for (const t of teams) { const sid = season ? R.docIdFor(t.id, season, cdb.cfg) : ''; const S = sid ? (await cdb.doc('seasons/' + sid).get()).data() : null; out.push({ t, sid, S }); }
   return { meta, season, teams: out };
 }
 // Estructura mínima para activar el registro de jugadores: temporada, y en cada equipo con temporada, plantilla con licencias y capitán oficial
@@ -102,34 +102,54 @@ async function verifyPlayer(cdb, first, last, lic) {
   if (byName.length) return { status: Lc ? 'licencia' : 'pedir-licencia', candidates: byName.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic })) };
   return { status: 'no' };
 }
+// Clubes con el registro de jugadores activado (el orden de incorporación lo exige)
+async function activeClubs(db) {
+  const out = [];
+  (await db.collection('clubs').get()).forEach(d => { const x = d.data() || {}; if (x.activation && x.activation.at) out.push({ id: d.id, name: x.name || '' }); });
+  return out;
+}
+// Busca al jugador en las plantillas oficiales de todos los clubes activados. Vincula solo con coincidencia fiable
+// (nombre + licencia); una misma persona puede quedar vinculada en varios clubes con la misma cuenta.
 async function linkPlayer(A, db, user, body) {
-  const cdb = await clubDbFor(db), email = String(user.email || '').toLowerCase();
-  const club = (await db.doc('clubs/' + CLUB.id).get()).data() || {};
-  if (!(club.activation && club.activation.at)) return { status: 'cerrado' };
+  const email = String(user.email || '').toLowerCase(), clubs = await activeClubs(db);
+  if (!clubs.length) return { status: 'cerrado' };
   // Límite de intentos por cuenta y día (evita probar licencias)
   const day = new Date().toISOString().slice(0, 10), aref = db.doc('linkAttempts/' + user.uid), att = (await aref.get()).data() || {};
   const n = att.day === day ? att.n || 0 : 0; if (n >= 10) return { status: 'limite' };
   await aref.set({ day, n: n + 1, at: Date.now() });
-  const v = await verifyPlayer(cdb, body.first, body.last, body.licence);
-  if (v.status !== 'ok') { if (v.candidates) v.candidates.forEach(c => delete c.lic); return v; }
-  const m = v.m, cref = cdb.doc('claims/' + m.pid), c = await cref.get();
-  if (c.exists && c.data().uid !== user.uid) return { status: 'ocupada', name: m.name };
-  const mref = db.doc('clubs/' + CLUB.id + '/members/' + user.uid), mem = await mref.get(), cur = mem.exists ? mem.data() : {};
-  if (cur.status === 'inactivo') return { status: 'desactivado' };
-  const at = Date.now(), b = db.batch();
-  b.set(cref, { uid: user.uid, email, at, via: 'licencia' });
-  if (!cdb.P('claims').startsWith('clubs/')) b.set(db.doc('users/' + user.uid), { pid: m.pid, email });
-  b.set(mref, { ...cur, pid: m.pid, email, roles: [...new Set([...(cur.roles || []), 'jugador'])], status: 'activo', at: cur.at || at, verifiedBy: 'licencia' }, { merge: true });
-  // Capitán oficial: se le asigna el rol de capitán de ese equipo al verificar su identidad
-  const capTeams = m.teams.filter(x => x.official);
-  for (const x of capTeams) { const sref = cdb.doc('seasons/' + x.season), S = (await sref.get()).data() || {};
-    if (!(S.captains || []).includes(m.pid)) b.update(db.doc(cdb.P('seasons/' + x.season)), { captains: [...(S.captains || []), m.pid] }); }
-  await b.commit();
-  const audit = (action, data) => db.doc('clubs/' + CLUB.id + '/audit/' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex')).set({ action, data, by: user.uid, byEmail: email, at: Date.now(), via: 'servidor' }).catch(() => {});
-  await audit('jugador-verificado', { pid: m.pid, team: m.teams[0] && m.teams[0].id });
-  if (capTeams.length) { const pids = await captainPidsOf(cdb); await cdb.doc('meta/app').set({ captainPids: pids }, { merge: true });
-    for (const x of capTeams) await audit('capitan-oficial-asignado', { pid: m.pid, team: x.id }); }
-  return { status: 'vinculado', pid: m.pid, name: m.name, teams: m.teams.map(x => x.id), captain: capTeams.map(x => x.id) };
+  const found = [];
+  for (const c of clubs) { const cdb = await clubDbFor(db, c.id); found.push({ c, cdb, v: await verifyPlayer(cdb, body.first, body.last, body.licence) }); }
+  const oks = found.filter(x => x.v.status === 'ok');
+  if (!oks.length) {
+    if (found.some(x => x.v.status === 'nombre')) return { status: 'nombre' };
+    const cands = found.flatMap(x => (x.v.candidates || []).map(k => ({ ...k, club: x.c.id, clubName: x.cdb.cfg.name })));
+    if (cands.length) return { status: body.licence ? 'licencia' : 'pedir-licencia', candidates: cands };
+    return { status: 'no' };
+  }
+  const linked = [];
+  for (const { c, cdb, v } of oks) {
+    const m = v.m, cref = cdb.doc('claims/' + m.pid), cl = await cref.get();
+    if (cl.exists && cl.data().uid !== user.uid) { if (oks.length === 1) return { status: 'ocupada', name: m.name }; continue; }
+    const mref = db.doc('clubs/' + c.id + '/members/' + user.uid), mem = await mref.get(), cur = mem.exists ? mem.data() : {};
+    if (cur.status === 'inactivo') { if (oks.length === 1) return { status: 'desactivado' }; continue; }
+    const at = Date.now(), b = db.batch();
+    b.set(cref, { uid: user.uid, email, at, via: 'licencia' });
+    if (!cdb.P('claims').startsWith('clubs/')) b.set(db.doc('users/' + user.uid), { pid: m.pid, email });
+    b.set(db.doc('accounts/' + user.uid), { clubs: { [c.id]: true } }, { merge: true });
+    b.set(mref, { ...cur, uid: user.uid, pid: m.pid, email, roles: [...new Set([...(cur.roles || []), 'jugador'])], status: 'activo', at: cur.at || at, verifiedBy: 'licencia' }, { merge: true });
+    // Capitán oficial: se le asigna el rol de capitán de ese equipo al verificar su identidad
+    const capTeams = m.teams.filter(x => x.official);
+    for (const x of capTeams) { const S = (await cdb.doc('seasons/' + x.season).get()).data() || {};
+      if (!(S.captains || []).includes(m.pid)) b.update(cdb.doc('seasons/' + x.season), { captains: [...(S.captains || []), m.pid] }); }
+    await b.commit();
+    const audit = (action, data) => db.doc('clubs/' + c.id + '/audit/' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex')).set({ action, data, by: user.uid, byEmail: email, at: Date.now(), via: 'servidor' }).catch(() => {});
+    await audit('jugador-verificado', { pid: m.pid, team: m.teams[0] && m.teams[0].id });
+    if (capTeams.length) { const pids = await captainPidsOf(cdb); await cdb.doc('meta/app').set({ captainPids: pids }, { merge: true });
+      for (const x of capTeams) await audit('capitan-oficial-asignado', { pid: m.pid, team: x.id }); }
+    linked.push({ club: c.id, clubName: cdb.cfg.name, pid: m.pid, name: m.name, teams: m.teams.map(x => x.id), captain: capTeams.map(x => x.id) });
+  }
+  if (!linked.length) return { status: 'ocupada', name: oks[0].v.m.name };
+  return { status: 'vinculado', ...linked[0], clubs: linked };
 }
 
 // ---------- Aprobar o rechazar una solicitud de gestor desde el correo (plataforma) ----------
@@ -154,10 +174,14 @@ const page = (title, body, color = '#0F3B2E') => `<!doctype html><html lang="es"
   <body><main><small>Lliga Catalana · plataforma</small>${body}</main></body></html>`;
 async function approveGestor(db, ref, r, by) {
   const at = Date.now();
+  // Club nuevo en la plataforma: se crea su espacio con los datos oficiales de la FCT que trajo la solicitud
+  const cref = db.doc('clubs/' + r.clubId), cdoc = await cref.get();
+  if (!cdoc.exists && r.clubId !== CLUB.id) await cref.set({ name: r.clubName || '', shortName: r.clubShort || '', town: r.clubTown || '', web: r.clubWeb || '', fctId: /^\d{5,}$/.test(r.clubId) ? r.clubId : '', createdAt: at, createdBy: by, setup: { done: {} } });
   const mref = db.doc('clubs/' + r.clubId + '/members/' + r.uid), m = await mref.get(), cur = m.exists ? m.data() : {};
-  await mref.set({ ...cur, email: r.email, roles: [...new Set([...(cur.roles || []), 'gestor'])], status: 'activo', approvedBy: by, at: cur.at || at, request: r.uid }, { merge: true });
-  if (r.clubId === CLUB.id) {   // en el club de esta app, también en la lista de gestores (recibe el informe semanal)
-    const cdb = await clubDbFor(db), meta = (await cdb.doc('meta/app').get()).data() || {};
+  await db.doc('accounts/' + r.uid).set({ clubs: { [r.clubId]: true } }, { merge: true });
+  await mref.set({ ...cur, uid: r.uid, email: r.email, roles: [...new Set([...(cur.roles || []), 'gestor'])], status: 'activo', approvedBy: by, at: cur.at || at, request: r.uid }, { merge: true });
+  {   // también en la lista de gestores del club (reciben el informe semanal)
+    const cdb = await clubDbFor(db, r.clubId), meta = (await cdb.doc('meta/app').get()).data() || {};
     const managers = [...(meta.managers || []).filter(x => x.email !== r.email), { name: r.name || '', email: r.email, approvedBy: by, approvedAt: at }];
     await cdb.doc('meta/app').set({ managers, managerEmails: managers.map(x => x.email) }, { merge: true });
   }
@@ -216,7 +240,7 @@ module.exports = async (req, res) => {
       if (!ctx.isStaff) return res.status(403).json({ error: 'Solo la gestión del club' });
       const st = await clubStructure(ctx.cdb); delete st.meta;
       if (body0.action === 'structure' || !st.ok) return res.status(200).json(st);
-      const at = Date.now(); await db.doc('clubs/' + CLUB.id).set({ activation: { at, by: ctx.email } }, { merge: true });
+      const at = Date.now(); await db.doc('clubs/' + ctx.clubId).set({ activation: { at, by: ctx.email } }, { merge: true });
       await require('./_auth.js').audit(ctx, 'club-activado', { equipos: st.teams });
       return res.status(200).json({ ...st, activated: at });
     }
@@ -234,21 +258,21 @@ module.exports = async (req, res) => {
     if (r.notifiedAt && Date.now() - r.notifiedAt < 120000) return res.status(200).json({ ok: true, skipped: 'reciente', who: r.notifiedWho });
     if ((r.notifyCount || (r.notifiedAt ? 1 : 0)) >= 5) return res.status(429).json({ ok: false, error: 'Ya se ha avisado 5 veces' });
     if (!require('./_mail.js').via()) return res.status(501).json({ error: 'El envío de correo no está configurado en Vercel' });
-    const { to, who } = await recipients(db, r, await clubDbFor(db));
+    const { to, who } = await recipients(db, r, await clubDbFor(db, r.clubId || CLUB.id));
     if (!to.length) return res.status(200).json({ ok: false, error: 'No hay a quién avisar: añade un administrador con correo o PLATFORM_EMAILS' });
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const app = process.env.APP_URL || ('https://' + host);
     // Gestores: el correo de la plataforma lleva los botones para decidir sin entrar en la app
     const nonce = r.role !== 'jugador' ? crypto.randomBytes(12).toString('base64url') : null;
     const dLink = a => app + '/api/access-request?a=' + a + '&t=' + encodeURIComponent(makeToken(r.uid, nonce));
-    const link = r.clubId === CLUB.id ? app + '/#club-ajustes' : app;
+    const link = app + '/#club-usuarios';   // en la app se abre el club de la solicitud
     const rol = r.role === 'jugador' ? 'jugador' : 'gestor deportivo';
     const ficha = r.pidName ? `${r.pidName}${r.teamName ? ' (' + r.teamName + ')' : ''}` : '';
     const subject = `Solicitud de acceso: ${r.name || r.email}, ${rol} de ${r.clubName}`;
     const text = [`${r.name || 'Alguien'} (${r.email}) pide entrar en Lliga Catalana como ${rol} de ${r.clubName}.`,
       ficha ? `Dice ser: ${ficha}.` : '', r.msg ? `Mensaje: «${r.msg}»` : '',
       nonce ? `Dar acceso: ${dLink('ok')}\nRechazar: ${dLink('no')}` : '',
-      r.clubId === CLUB.id ? `Para validarla: Gestión deportiva → Configuración → Solicitudes de acceso${r.role === 'jugador' ? ', o Gestión → Plantilla si eres capitán' : ''}.\n${link}` : 'Este club aún no está activo en Lliga Catalana: la solicitud queda registrada para darlo de alta.',
+      r.role === 'jugador' ? `Para validarla: Gestión deportiva → Configuración → Solicitudes de acceso${r.role === 'jugador' ? ', o Gestión → Plantilla si eres capitán' : ''}.\n${link}` : 'Al darle acceso se crea el espacio del club y el gestor empieza su configuración inicial.',
       'Si no conoces a esta persona, rechaza la solicitud: no tendrá acceso a ningún dato.'].filter(Boolean).join('\n\n');
     const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#13241e;max-width:560px">
       <p style="margin:0 0 6px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#6b7a73">Lliga Catalana · ${esc(r.clubName)}</p>
@@ -257,9 +281,9 @@ module.exports = async (req, res) => {
       ${ficha ? `<p style="margin:0 0 8px">Dice ser <b>${esc(ficha)}</b>.</p>` : ''}
       ${nonce ? `<p style="margin:18px 0 6px"><a href="${esc(dLink('ok'))}" style="background:#0F3B2E;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:bold;display:inline-block">Dar acceso</a>&nbsp;&nbsp;<a href="${esc(dLink('no'))}" style="color:#A8432E;text-decoration:underline;font-weight:bold">Rechazar</a></p><p style="margin:0 0 8px;color:#6b7a73;font-size:13px">Te pediremos confirmarlo antes de aplicarlo.</p>` : ''}
       ${r.msg ? `<p style="margin:0 0 8px;color:#41534c">«${esc(r.msg)}»</p>` : ''}
-      ${r.clubId === CLUB.id ? `<p style="margin:16px 0"><a href="${esc(link)}" style="background:#0F3B2E;color:#fff;text-decoration:none;padding:10px 16px;border-radius:999px;font-weight:bold">Revisar la solicitud</a></p>
+      ${r.role === 'jugador' ? `<p style="margin:16px 0"><a href="${esc(link)}" style="background:#0F3B2E;color:#fff;text-decoration:none;padding:10px 16px;border-radius:999px;font-weight:bold">Revisar la solicitud</a></p>
       <p style="margin:0;color:#6b7a73;font-size:13px">Gestión deportiva → Configuración → Solicitudes de acceso${r.role === 'jugador' ? ' (los capitanes también la ven en Gestión → Plantilla)' : ''}.</p>`
-        : `<p style="margin:12px 0 0;color:#41534c">Este club aún no está activo en Lliga Catalana: la solicitud queda registrada para darlo de alta.</p>`}
+        : `<p style="margin:12px 0 0;color:#41534c">Al darle acceso se crea el espacio del club en Lliga Catalana y el gestor empieza su configuración inicial.</p>`}
       <p style="margin:16px 0 0;color:#6b7a73;font-size:13px">Si no conoces a esta persona, rechaza la solicitud: no tendrá acceso a ningún dato.</p></div>`;
     const out = await require('./_mail.js').sendMail({ to, replyTo: r.email, subject, text, html });
     await ref.update({ ...(nonce ? { decisionNonce: nonce } : {}), notifiedAt: Date.now(), notifiedTo: to, notifiedWho: who, notifyCount: (r.notifyCount || (r.notifiedAt ? 1 : 0)) + 1, notifyError: null });
