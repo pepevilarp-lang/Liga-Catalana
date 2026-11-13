@@ -1561,3 +1561,4 @@ body.gate::before{background:#0E1216}
 .cm-setdone>span:first-child{width:28px;height:28px;border-radius:50%;background:var(--win);color:#fff;display:grid;place-items:center}
 .cm-setdone>span:nth-child(2){flex:1}
 .cm-setdone small{display:block;color:var(--muted);font-size:.76rem}
+.cm-miss{margin:6px 0 0;padding-left:18px;color:var(--loss);font-size:.82rem}

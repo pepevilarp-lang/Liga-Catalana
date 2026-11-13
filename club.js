@@ -97,7 +97,7 @@ function cmMemberRow(r) {
   const me_ = r.uid && r.uid === authUser?.uid, busy = CM.busy['m-' + (r.uid || r.email)];
   return `<li class="cm-row ${r.off ? 'off' : ''}"><div class="cm-who">${r.pid ? avatar(player(r.pid) || { id: r.pid, name: r.name }, 'sm') : `<span class="cm-av">${accIco('gestor', 18)}</span>`}<span><b>${esc(r.name || r.email)}</b><small>${esc(r.email || '')}${r.off ? ' · desactivado' : ''}${me_ ? ' · tú' : ''}</small></span>
       <span class="cm-roles">${r.roles.map(k => cmChip({ gestor: 'Gestor', capitan: 'Capitán', jugador: 'Jugador' }[k], k)).join('')}</span></div>
-    ${teams.length ? `<div class="cm-teams">${teams.map(t => `<span class="cm-team">${esc(t.short)}${caps.includes(t.id) ? ' · capitán' : ''}${r.off ? '' : `<button class="cm-x" data-cm="team-out" data-pid="${esc(r.pid)}" data-t="${esc(t.id)}" title="Quitar de ${esc(t.short)}" aria-label="Quitar de ${esc(t.short)}">×</button>`}</span>`).join('')}</div>` : ''}
+    ${teams.length ? `<div class="cm-teams">${teams.map(t => `<span class="cm-team">${esc(t.short)}${caps.includes(t.id) ? (accOfficial(clubData[t.id]).includes(r.pid) ? ' · capitán oficial' : ' · capitán') : ''}${r.off ? '' : `<button class="cm-x" data-cm="team-out" data-pid="${esc(r.pid)}" data-t="${esc(t.id)}" title="Quitar de ${esc(t.short)}" aria-label="Quitar de ${esc(t.short)}">×</button>`}</span>`).join('')}</div>` : ''}
     ${me_ || r.list && !r.uid ? '' : `<div class="cm-acts">${r.uid ? (r.off ? `<button class="btn sm" data-cm="m-on" data-v="${esc(r.uid)}" ${busy ? 'disabled' : ''}>Reactivar</button>` : `<button class="btn sm ghost danger" data-cm="m-off" data-v="${esc(r.uid)}" ${busy ? 'disabled' : ''}>Desactivar</button>`) : ''}
       ${r.pid && claims[r.pid] ? `<button class="btn sm ghost" data-cm="m-unlink" data-pid="${esc(r.pid)}" data-v="${esc(r.uid || '')}">Desvincular ficha</button>` : ''}</div>`}</li>`;
 }
@@ -133,7 +133,8 @@ async function cmSetCaptain(tid, pid, on) {
   const d = clubData[tid]; if (!d) throw new Error('Equipo sin cargar');
   const cur = d.captains || [], next = on ? [...new Set([...cur, pid])] : cur.filter(x => x !== pid);
   if (next.join() === cur.join()) return;
-  await B.update('seasons/' + cmSid(tid), { captains: next });
+  const off = accOfficial(d), offNext = on ? [...new Set([...off, pid])] : off.filter(x => x !== pid);
+  await B.update('seasons/' + cmSid(tid), { captains: next, officialCaptains: offNext });
   accAudit(on ? 'capitan-asignado' : 'capitanes', { team: tid, pid, antes: cur, ahora: next });
   await accSyncCaptainPids(true, { [tid]: next });
 }
@@ -245,19 +246,21 @@ async function cmSaveIdentity() {
 // Cada paso se da por hecho mirando los datos reales (no hay que marcarlo a mano); «Marcar como hecho» queda guardado en clubs/<id>.setup
 function cmSetup() {
   const teams = clubTeams(), d = t => clubData[t.id], loaded = teams.every(t => clubData.hasOwnProperty(t.id)), st = (ACC.admin.brand || {}).setup || {};
-  const brand = ACC.admin.brand || {}, all = f => teams.length > 0 && loaded && teams.every(t => d(t) && f(d(t), t));
-  const linked = all(x => x.players.filter(p => p.active !== false).every(p => claims[p.id] || cmPendingFor(p.id)) && x.players.some(p => p.active !== false));
+  const brand = ACC.admin.brand || {}, all = f => { const ts = teams.filter(t => d(t)); return loaded && ts.length > 0 && ts.every(t => f(d(t), t)); };   // equipos con temporada (igual que el servidor)
+  const act = x => x.players.filter(p => p.active !== false);
+  // Orden obligatorio, igual para todos los clubes: estructura deportiva → capitanes oficiales → activar → jugadores
   const S = [
     { k: 'identidad', t: 'Identidad del club', why: 'Escudo, colores y nombre corto: así cada club tiene su propia app.', ex: `<span class="cm-exh" style="--p:${esc(accBrand().primary)}"><img src="${esc(ASSET.crestSm)}" alt="">${esc(CLUB.medium)}</span>`, done: !!(brand.crest || brand.shortName || brand.colors), go: 'cm-identity', btn: 'Configurar' },
     { k: 'temporada', t: 'Temporada', why: 'La temporada en curso. Al cambiar de año se crea otra y se conserva el histórico.', ex: cmChip(meta?.current || '2026-27'), done: !!meta?.current, go: 'cm-identity', btn: 'Elegir' },
-    { k: 'equipos', t: 'Equipos', why: 'Cada equipo tiene su calendario, plantilla, resultados y MVP.', ex: teams.slice(0, 3).map(t => cmChip(t.short)).join('') || cmChip('Absoluto A'), done: teams.length > 0, go: 'ctlist', btn: 'Revisar' },
-    { k: 'competicion', t: 'Categoría y competición', why: 'La categoría y el grupo de la FCT de cada equipo, para sincronizar el calendario.', ex: cmChip('Absoluto') + cmChip('Grupo FCT 2'), done: all((x, t) => t.cat && fctTeamInfo(t).grp), href: '#club-fct', btn: 'Ir a Federació' },
-    { k: 'capitanes', t: 'Capitán de cada equipo', why: 'Gestiona su equipo (no el club): convocatorias, resultados e invitaciones.', ex: cmChip('Capitán', 'capitan'), done: all(x => (x.captains || []).length > 0), href: '#club-usuarios', btn: 'Asignar' },
-    { k: 'jugadores', t: 'Jugadores', why: 'La plantilla de cada equipo: a mano o leyendo el listado de la FCT.', ex: cmChip('8 jugadores'), done: all(x => x.players.some(p => p.active !== false)), href: '#club-equipos', btn: 'Ver equipos' },
-    { k: 'vincular', t: 'Invitar y vincular jugadores', why: 'Cada jugador recibe su invitación personal y entra con su Google.', ex: cmChip('Invitación enviada', 'pendiente'), done: linked, href: '#club-usuarios', btn: 'Invitar' },
+    { k: 'equipos', t: 'Equipos', why: 'Los equipos del club en la Lliga Catalana. Cada uno tiene su calendario, plantilla, resultados y MVP.', ex: teams.slice(0, 3).map(t => cmChip(t.short)).join('') || cmChip('Absoluto A'), done: teams.length > 0, go: 'ctlist', btn: 'Revisar' },
+    { k: 'competicion', t: 'Categoría y competición', why: 'La categoría y el grupo de la FCT de cada equipo: con él se importan calendario y plantilla oficiales.', ex: cmChip('Absoluto') + cmChip('Grupo FCT 2'), done: all((x, t) => t.cat && fctTeamInfo(t).grp), href: '#club-fct', btn: 'Ir a Federació', hard: true },
+    { k: 'plantillas', t: 'Plantillas oficiales de la FCT', why: 'Se importan de la FCT con nombre y licencia: con ellas los jugadores se identifican solos al entrar.', ex: cmChip('8 jugadores · con licencia'), done: all(x => act(x).length > 0 && act(x).some(p => p.lic)), href: '#club-fct', btn: 'Importar', hard: true },
+    { k: 'capitanes', t: 'Capitanes oficiales', why: 'La FCT no publica el capitán: márcalo en la plantilla de cada equipo. Al registrarse recibirá el rol solo.', ex: cmChip('Capitán oficial', 'capitan'), done: all(x => accOfficial(x).length > 0), href: '#club-equipos', btn: 'Marcar', hard: true },
     { k: 'calendario', t: 'Calendario y jornadas', why: 'Se descarga de la FCT; también se puede cargar desde un documento.', ex: cmChip('Jornada 1 · 15 nov'), done: all(x => (x.fixtures || []).length > 0), href: '#club-fct', btn: 'Sincronizar' },
-  ].map(x => ({ ...x, done: x.done || !!(st.done || {})[x.k], manual: !x.done && !!(st.done || {})[x.k] }));
-  return { steps: S, n: S.filter(x => x.done).length, active: !!st.activatedAt, st, loaded };
+    { k: 'revisar', t: 'Revisar asociaciones', why: 'Comprueba que cada jugador está en su equipo y que no hay fichas duplicadas ni sin licencia.', ex: cmChip('Polo A · 9') + cmChip('Polo B · 7'), done: !!(st.done || {}).revisar, href: '#club-equipos', btn: 'Revisar' },
+  ].map(x => ({ ...x, done: x.done || (!x.hard && !!(st.done || {})[x.k]), manual: !x.done && !x.hard && !!(st.done || {})[x.k] }));
+  const act0 = (ACC.admin.brand || {}).activation || {};
+  return { steps: S, n: S.filter(x => x.done).length, active: !!act0.at, act0, st, loaded, ready: S.filter(x => x.hard || ['temporada', 'equipos'].includes(x.k)).every(x => x.done) };
 }
 function cmSetupCard() {
   if (!canClub()) return ''; const U = cmSetup(); if (U.active) return '';
@@ -267,13 +270,13 @@ function cmSetupCard() {
 }
 function cmSetupPanel() {
   const U = cmSetup(), pct = Math.round(U.n / U.steps.length * 100), open = !U.active || CM.open.setup;
-  if (!open) return `<section class="sec" id="cm-setup"><div class="panel cm-setdone"><span>${svgi('check', 16, 2.6)}</span><span><b>Club activado</b><small>${U.st.activatedAt ? 'Desde ' + new Date(U.st.activatedAt).toLocaleDateString('es-ES') : ''}${U.st.activatedBy ? ' por ' + esc(U.st.activatedBy) : ''}</small></span><button class="textlink" data-cm="setup-show">Ver la configuración inicial</button></div></section>`;
+  if (!open) return `<section class="sec" id="cm-setup"><div class="panel cm-setdone"><span>${svgi('check', 16, 2.6)}</span><span><b>Registro de jugadores activado</b><small>${U.act0.at ? 'Desde ' + new Date(U.act0.at).toLocaleDateString('es-ES') : ''}${U.act0.by ? ' por ' + esc(U.act0.by) : ''}</small></span><button class="textlink" data-cm="setup-show">Ver la configuración inicial</button></div></section>`;
   return `<section class="sec" id="cm-setup"><div class="sec-h"><h2>Configuración inicial</h2><span class="muted small">${U.n} de ${U.steps.length}</span></div>
-    <div class="cm-bar"><i style="width:${pct}%"></i></div><p class="muted small" style="margin:6px 0 12px">Nueve pasos para tener el club listo. No hace falta hacerlos de una vez: cada paso se marca solo cuando los datos están, y puedes seguir otro día.</p>
+    <div class="cm-bar"><i style="width:${pct}%"></i></div><p class="muted small" style="margin:6px 0 12px">Primero la estructura deportiva del club; después entran los jugadores. Cada paso se marca solo cuando los datos están y puedes seguir otro día. Los marcados como obligatorios no se pueden saltar.</p>
     <ol class="cm-steplist">${U.steps.map((x, i) => `<li class="${x.done ? 'done' : ''}"><span class="cm-n">${x.done ? svgi('check', 14, 2.8) : i + 1}</span><div><b>${esc(x.t)}</b><p>${esc(x.why)}</p><div class="cm-ex">${x.ex}</div></div>
-      <div class="cm-sact">${x.done ? (x.manual ? `<button class="textlink" data-cm="step-undo" data-v="${x.k}">Desmarcar</button>` : '<span class="muted small">Hecho</span>') : `${x.href ? `<a class="btn sm" href="${x.href}">${x.btn}</a>` : `<button class="btn sm" data-cm="scroll" data-v="${x.go}">${x.btn}</button>`}<button class="textlink" data-cm="step-done" data-v="${x.k}">Marcar como hecho</button>`}</div></li>`).join('')}
-      <li class="${U.active ? 'done' : ''}"><span class="cm-n">${U.active ? svgi('check', 14, 2.8) : 9}</span><div><b>Revisar y activar el club</b><p>${U.n === U.steps.length ? 'Todo está listo. Al activarlo, este aviso desaparece del Inicio.' : 'Faltan ' + (U.steps.length - U.n) + ' pasos. Puedes activarlo igualmente y completarlos después.'}</p></div>
-        <div class="cm-sact">${U.active ? '<span class="muted small">Activado</span>' : `<button class="btn sm brass" data-cm="activate">Activar el club</button>`}</div></li></ol></section>`;
+      <div class="cm-sact">${x.done ? (x.manual ? `<button class="textlink" data-cm="step-undo" data-v="${x.k}">Desmarcar</button>` : '<span class="muted small">Hecho</span>') : `${x.href ? `<a class="btn sm" href="${x.href}">${x.btn}</a>` : `<button class="btn sm" data-cm="scroll" data-v="${x.go}">${x.btn}</button>`}${x.hard ? '<small class="muted">Obligatorio</small>' : `<button class="textlink" data-cm="step-done" data-v="${x.k}">${x.k === 'revisar' ? 'Revisado' : 'Marcar como hecho'}</button>`}`}</div></li>`).join('')}
+      <li class="${U.active ? 'done' : ''}"><span class="cm-n">${U.active ? svgi('check', 14, 2.8) : 9}</span><div><b>Activar el registro de jugadores</b><p>${U.active ? 'Los jugadores ya pueden entrar identificándose con su licencia.' : U.ready ? 'La estructura mínima está lista. Al activarlo, los jugadores podrán entrar identificándose con su nombre y licencia.' : 'Antes hay que completar los pasos obligatorios: competición, plantillas oficiales y capitanes oficiales de cada equipo.'}</p>${CM.actMissing?.length ? `<ul class="cm-miss">${CM.actMissing.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}</div>
+        <div class="cm-sact">${U.active ? '<span class="muted small">Activado</span>' : `<button class="btn sm brass" data-cm="activate" ${U.ready && !CM.busy.act ? '' : 'disabled'}>${CM.busy.act ? 'Comprobando…' : 'Activar'}</button>`}</div></li></ol></section>`;
 }
 async function cmStep(k, on) {
   const st = (ACC.admin.brand || {}).setup || {}, done = { ...(st.done || {}) }; if (on) done[k] = true; else delete done[k];
@@ -281,10 +284,17 @@ async function cmStep(k, on) {
   renderQuiet();
 }
 async function cmActivate() {
-  const U = cmSetup(); if (U.n < U.steps.length && !confirm('Faltan ' + (U.steps.length - U.n) + ' pasos. ¿Activar el club igualmente?')) return;
-  const st = { ...((ACC.admin.brand || {}).setup || {}), activatedAt: Date.now(), activatedBy: authUser.email };
-  await safe(async () => { await B.merge('clubs/' + CLUB.id, { setup: st }); ACC.admin.brand = { ...(ACC.admin.brand || {}), setup: st }; accAudit('club-activado', {}); }, 'Club activado');
-  render();
+  CM.busy.act = true; CM.actMissing = null; renderQuiet();
+  try {
+    const t = await B.idToken(); let j;
+    if (t) { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'activate' }) });
+      j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'error ' + r.status); }
+    else { const U = cmSetup(); j = U.ready ? { ok: true, activated: Date.now() } : { ok: false, missing: U.steps.filter(x => x.hard && !x.done).map(x => x.t) };
+      if (j.ok) { await B.merge('clubs/' + CLUB.id, { activation: { at: j.activated, by: authUser.email } }); accAudit('club-activado', {}); } }
+    if (!j.ok) { CM.actMissing = j.missing || []; toast('Aún falta completar la estructura del club'); }
+    else { ACC.admin.brand = { ...(ACC.admin.brand || {}), activation: { at: j.activated, by: authUser.email } }; toast('Registro de jugadores activado'); }
+  } catch (e) { toast('No se ha podido activar: ' + e.message); }
+  CM.busy.act = false; render();
 }
 
 /* ===================== MIGRACIÓN (solo administradores) ===================== */

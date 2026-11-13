@@ -111,6 +111,17 @@ Cada paso muestra en qué punto está y tiene «Atrás». Se recuerdan el últim
 - Varios clubes en el mismo despliegue: hoy cada despliegue fija `club-config.js` (id del club). Con los datos ya bajo `clubs/<id>/`, el siguiente paso es elegir el club a partir de la pertenencia del usuario en lugar del archivo, y que las tareas nocturnas recorran `clubs/*`.
 - Fichero de reglas probado con el emulador de Firestore (no disponible en este entorno): ver la lista de comprobaciones del PR.
 
+
+## Orden de incorporación (obligatorio, igual para todos los clubes)
+1. **Gestor**: «Soy gestor deportivo» → busca su club en el catálogo FCT → solicitud. Llega a la plataforma (`PLATFORM_EMAILS`) con «Dar acceso» / «Rechazar»: enlace firmado, de un solo uso, con página de confirmación (`api/access-request.js`, GET muestra, POST decide). Al aprobar: miembro gestor y correo al solicitante.
+2. **Configuración del club** (Gestión deportiva → Configuración): identidad, temporada, equipos, categoría y grupo FCT*, plantillas oficiales de la FCT con licencias*, capitanes oficiales*, calendario, revisar asociaciones. (*) obligatorios.
+3. **Activar el registro de jugadores**: lo valida el servidor (`action: activate`): temporada y, en cada equipo con temporada, plantilla con licencias y capitán oficial. Se guarda en `clubs/<id>.activation`, que solo escribe el servidor.
+4. **Jugadores**: «Soy jugador» → Google → nombre, apellidos y licencia. El servidor (`action: link`) busca en las plantillas oficiales del club activado; nombre + licencia = coincidencia fiable → crea el vínculo (claims, users, members) y entra. Solo nombre → pide la licencia. Licencia de otra persona → no vincula. No aparece → solicitud al club. Máximo 10 comprobaciones por cuenta y día (`linkAttempts`).
+5. **Capitán oficial**: `seasons.officialCaptains` (lo marca la gestión: la FCT no publica el capitán). Al verificarse, recibe el rol automáticamente y se recalcula `meta/app.captainPids` en el servidor.
+6. **Capitanes adicionales**: el capitán oficial los nombra en su Plantilla, solo jugadores de su equipo, sin poder quitar a los oficiales (reglas: `extraCaptainsOk`, `officialKept`). Queda en el historial; la gestión los ve y cambia todos.
+- Pantalla de entrada: solo «Soy jugador» y «Soy gestor deportivo». El capitán entra como jugador y la app le abre la gestión de su equipo.
+- Real Club de Polo: sus capitanes actuales cuentan como oficiales (sin `officialCaptains`). Las invitaciones siguen funcionando antes de activar.
+
 ## 5. Pruebas
 | Escenario | Fase |
 | --- | --- |

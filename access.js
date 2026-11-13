@@ -16,6 +16,9 @@ const ACC_ROLES = {
   jugador: { t: 'Jugador', d: 'Consulta tu equipo, disponibilidad, convocatorias y resultados.', home: 'inicio' },
 };
 const ACC_ORDER = ['gestor', 'capitan', 'jugador'];
+// Pantalla de entrada: solo dos opciones. El capitán es un jugador con permisos de su equipo (se detecta solo al entrar).
+const ACC_LOGIN = { jugador: { t: 'Soy jugador', d: 'Tu equipo, disponibilidad, convocatorias y resultados. Si eres capitán, también la gestión de tu equipo.' },
+  gestor: { t: 'Soy gestor deportivo', d: 'Da de alta tu club, configura sus equipos y gestiona la competición.' } };
 const ACC = {
   flow: null,        // {role, club, step, join}: el recorrido de entrada en curso
   ctx: null,         // perfil con el que está dentro ahora
@@ -40,6 +43,7 @@ function accFlowSave() { accStore.set('lc-flow', ACC.flow ? JSON.stringify(ACC.f
 function accSetFlow(patch) { ACC.flow = patch === null ? null : { ...(ACC.flow || {}), ...patch }; accFlowSave(); }
 (function accBoot() {
   ACC.flow = accStore.json('lc-flow');
+  if (ACC.flow && ACC.flow.role === 'capitan') ACC.flow.role = 'jugador';
   const h = (location.hash || '').slice(1);
   if (/^invitacion-[A-Za-z0-9]{6,}$/.test(h)) { ACC.invite = h.slice(11).toUpperCase(); try { sessionStorage.setItem('lc-invite', ACC.invite); } catch (e) {} }
   else { try { ACC.invite = sessionStorage.getItem('lc-invite'); } catch (e) {} }
@@ -160,13 +164,13 @@ function accLogin() {
   }
   if (f.step === 'auth' && f.role) return accAuthStep(f);
   const last = accStore.get('lc-last-role');
-  const cards = ACC_ORDER.map(k => `<button class="acc-role" data-acc="role" data-v="${k}">
-      <span class="acc-ri">${accIco(k)}</span><span class="acc-rt"><b>${ACC_ROLES[k].t}</b><small>${ACC_ROLES[k].d}</small></span>${last === k ? '<span class="acc-tag">Último usado</span>' : ''}<span class="acc-arr" aria-hidden="true">›</span></button>`).join('');
+  const cards = ['jugador', 'gestor'].map(k => `<button class="acc-role" data-acc="role" data-v="${k}">
+      <span class="acc-ri">${accIco(k)}</span><span class="acc-rt"><b>${ACC_LOGIN[k].t}</b><small>${ACC_LOGIN[k].d}</small></span>${(last === 'capitan' ? 'jugador' : last) === k ? '<span class="acc-tag">Último usado</span>' : ''}<span class="acc-arr" aria-hidden="true">›</span></button>`).join('');
   return accShell(`${accTop(false)}
     <h1 class="acc-h">Bienvenido a Lliga Catalana</h1>
     <p class="acc-q">¿Cómo quieres acceder?</p>
     <div class="acc-roles" role="list">${cards}</div>
-    <p class="acc-foot">Una sola cuenta para todos tus perfiles. Elegir uno no da permisos: después de entrar comprobamos los que tienes asignados.</p>${accAccount()}`, 'acc-login', 'role');
+    <p class="acc-foot">Una sola cuenta para todo. Elegir una opción no da permisos: después de entrar comprobamos los que tienes. Primero el club se da de alta y configura sus equipos; después entran sus jugadores.</p>${accAccount()}`, 'acc-login', 'role');
 }
 function accAuthStep(f) {
   const c = f.club ? accClub(f.club) : null;
@@ -268,8 +272,17 @@ function accMyTeams() {
   return out.length ? out : all.filter(t => t.id === teamId);
 }
 // Capitanes de todo el club en meta/app.captainPids: las reglas lo usan para teléfonos, fotos y la lista de nombres
+// Capitanes oficiales del equipo (los marca la gestión). Temporadas anteriores sin el campo: sus capitanes actuales.
+const accOfficial = Sx => Array.isArray(Sx?.officialCaptains) ? Sx.officialCaptains : (Sx?.captains || []);
+const accIsOfficialCap = () => !!(me && accOfficial(S).includes(me));
+// meta/app.captainPids: con la base de datos real lo recalcula el servidor a partir de las temporadas (así un capitán
+// que nombra a otro no puede escribir la lista); en la vista previa, aquí.
 async function accSyncCaptainPids(force, over = {}) {
-  if (!canClub() || (ACC.capSynced && !force)) return; ACC.capSynced = true;
+  if (!(canClub() || me) || (ACC.capSynced && !force)) return; ACC.capSynced = true;
+  const t = B.idToken ? await B.idToken().catch(() => null) : null;
+  if (t) { try { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync-captains' }) });
+    const j = await r.json().catch(() => ({})); if (j.captainPids && meta) meta.captainPids = j.captainPids; } catch (e) {} return; }
+  if (!canClub()) return;
   const all = new Set();
   await Promise.all(clubTeams().map(async t => { try { const d = over[t.id] ? { captains: over[t.id] } : t.id === teamId && force ? S : await B.getDoc('seasons/' + docIdFor(t.id, viewSeason)); (d?.captains || []).forEach(x => all.add(x)); } catch (e) {} }));
   const list = [...all].sort(), now = [...(meta?.captainPids || [])].sort();
@@ -413,7 +426,8 @@ function accPlayerCheck(f) {
   if (roster === null && !ACC.rosterWaited) { setTimeout(() => { ACC.rosterWaited = true; render(); }, 1200); return accWait('Buscando tu equipo…'); }
   const tids = (rosterAll().find(p => p.id === me)?.teams || []).filter(t => clubTeams().some(x => x.id === t));
   if (tids.length > 1) return accTeamPicker('jugador', tids, '¿Qué equipo quieres ver?', 'Juegas en varios equipos del club. Puedes cambiar de equipo cuando quieras.');
-  return accFinish('jugador', tids[0]);
+  if (!accCapLoaded()) { accCheckCaptain(); return accWait('Buscando tu equipo…'); }
+  return accFinish((ACC.capTeams || []).includes(tids[0]) ? 'capitan' : 'jugador', tids[0]);
 }
 // Sin membresía: jugadores y capitanes entran solo con una invitación de su club. También pueden pedir acceso a un
 // club activo en Lliga Catalana (no al catálogo de la FCT); pedirlo no da nada hasta que el club lo acepta.
@@ -426,62 +440,72 @@ function accJoinView(f, role) {
   if (R && R.status === 'pendiente') return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(accClub(R.clubId) || {}, 64)}<div><span class="acc-k">${esc(R.clubName)}</span><h1 class="acc-h sm">Solicitud enviada</h1></div></div>
     <p class="acc-p">${R.pidName ? `Has dicho que eres <b>${esc(R.pidName)}</b>${R.teamName ? ' (' + esc(R.teamName) + ')' : ''}. Tu capitán o la gestión del club lo confirmará y entrarás directamente.` : 'El capitán de tu equipo o la gestión del club te vinculará a tu ficha de jugador y entrarás directamente.'}</p>${accNotifyLine(R)}
     <div class="acc-acts"><button class="acc-link" data-acc="req-cancel">Cancelar la solicitud</button></div>${accCodeForm('¿Te ha llegado la invitación? Introdúcela y entras ya.')}${accAccount()}`, '', 'join-pend');
-  const c = accActiveClubs()[0] || {};
-  // Resultado de buscar su nombre en las plantillas del club
-  if (f.join === 'match') {
-    const M = ACC.match || {};
-    if (M.busy) return accWait('Buscando tu ficha en las plantillas…');
-    const who = f.who || {}, list = (M.list || []).filter(x => !x.claimed), taken = (M.list || []).filter(x => x.claimed);
-    const head = `${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${esc(c.name || '')}</span><h1 class="acc-h sm">${list.length ? (list.length === 1 ? '¿Eres tú?' : '¿Cuál eres tú?') : 'No encontramos tu ficha'}</h1></div></div>`;
-    const after = ACC.openClaims ? 'Entrarás directamente en tu equipo.' : 'Tu capitán o la gestión del club lo confirmará y entrarás directamente; hasta entonces no verás ningún dato del club.';
-    return accShell(`${head}
-      ${list.length ? `<p class="acc-p">Hemos buscado <b>${esc((who.first || '') + ' ' + (who.last || ''))}</b> en las plantillas de ${esc(c.name || 'tu club')}. ${after}</p>
-        <div class="acc-clubs" role="list">${list.map(x => `<button class="acc-club" data-acc="match-pick" data-v="${esc(x.pid)}">${avatar({ id: x.pid, name: x.name })}<span><b>${esc(x.name)}</b><small>${esc(x.teams.map(t => t.name).join(', '))}</small></span><span class="acc-arr">›</span></button>`).join('')}</div>`
-        : `<p class="acc-p">${taken.length ? `La ficha de <b>${esc(taken[0].name)}</b> ya está vinculada a otra cuenta de Google. Si eres tú, pide a tu capitán que te vuelva a invitar.` : `No aparece <b>${esc((who.first || '') + ' ' + (who.last || ''))}</b> en las plantillas de ${esc(c.name || 'tu club')}. Revisa cómo lo has escrito o envía la solicitud igualmente: el club te vinculará a tu ficha.`}</p>`}
-      <div class="acc-acts">${list.length ? `<button class="acc-link" data-acc="match-none">No soy ${list.length === 1 ? 'yo' : 'ninguno'}: enviar solicitud sin ficha</button>` : `<button class="acc-btn" data-acc="match-none">Enviar solicitud</button>`}<button class="acc-link" data-acc="match-edit">Cambiar el nombre</button></div>${accAccount()}`, 'acc-launch', 'join-match');
+  const c = accActiveClubs()[0] || {}, L = ACC.link || {}, who = f.who || {};
+  const head = (t, k) => `${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${esc(k || c.name || '')}</span><h1 class="acc-h sm">${t}</h1></div></div>`;
+  const reqBtn = (pid, label) => `<button class="acc-btn ghost" data-acc="link-req" data-v="${esc(pid || '')}">${label || 'Pedir al club que me vincule'}</button>`;
+  if (f.join === 'link') {
+    if (L.busy) return accWait('Comprobando tus datos con la plantilla oficial…');
+    const st = L.res?.status, cand = L.res?.candidates || [];
+    if (st === 'cerrado') return accShell(`${head('Tu club aún no ha abierto el registro')}<p class="acc-p">${esc(c.name || 'Tu club')} está preparando sus equipos y plantillas en Lliga Catalana. Cuando su gestor deportivo lo active podrás entrar con tus datos. Si te han enviado una invitación, úsala:</p>${accCodeForm()}${accAccount()}`, 'acc-launch', 'join-closed');
+    if (st === 'ocupada') return accShell(`${head('Esta ficha ya tiene cuenta')}<p class="acc-p">La ficha de <b>${esc(L.res.name)}</b> ya está vinculada a otra cuenta de Google. Si eres tú y no la reconoces, pide al club que la revise.</p><div class="acc-acts">${reqBtn('', 'Pedir al club que lo revise')}<button class="acc-link" data-acc="link-edit">Volver</button></div>${accAccount()}`, 'acc-launch', 'join-taken');
+    if (st === 'limite' || st === 'desactivado') return accShell(`${head(st === 'limite' ? 'Demasiados intentos' : 'Tu acceso está desactivado')}<p class="acc-p">${st === 'limite' ? 'Por seguridad, hoy ya no se pueden hacer más comprobaciones con esta cuenta. Inténtalo mañana o pide al club que te vincule.' : 'La gestión del club ha desactivado el acceso de esta cuenta.'}</p><div class="acc-acts">${st === 'limite' ? reqBtn() : ''}</div>${accAccount()}`, 'acc-launch', 'join-limit');
+    if (st === 'pedir-licencia' || st === 'licencia') return accShell(`${head(st === 'licencia' ? 'La licencia no coincide' : 'Hemos encontrado tu ficha')}
+      <p class="acc-p">${cand.map(x => `<b>${esc(x.name)}</b> (${esc(x.teams.map(t => t.name).join(', '))})`).join(', ')}. ${st === 'licencia' ? 'El número de licencia no coincide con el de la plantilla oficial. Revísalo (está en tu licencia de la FCT o en las actas):' : 'Para entrar directamente, confirma tu número de licencia federativa (está en tu licencia de la FCT o en las actas):'}</p>
+      <form class="acc-code" data-acc-form="lic"><label for="acc-lic">Número de licencia</label><div class="acc-cin"><input id="acc-lic" name="lic" inputmode="numeric" autocomplete="off" maxlength="20" value="${esc(who.licence || '')}" placeholder="Por ejemplo, 0712345"><button class="acc-btn" type="submit">Comprobar</button></div></form>
+      <p class="acc-p dim">¿No la tienes a mano? El club puede validarte.</p><div class="acc-acts">${reqBtn(cand.length === 1 ? cand[0].pid : '', cand.length === 1 ? 'Soy ' + esc(cand[0].name.split(' ')[0]) + ': pedir al club que me vincule' : '')}<button class="acc-link" data-acc="link-edit">Cambiar mis datos</button></div>${accAccount()}`, 'acc-launch', 'join-lic');
+    if (st === 'nombre') return accShell(`${head('Los datos no coinciden')}<p class="acc-p">Esa licencia pertenece a otro jugador de la plantilla oficial. Revisa tu nombre, apellidos y licencia, o pide al club que te vincule.</p><div class="acc-acts">${reqBtn()}<button class="acc-link" data-acc="link-edit">Cambiar mis datos</button></div>${accAccount()}`, 'acc-launch', 'join-mismatch');
+    if (st === 'no' || L.err) return accShell(`${head('No apareces en las plantillas')}<p class="acc-p">${L.err ? 'No hemos podido comprobarlo: ' + esc(L.err) + '.' : `No encontramos a <b>${esc((who.first || '') + ' ' + (who.last || ''))}</b> en las plantillas oficiales de ${esc(c.name || 'tu club')}. Si acabas de entrar en el equipo, pide al club que te vincule.`}</p><div class="acc-acts">${reqBtn()}<button class="acc-link" data-acc="link-edit">Cambiar mis datos</button></div>${accAccount()}`, 'acc-launch', 'join-none');
   }
-  // Por defecto: nombre y apellidos para encontrar su ficha (o el código de invitación, si ya lo tiene)
-  return accShell(`${accTop(true)}<div class="acc-picked">${accCrest(c, 64)}<div><span class="acc-k">${ACC_ROLES[role].t} · ${esc(c.name || '')}</span><h1 class="acc-h sm">¿Cómo te llamas?</h1></div></div>
-    <p class="acc-p">Escribe tu nombre y apellidos tal como aparecen en la plantilla de tu equipo y buscaremos tu ficha.${role === 'capitan' ? ' Los capitanes los asigna la gestión deportiva del club.' : ''}</p>
+  // Por defecto: identificarse con los datos de la licencia federativa
+  return accShell(`${head('Identifícate', 'Soy jugador · ' + (c.name || ''))}
+    <p class="acc-p">Con tu nombre, apellidos y número de licencia te buscamos en la plantilla oficial de tu equipo y entras directamente. Si eres capitán, también tendrás la gestión de tu equipo.</p>
     ${accWhoForm(f)}
-    ${accCodeForm('¿Te ha llegado una invitación por correo o WhatsApp? Ábrela o escribe aquí el código.')}
+    ${accCodeForm('¿Te han enviado una invitación por correo o WhatsApp? Ábrela o escribe aquí el código.')}
     ${isManager || isAdmin ? `<div class="acc-acts"><button class="acc-link" data-acc="enter" data-v="gestor">Entrar como gestor deportivo</button></div>` : ''}${accAccount()}`, 'acc-launch', 'join');
 }
 function accWhoForm(f) {
   const g = String(authUser?.name || '').trim().split(/\s+/), w = f.who || { first: g[0] || '', last: g.slice(1).join(' ') };
   return `<form class="acc-who-f" data-acc-form="who-find"><div class="acc-2c"><label class="acc-lbl">Nombre<input name="first" required maxlength="40" value="${esc(w.first)}" autocomplete="given-name"></label><label class="acc-lbl">Apellidos<input name="last" required maxlength="60" value="${esc(w.last)}" autocomplete="family-name"></label></div>
+    <label class="acc-lbl">Número de licencia federativa<input name="licence" inputmode="numeric" maxlength="20" value="${esc(w.licence || '')}" autocomplete="off" placeholder="Si no la sabes, el club te validará"></label>
     <label class="acc-lbl">Correo<input value="${esc(authUser?.email || '')}" readonly aria-readonly="true"></label><p class="acc-p dim" style="margin-top:-4px">Es el de tu cuenta de Google: con él entrarás siempre.</p>
-    <div class="acc-acts"><button class="acc-btn big" type="submit">Buscar mi ficha</button></div></form>`;
+    <div class="acc-acts"><button class="acc-btn big" type="submit">Entrar</button></div></form>`;
 }
-// Busca la ficha por nombre y apellidos. Con la base de datos real lo hace el servidor (quien aún no es del club no puede
-// leer las plantillas) y solo devuelve fichas que coinciden en nombre y apellido; en la vista previa, aquí mismo.
-const accTok = s => accNorm(s).replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1);
-function accMatchLocal(first, last) {
-  const F = accTok(first), L = accTok(last), out = new Map();
-  rosterAll().forEach(p => { const n = accTok(p.full || p.name); if (F.length && L.length && F.every(x => n.includes(x)) && L.some(x => n.includes(x)))
-    out.set(p.id, { pid: p.id, name: p.name, claimed: !!claims[p.id], teams: (p.teams || []).map(t => ({ id: t, name: clubTeams().find(x => x.id === t)?.name || t, season: docIdFor(t, viewSeason) })) }); });
-  return [...out.values()].slice(0, 5);
-}
-async function accFindMe(who) {
-  ACC.match = { busy: true }; accSetFlow({ who, join: 'match' }); render();
+// Vínculo verificado: lo hace el servidor (nombre + licencia contra la plantilla oficial, solo en clubes activados).
+// En la vista previa, sin servidor, se simula aquí con las mismas reglas.
+async function accLinkMe(who) {
+  ACC.link = { busy: true }; accSetFlow({ who, join: 'link' }); render();
   try {
-    const t = await B.idToken();
-    if (!t) ACC.match = { list: accMatchLocal(who.first, who.last) };
-    else { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'match', first: who.first, last: who.last }) });
-      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'error ' + r.status); ACC.match = { list: j.matches || [] }; }
-  } catch (e) { ACC.match = { list: [], err: e.message }; }
+    const t = await B.idToken(); let res;
+    if (t) { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'link', first: who.first, last: who.last, licence: who.licence || '' }) });
+      res = await r.json().catch(() => ({})); if (!r.ok) throw new Error(res.error || 'error ' + r.status); }
+    else res = await accLinkLocal(who);
+    ACC.link = { res };
+    if (res.status === 'vinculado') { accSetFlow({ step: 'check', join: null }); toast(res.captain?.length ? 'Ya estás dentro, como capitán de tu equipo' : 'Ya estás en tu equipo');
+      ACC.capKey = ''; try { ACC.member = await B.getDoc('clubs/' + CLUB.id + '/members/' + authUser.uid); } catch (e) {} }
+  } catch (e) { ACC.link = { err: e.message || 'error' }; }
   render();
 }
-async function accPickMatch(pid) {
-  const x = (ACC.match?.list || []).find(m => m.pid === pid); if (!x) return;
-  const t = x.teams[0] || {};
-  if (ACC.openClaims) {   // acceso abierto por un administrador: entra directamente con su ficha
-    ui.accBusy = true; render();
-    try { await B.claim(pid); accSetFlow({ step: 'check', join: null }); toast('Ya estás en tu equipo'); }
-    catch (e) { toast('No se ha podido vincular: ' + (e?.code || e?.message || 'error')); }
-    ui.accBusy = false; render(); return;
+async function accLinkLocal(who) {
+  const club = await B.getDoc('clubs/' + CLUB.id); if (!club?.activation?.at) return { status: 'cerrado' };
+  const N = s => accNorm(s).replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1), lic = x => String(x || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toUpperCase();
+  const F = N(who.first), Ls = N(who.last), Lc = lic(who.licence), m0 = await B.getDoc('meta/app') || {}, all = new Map();
+  for (const t of clubTeams()) { const sid = docIdFor(t.id, m0.current || viewSeason), S = await B.getDoc('seasons/' + sid); if (!S) continue; const off = Array.isArray(S.officialCaptains) ? S.officialCaptains : (S.captains || []);
+    (S.players || []).filter(p => p.active !== false).forEach(p => { const m = all.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] }; m.teams.push({ id: t.id, name: t.name, season: sid, official: off.includes(p.id), S }); all.set(p.id, m); }); }
+  const nameOk = m => { const n = N(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && Ls.some(x => n.includes(x)); };
+  const L = [...all.values()], bl = Lc ? L.filter(m => m.lic && lic(m.lic) === Lc) : [];
+  if (bl.length === 1 && nameOk(bl[0])) {
+    const m = bl[0], cl = await B.getDoc('claims/' + m.pid); if (cl && cl.email !== authUser.email) return { status: 'ocupada', name: m.name };
+    await B.claim(m.pid); await B.merge('clubs/' + CLUB.id + '/members/' + authUser.uid, { pid: m.pid, email: authUser.email, roles: ['jugador'], status: 'activo' });
+    const caps = m.teams.filter(x => x.official); for (const x of caps) if (!(x.S.captains || []).includes(m.pid)) await B.update('seasons/' + x.season, { captains: [...(x.S.captains || []), m.pid] });
+    return { status: 'vinculado', pid: m.pid, captain: caps.map(x => x.id) };
   }
-  accSendReq('', 'jugador', { pid, pidName: x.name, team: t.id || '', teamName: t.name || '', season: t.season || '' });
+  if (bl.length) return { status: 'nombre' };
+  const bn = L.filter(nameOk); if (bn.length) return { status: Lc ? 'licencia' : 'pedir-licencia', candidates: bn.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) })) };
+  return { status: 'no' };
+}
+async function accLinkReq(pid) {
+  const x = (ACC.link?.res?.candidates || []).find(m => m.pid === pid), t = x?.teams?.[0] || {};
+  accSendReq('', 'jugador', x ? { pid, pidName: x.name, team: t.id || '', teamName: t.name || '', season: t.season || '' } : {});
 }
 const accCodeForm = (hint) => `<form class="acc-code" data-acc-form="code">${hint ? `<p class="acc-p dim">${hint}</p>` : ''}<label for="acc-code">Código de invitación</label><div class="acc-cin"><input id="acc-code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="Por ejemplo, K7PQ2XM4" maxlength="80"><button class="acc-btn" type="submit">Continuar</button></div></form>`;
 function accClearInvite() { ACC.invite = null; ACC.inv = null; try { sessionStorage.removeItem('lc-invite'); } catch (e) {} if (route().startsWith('invitacion-')) history.replaceState(null, '', '#inicio'); }
@@ -725,9 +749,8 @@ document.addEventListener('click', async e => {
     ACC.q = ''; render(); scrollTo(0, 0);
   }
   else if (a === 'req-renotify') accNotifyReq(true);
-  else if (a === 'match-pick') accPickMatch(v);
-  else if (a === 'match-none') accSendReq('', 'jugador');
-  else if (a === 'match-edit') { accSetFlow({ join: null }); render(); }
+  else if (a === 'link-req') accLinkReq(v);
+  else if (a === 'link-edit') { ACC.link = null; accSetFlow({ join: null }); render(); }
   else if (a === 'join-req') { accSetFlow({ join: 'req' }); render(); scrollTo(0, 0); }
   else if (a === 'req-club') { accSetFlow({ club: v }); render(); }
   else if (a === 'back') accBack();
@@ -773,7 +796,8 @@ document.addEventListener('input', e => { if (e.target.id === 'acc-q') { ACC.q =
 document.addEventListener('submit', e => {
   const f = e.target.closest('[data-acc-form]'); if (!f) return; e.preventDefault();
   const kind = f.dataset.accForm, fd = new FormData(f), val = String(fd.get(kind === 'jreq' || kind === 'req' || kind === 'who-req' ? 'msg' : 'code') || '');
-  if (kind === 'who-find') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; } accFindMe(who); return; }
+  if (kind === 'who-find') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim(), licence: String(fd.get('licence') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; } accLinkMe(who); return; }
+  if (kind === 'lic') { const who = { ...(ACC.flow?.who || {}), licence: String(fd.get('lic') || '').trim() }; if (!who.licence) { toast('Escribe tu número de licencia'); return; } accLinkMe(who); return; }
   if (kind === 'who' || kind === 'who-req') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; }
     accSetFlow({ who }); if (kind === 'who-req') accSendReq(val, 'jugador'); else render(); return; }
   const code = val.toUpperCase().replace(/^.*INVITACION-/, '').replace(/[^A-Z0-9]/g, '');
