@@ -1238,14 +1238,14 @@ function connCard(){
     ${ui.diag? `<ul class="diag">${ui.diag.map(([a,b,ok])=>`<li class="${ok?'ok':'ko'}"><span>${ok?'✓':'✗'}</span><b>${esc(a)}</b><em>${esc(b)}</em></li>`).join('')}</ul>${diagHint(ui.diag)}` : ''}</section>`;
 }
 function vYo(){
-  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1><p class="lede">Entras como ${esc(authUser?.email||'')}${isManager? ', gestor deportivo' : isAdmin? ', administrador' : ''}. No estás ligado a ningún jugador.</p><div class="row" style="margin-top:10px;gap:8px">${canClub()? `<a class="btn sm" href="#club">Gestión deportiva</a>` : ''}<button class="btn sm ghost" data-act="unskip">Soy jugador: elegir mi nombre</button><button class="btn sm ghost" data-act="signout">Cerrar sesión</button></div></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
+  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1><p class="lede">Entras como ${esc(authUser?.email||'')}${isManager? ', gestor deportivo' : isAdmin? ', administrador' : ''}. No estás ligado a ningún jugador.</p><div class="row" style="margin-top:10px;gap:8px">${canClub()? `<a class="btn sm" href="#club">Gestión deportiva</a>` : ''}<button class="btn sm ghost" data-act="unskip">Soy jugador: elegir mi nombre</button><button class="btn sm ghost" data-act="signout">Cerrar sesión</button><a class="btn sm ghost" href="/privacidad.html" target="_blank" rel="noopener">Privacidad</a><button class="btn sm ghost" data-acc="priv-withdraw">Retirar consentimiento</button></div></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
   const p=player(me)||{id:me, name:rosterAll().find(x=>x.id===me)?.name||'Jugador', order:'', cat:''}, pr=profiles[me]||{}, tasks=[];
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ const v=avOf(me,f.j); tasks.push(`<a class="task ${v?'done':''}" href="#disponibilidad-${f.j}"><span class="ti">${v?'✓':'?'}</span><span><b>Disponibilidad, jornada ${f.j}</b><small>${v? 'Has dicho: '+AV_LABEL[v.s]+'. Puedes cambiarla hasta el '+esc(fmtDT(deadline(f.j))) : 'Contra '+esc(clubName(persp(f).rival))+'. Responde antes del '+esc(fmtDT(deadline(f.j)))}</small></span></a>`); });
   pendingMvp().forEach(j=>tasks.push(`<a class="task hot" href="#mvp-${j}"><span class="ti">🏆</span><span><b>Vota al MVP, jornada ${j}</b><small>Un voto, hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</small></span></a>`));
   pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>Encuesta de la jornada ${j}</b><small>Has jugado contra ${esc(clubName(persp(poloFix(j)).rival))}. 2 minutos.</small></span></a>`));
   const roles=[isCaptain?'Capitán':'',isAdmin?'Administrador':''].filter(Boolean);
   return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Ver mi perfil</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
-  <section class="sec"><div class="row" style="justify-content:flex-end;margin-bottom:-6px"><button class="btn sm ghost" data-act="tour-again">Ver la introducción</button></div><div class="roles"><span class="op-k">Tus perfiles</span><div class="role-list">
+  <section class="sec"><div class="row" style="justify-content:flex-end;margin-bottom:-6px"><a class="btn sm ghost" href="/privacidad.html" target="_blank" rel="noopener">Privacidad</a><button class="btn sm ghost" data-acc="priv-withdraw" title="Retira tu consentimiento y cierra la sesión">Retirar consentimiento</button><button class="btn sm ghost" data-act="tour-again">Ver la introducción</button></div><div class="roles"><span class="op-k">Tus perfiles</span><div class="role-list">
     <span class="role">Jugador${me&&player(me)? ' del '+esc(teamLabel()) : ''}</span>
     ${canManage? `<a class="role cap" href="#admin">Capitán${!isCaptain&&!isAdmin&&teamMode()? ' (todo el equipo gestiona)' : ''} <em>Gestión ›</em></a>` : ''}
     ${canClub()? `<a class="role mgr" href="#club">${isManager? 'Gestor deportivo' : 'Administrador'} <em>Gestión deportiva ›</em></a>` : ''}</div></div></section>
@@ -3727,9 +3727,9 @@ B.onAuth(async u=>{
   try{ claimsSub&&claimsSub(); }catch(e){} claimsSub=null; cmReset();
   unsubAll(); dataSubs.forEach(x=>{ try{x()}catch(e){} }); dataSubs=[];
   authUser=u; me=null; isAdmin=false; adminSkip=false; claims={}; avail={}; picks={}; ballots={}; myBallot=null; S=seed();
-  ACC.ctx=null; ACC.capTeams=null; ACC.capKey=''; ACC.req=undefined; ACC.member=null; ACC.memberOf={}; ACC.menu=false; accMenuDraw();
+  ACC.priv=undefined; ACC.ctx=null; ACC.capTeams=null; ACC.capKey=''; ACC.req=undefined; ACC.member=null; ACC.memberOf={}; ACC.menu=false; accMenuDraw();
   if(!u){ authReady=true; render(); return; }
-  isAdmin=await B.isAdmin(u.email,u.uid); await accLoadBrand(); await accLoadMember(u);   // accLoadBrand fija la raíz de datos del club (migrado o no)
+  isAdmin=await B.isAdmin(u.email,u.uid); await accLoadPrivacy(u); await accLoadBrand(); await accLoadMember(u);   // accLoadBrand fija la raíz de datos del club (migrado o no)
   try{ const m0=await B.getDoc('meta/app'); if(m0){ meta=m0; } checkManager(m0); }catch(e){}
   try{ await B.relink(); }catch(e){}
   subs.push(B.watchDoc('public/roster', d=>{ roster=d; softRender(); }));

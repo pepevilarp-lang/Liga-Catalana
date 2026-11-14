@@ -133,3 +133,9 @@ En **Temporadas y ajustes** se crea la siguiente temporada sin perder las anteri
 Plan completo y estado por fases: `docs/MULTICLUB.md`. Los colores del club se cambian en Gestión deportiva → Configuración → Identidad del club (solo administradores), y el catálogo de clubes de la FCT se importa ahí mismo desde un CSV o Excel.
 
 La identidad del club está en `club-config.js`: nombre, nombre corto, escudo, equipos, grupos FCT y cómo aparece el club en actas y en la FCT. Para otro club se cambia ese archivo y el escudo de `img/` (y, para el PDF del servidor, `api/_crest.js`, que es el escudo en PNG). Firebase y Vercel son por club: cada club tiene su propio proyecto.
+
+## Privacidad
+- La política está en `privacidad.html` (página pública, se enlaza desde la entrada y desde «Yo»). Los datos del responsable se pueden poner en el `<script>` del final (`PRIVACY_CONFIG.owner` y `.contact`).
+- Antes de entrar con Google hay que marcar la casilla de aceptación; quien ya tenga la sesión abierta ve la pantalla «Antes de entrar» hasta que acepta.
+- La aceptación se guarda en `accounts/<uid>.privacy` (`{ v, at, email }`); al retirarla desde «Yo» se guarda `{ v: null, withdrawnAt }` y se cierra la sesión.
+- Si cambias la política de forma importante, sube `PRIVACY_V` en `access.js`: todos tendrán que volver a aceptarla.

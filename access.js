@@ -184,8 +184,43 @@ function accAuthStep(f) {
     : `<span class="acc-k">${ACC_ROLES[f.role].t}</span><h1 class="acc-h sm">Accede a Lliga Catalana</h1>
       <p class="acc-q">${f.role === 'capitan' ? 'Al entrar buscaremos los equipos de los que eres capitán.' : ACC.invite ? 'Tienes una invitación para unirte a tu equipo. Entra para aceptarla.' : 'Al entrar buscaremos tu club y tu equipo. No tendrás que elegirlos.'}</p>`;
   return accShell(`${accTop(true)}${head}
-    <button class="gbtn" data-acc="signin">${ACC_G}Continuar con Google</button>
+    ${accPrivCheck('acc-priv-pre', 'priv-pre')}
+    <button class="gbtn" data-acc="signin" ${accStore.get('lc-privacy-pre') === PRIVACY_V ? '' : 'disabled'}>${ACC_G}Continuar con Google</button>
     <p class="acc-foot">${f.role === 'gestor' ? 'Comprobaremos que eres gestor de este club. Si aún no lo eres, podrás pedir acceso o usar una invitación.' : ACC.invite ? 'Al entrar aceptarás tu invitación y verás tu equipo.' : 'Si es tu primera vez, abre el enlace de invitación que te ha enviado tu club o ten a mano su código.'}</p>`, c ? 'acc-launch' : '', 'auth');
+}
+
+/* ---------- Privacidad: hay que aceptar la política antes de entrar ---------- */
+// Al cambiar la política de forma importante, sube PRIVACY_V: todos tendrán que volver a aceptarla.
+const PRIVACY_V = '2026-11-14', PRIVACY_URL = '/privacidad.html';
+const accPrivLink = (t = 'política de privacidad') => `<a href="${PRIVACY_URL}" target="_blank" rel="noopener">${t}</a>`;
+const accPrivCheck = (id, act) => `<label class="acc-consent"><input type="checkbox" id="${id}" data-acc="${act}"> <span>He leído y acepto la ${accPrivLink()} de Lliga Catalana.</span></label>`;
+async function accLoadPrivacy(u) {
+  let v = null;
+  try { const a = await B.getDoc('accounts/' + u.uid); v = a?.privacy?.v || null; } catch (e) {}
+  if (!v && accStore.get('lc-privacy-' + u.uid) === PRIVACY_V) v = PRIVACY_V;   // aceptada en este dispositivo y aún sin guardar
+  // Marcó la casilla justo antes de entrar con Google: se guarda ahora, ya con la cuenta
+  if (v !== PRIVACY_V && accStore.get('lc-privacy-pre') === PRIVACY_V) { await accRecordPrivacy(u, true); v = PRIVACY_V; }
+  accStore.set('lc-privacy-pre', null);
+  ACC.priv = v === PRIVACY_V;
+}
+async function accRecordPrivacy(u, ok) {
+  const rec = ok ? { v: PRIVACY_V, at: Date.now(), email: u.email } : { v: null, withdrawnAt: Date.now(), email: u.email };
+  accStore.set('lc-privacy-' + u.uid, ok ? PRIVACY_V : null);
+  try { await B.merge('accounts/' + u.uid, { privacy: rec }); } catch (e) {}
+}
+function accPrivacyView() {
+  return accShell(`${accTop(false)}
+    <span class="acc-k">Protección de datos</span><h1 class="acc-h sm">Antes de entrar</h1>
+    <p class="acc-q">Para usar Lliga Catalana tienes que aceptar cómo tratamos tus datos.</p>
+    <ul class="acc-privlist">
+      <li>Usamos tu cuenta de Google, tu ficha de la FCT (nombre, licencia, categoría y puntos) y lo que hagas en la app (disponibilidad, convocatorias, resultados, encuestas y votos) <b>solo para organizar tu equipo</b>.</li>
+      <li>Solo ven tus datos las personas de tu equipo y la gestión de tu club. El teléfono, si lo pones, solo lo ven la gestión y los administradores.</li>
+      <li>No los vendemos ni los usamos para publicidad. Puedes pedir que los borremos y retirar este consentimiento cuando quieras, desde «Yo».</li>
+    </ul>
+    <p class="acc-p dim">Todo el detalle, en la ${accPrivLink()}.</p>
+    ${accPrivCheck('acc-priv', 'priv-tick')}
+    <div class="acc-acts acc-privbtns"><button class="acc-btn big" data-acc="priv-accept" disabled>Aceptar y entrar</button><button class="acc-link" data-acc="priv-decline">No acepto, salir</button></div>
+    ${accAccount()}`, '', 'privacy');
 }
 
 /* ---------- Roles reales ---------- */
@@ -270,6 +305,7 @@ function accFinish(role, tid) {
 /* ---------- Con la sesión iniciada: render() llama aquí. Devuelve la pantalla de acceso o null si ya puede entrar ---------- */
 function accGate() {
   accApplyCtx();
+  if (ACC.priv === false) return accPrivacyView();
   if (accMemberOff() && !isAdmin) return accShell(`${accTop(false)}<h1 class="acc-h sm">Tu acceso está desactivado</h1>
     <p class="acc-p">La gestión de ${esc(CLUB.medium || CLUB.name)} ha desactivado el acceso de esta cuenta. Si crees que es un error, habla con tu capitán o con la gestión del club.</p>${accAccount()}`, '', 'off');
   if (ACC.invite && !me) { if (!ACC.flow) accSetFlow({ role: 'jugador', step: 'check' }); return accInviteView(); }
@@ -812,7 +848,10 @@ document.addEventListener('click', async e => {
   else if (a === 'join-req') { accSetFlow({ join: 'req' }); render(); scrollTo(0, 0); }
   else if (a === 'req-club') { accSetFlow({ club: v }); render(); }
   else if (a === 'back') accBack();
-  else if (a === 'signin') { el.disabled = true; el.lastChild.textContent = 'Abriendo Google…'; try { await B.signIn(); } finally { el.disabled = false; } }
+  else if (a === 'priv-accept') { if (!document.getElementById('acc-priv')?.checked) return; el.disabled = true; await accRecordPrivacy(authUser, true); ACC.priv = true; render(); scrollTo(0, 0); if (me || isManager || isAdmin) setTimeout(() => playIntro(), 0); }
+  else if (a === 'priv-decline') accSignOut();
+  else if (a === 'priv-withdraw') { if (!authUser) return; await accRecordPrivacy(authUser, false); ACC.priv = false; toast('Has retirado tu consentimiento'); accSignOut(); }
+  else if (a === 'signin') { if (accStore.get('lc-privacy-pre') !== PRIVACY_V) return toast('Acepta la política de privacidad para continuar'); el.disabled = true; el.lastChild.textContent = 'Abriendo Google…'; try { await B.signIn(); } finally { el.disabled = false; } }
   else if (a === 'team') accFinish(el.dataset.role, v);
   else if (a === 'enter') { accMenuToggle(false); accSetFlow(null); ACC.ginv = null;
     if (v === 'capitan' && ACC.capTeams?.length > 1) { accSetFlow({ role: 'capitan', step: 'check' }); render(); }
@@ -845,6 +884,8 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'acc-cat-file' && el.files?.[0]) accReadCatalog(el.files[0]);
+  else if (el.dataset?.acc === 'priv-pre') { accStore.set('lc-privacy-pre', el.checked ? PRIVACY_V : null); const b = document.querySelector('[data-acc="signin"]'); if (b) b.disabled = !el.checked; }
+  else if (el.dataset?.acc === 'priv-tick') { const b = document.querySelector('[data-acc="priv-accept"]'); if (b) b.disabled = !el.checked; }
   else if (el.dataset?.acc === 'link-pick') { ACC.admin.link[el.dataset.v] = el.value || null; renderQuiet(); }
   else if (el.dataset?.acc === 'open-claims') { ACC.openClaims = el.checked;
     saveMeta({ openClaims: el.checked }, el.checked ? 'Jugadores y capitanes entran directamente' : 'Las fichas las valida el capitán o la gestión');
