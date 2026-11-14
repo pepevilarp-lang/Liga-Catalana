@@ -29,6 +29,7 @@
     fctMatch: 'polo',                         // palabra que identifica al club en los nombres de equipo de la FCT («Polo, RC de - B»)
     aliases: ['Polo, RC de', 'RC Polo', 'R.C. Polo', 'Real Club de Polo', 'Reial Club de Polo'],   // cómo aparece en actas y documentos
     town: 'Barcelona',
+    venue: 'Real Club de Polo de Barcelona, Avinguda del Doctor Marañón 19-31, 08028 Barcelona',   // sede de los partidos en casa (enlace de Google Maps)
     colors: { primary: '#0F3B2E', secondary: '#94722A' },   // colores de marca; se pueden cambiar desde Configuración (clubs/<id>)
     crest: 'img/escudo.webp',
     crestSm: 'img/escudo-sm.webp',
@@ -59,7 +60,7 @@ function forClub(id, d) {
     name, medium, short, teamShort: String(d.teamShort || short.split(' ').slice(-1)[0] || abbr), abbr,
     fileTag: String(d.fileTag || abbr).replace(/[^A-Za-z0-9]/g, '') || 'CLUB',
     fctMatch: String(d.fctMatch || words.slice().sort((a, b) => b.length - a.length)[0] || '').toLowerCase().replace(/[^\p{L}0-9-]/gu, '').trim(),   // palabra que identifica al club en los nombres de equipo de la FCT aliases: Array.isArray(d.aliases) ? d.aliases : [name, medium].filter(Boolean),
-    town: String(d.town || ''), colors, crest: d.crest || initials, crestSm: d.crestSm || d.crest || initials,
+    town: String(d.town || ''), venue: String(d.venue || ''), colors, crest: d.crest || initials, crestSm: d.crestSm || d.crest || initials,
     teams: [], fctGroups: d.fctGroups && typeof d.fctGroups === 'object' ? d.fctGroups : {}, generic: true,
   };
 }

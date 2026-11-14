@@ -30,13 +30,24 @@ async function emailsOf(doc, pids) {
   return out;
 }
 
-function mailHtml({ title, lines, cta, url, team, color }) {
+// Sede de un partido: la dirección guardada (del equipo local o del propio partido) o, si no hay, el nombre del club.
+// El enlace es una búsqueda de Google Maps: con dirección lleva a la sede exacta; con el nombre, a la ficha del club.
+function sedeOf(S, f, cfg) {
+  const h = f.home, t = (S.teams || []).find(x => x.id === h) || {};
+  const addr = f.venue || t.venue || (h === 'polo' ? (cfg && cfg.venue) || '' : '');
+  const name = h === 'polo' ? (cfg && cfg.name) || t.name || 'Club' : t.name || 'el club rival';
+  const q = addr || (name + ' tenis ' + (h === 'polo' ? (cfg && cfg.town) || '' : '')).trim();
+  return { name, addr, txt: addr ? (addr.startsWith(name) ? addr.slice(name.length).replace(/^[,\s·]+/, '') : addr) : '', url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q).replace(/%20/g, '+').replace(/%2C/g, ',') };
+}
+
+function mailHtml({ title, lines, cta, url, team, color, links }) {
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#13241e;max-width:520px">
     <div style="height:6px;background:${color || '#0B3D2E'};border-radius:3px;margin-bottom:16px"></div>
     <p style="margin:0 0 4px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#6b7a73">${esc(team)} · Lliga Catalana</p>
     <h2 style="margin:0 0 10px;font-size:21px">${esc(title)}</h2>
     ${lines.map(l => `<p style="margin:0 0 8px">${esc(l)}</p>`).join('')}
     <p style="margin:18px 0"><a href="${esc(url)}" style="background:${color || '#0B3D2E'};color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:bold">${esc(cta)}</a></p>
+    ${(links || []).map(l => `<p style="margin:0 0 8px">📍 <a href="${esc(l.url)}" style="color:${color || '#0B3D2E'};font-weight:bold">${esc(l.t)}</a></p>`).join('')}
     <p style="margin:0;color:#6b7a73;font-size:12px">Te llega por correo porque no tienes activadas las notificaciones de la app. Actívalas en «Yo» y dejarás de recibir estos correos.</p></div>`;
 }
 
@@ -56,8 +67,8 @@ async function deliver(A, doc, pids, msg, opts = {}) {
       const first = String((opts.names || {})[p] || '').split(' ')[0];
       try {
         await mail.sendMail({ to: [em[p]], fromName: (opts.team || 'Lliga Catalana') + ' · Lliga Catalana', subject: msg.title,
-          text: [first ? `Hola ${first},` : 'Hola,', '', msg.body, ...(msg.lines || []), '', msg.url].join('\n'),
-          html: mailHtml({ title: msg.title, lines: [first ? `Hola ${first},` : 'Hola,', msg.body, ...(msg.lines || [])], cta: msg.cta || 'Abrir en la app', url: msg.url, team: opts.team || 'Lliga Catalana', color: opts.color }) });
+          text: [first ? `Hola ${first},` : 'Hola,', '', msg.body, ...(msg.lines || []), '', (msg.cta || 'Abrir en la app') + ': ' + msg.url, ...(msg.links || []).map(l => l.t + ': ' + l.url)].join('\n'),
+          html: mailHtml({ title: msg.title, lines: [first ? `Hola ${first},` : 'Hola,', msg.body, ...(msg.lines || [])], cta: msg.cta || 'Abrir en la app', url: msg.url, team: opts.team || 'Lliga Catalana', color: opts.color, links: msg.links }) });
         res.email++;
       } catch (e) { res.failed.push(p); }
     }
@@ -65,4 +76,4 @@ async function deliver(A, doc, pids, msg, opts = {}) {
   return res;
 }
 
-module.exports = { deliver, pushTo, emailsOf };
+module.exports = { deliver, pushTo, emailsOf, sedeOf };

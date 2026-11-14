@@ -5,7 +5,7 @@
 // Necesita en Vercel: FIREBASE_SERVICE_ACCOUNT y CRON_SECRET (cualquier texto largo y secreto).
 // Permisos: los mismos que firestore.rules (api/_auth.js). Datos: en la raíz real del club (clubDb).
 const { getAdmin, needTeam, clubDbFor, sendErr } = require('./_auth.js');
-const { deliver } = require('./_deliver.js');
+const { deliver, sedeOf } = require('./_deliver.js');
 const TZ = 'Europe/Madrid', H = 36e5, D = 864e5;
 // Hora local de España a milisegundos (los partidos se guardan como fecha y hora locales)
 function madridMs(date, time) {
@@ -56,6 +56,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
     if (!(f.home === 'polo' || f.away === 'polo') || !f.date) continue;
     const j = +f.j, k = 'j' + j, tie = (S.ties || {})[k] || {}, ko = madridMs(f.date, f.time);
     const rival = teamName(f.home === 'polo' ? f.away : f.home), fecha = fechaTxt(f), lugar = f.home === 'polo' ? 'en casa' : 'fuera';
+    const sd = sedeOf(S, f, db.cfg), where = { lines: [`Dónde: ${sd.name}${sd.txt ? ', ' + sd.txt : ''}`], links: [{ t: 'Cómo llegar (Google Maps)', url: sd.url }] };
     // 0) después del partido: pedir el resultado a los capitanes (una vez, entre 3 h y 4 días después)
     if (!played(f)) {
       if (cfg.result && ko + 3 * H <= now && now <= ko + 4 * D && !(log.resAt || {})[k] && (S.captains || []).length) {
@@ -68,7 +69,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
     const sig = f.date + ' ' + (f.time || ''), prev = (log.sched || {})[k];
     if (prev && prev !== sig && cfg.sched && (tie.availReq || tie.lineupPub)) {
       const pids = tie.lineupPub ? [...new Set([...(tie.convocados || []), ...(tie.subs || []), ...((tie.rubbers || []).flatMap(r => r.polo || []))])] : active;
-      const r = await send(pids, { title: `Cambio de horario: jornada ${j}`, body: `${team} contra ${rival} pasa al ${fecha} a las ${f.time || 'hora por confirmar'} (${lugar}).`, url: `${base}/#jornada-${j}`, tag: `sched-${k}`, cta: 'Ver la jornada' });
+      const r = await send(pids, { title: `Cambio de horario: jornada ${j}`, body: `${team} contra ${rival} pasa al ${fecha} a las ${f.time || 'hora por confirmar'} (${lugar}, ${sd.name}).`, url: `${base}/#jornada-${j}`, tag: `sched-${k}`, cta: 'Ver la jornada', ...where });
       out.sched.push({ j, ...r }); note(k, { kind: 'sched', ...pick(r), from: prev, to: sig });
     }
     upd.sched[k] = sig;
@@ -82,7 +83,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
         const due = dueAvail({ pend, reqAt: tie.availReq.at || 0, dl, now, cfg, avl, force });
         if (due.length) {
           const last = dl - now <= cfg.lastCallH * H;
-          const r = await send(due, { title: last ? 'Último aviso: tu disponibilidad' : 'Falta tu disponibilidad', body: `¿Puedes jugar contra ${rival} el ${fecha} a las ${f.time || ''}? Responde en un toque${last ? ', el plazo se cierra pronto' : ''}.`, url: `${base}/#disponibilidad-${j}`, tag: `availRem-${k}`, cta: 'Responder' });
+          const r = await send(due, { title: last ? 'Último aviso: tu disponibilidad' : 'Falta tu disponibilidad', body: `¿Puedes jugar contra ${rival} el ${fecha} a las ${f.time || ''} (${lugar})? Responde en un toque${last ? ', el plazo se cierra pronto' : ''}.`, url: `${base}/#disponibilidad-${j}`, tag: `availRem-${k}`, cta: 'Dar mi disponibilidad', ...where });
           due.forEach(p => { const x = avl[p] || { n: 0 }; avl[p] = { n: (x.n || 0) + 1, at: now, last: x.last || last }; });
           out.availability.push({ j, ...r }); note(k, { kind: last ? 'last' : 'avail', ...pick(r) });
         }
@@ -93,7 +94,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
     if (cfg.dayBefore !== false && tie.lineupPub && ko - now >= 6 * H && ko - now <= 36 * H && (force || !(log.dayAt || {})[k])) {
       const pids = [...new Set([...(tie.convocados || []), ...(tie.subs || []), ...((tie.rubbers || []).flatMap(r => r.polo || []))])];
       if (pids.length) {
-        const r = await send(pids, { title: `Mañana juegas: jornada ${j}`, body: `${team} contra ${rival}, ${fecha} a las ${f.time || ''} (${lugar}). Revisa tu partido y el orden de juego en la app.`, url: `${base}/#jornada-${j}`, tag: `dayBefore-${k}`, cta: 'Ver mi partido' });
+        const r = await send(pids, { title: `Mañana juegas: jornada ${j}`, body: `${team} contra ${rival}, ${fecha} a las ${f.time || ''} (${lugar}, ${sd.name}). Revisa tu partido y el orden de juego en la app.`, url: `${base}/#jornada-${j}`, tag: `dayBefore-${k}`, cta: 'Ver mi partido', ...where });
         out.dayBefore.push({ j, ...r }); upd.dayAt = { ...(log.dayAt || {}), ...(upd.dayAt || {}), [k]: now }; note(k, { kind: 'day', ...pick(r) });
       }
     }
@@ -118,7 +119,7 @@ module.exports = async (req, res) => {
     const jobs = []; let force = false, origin = '';
     if (process.env.CRON_SECRET && tok === process.env.CRON_SECRET) {
       // Ejecución programada por Vercel Cron: todas las temporadas de todos los clubes con los recordatorios activados
-      origin = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '');
+      origin = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : (req.headers['x-forwarded-host'] || req.headers.host ? 'https://' + (req.headers['x-forwarded-host'] || req.headers.host) : ''));
       for (const id of await require('./_auth.js').allClubs(raw)) { const db = await clubDbFor(raw, id), ids = []; (await db.collection('seasons').get()).forEach(d => ids.push(d.id)); jobs.push({ db, ids }); }
     } else {
       // «Enviar ahora»: solo quien gestiona ese equipo, y solo de su temporada

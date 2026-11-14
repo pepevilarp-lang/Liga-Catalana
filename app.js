@@ -84,13 +84,13 @@ const DEFAULT_Q = [
  {id:'o_anecdota',  scope:'open', type:'text',   text:'Una anécdota o un momento de la jornada'}
 ];
 const DEFAULT_MSGS = {
-  req: '¡Buenas equipo! 🎾\n\nTenemos eliminatoria contra {rival} el próximo {fecha} a las {hora} ({lugar}).\n\nNecesitamos saber quién está disponible para organizar la convocatoria.\n\nPor favor, responded a través de este enlace antes del {limite}:\n\n{enlace}\n\n¡Vamos '+CLUB.teamShort+'!',
-  rem: 'Recordatorio 🎾\n\nAún nos falta saber si podéis jugar contra {rival} el {fecha} a las {hora}: {pendientes}.\n\nResponded antes del {limite} aquí:\n{enlace}\n\n¡Gracias!',
-  remOne: '¡Hola {nombre}! 🎾 ¿Puedes jugar contra {rival} el {fecha} a las {hora}? Responde antes del {limite} aquí: {enlace}',
+  req: '¡Buenas equipo! 🎾\n\nTenemos eliminatoria contra {rival} el próximo {fecha} a las {hora} ({lugar}).\n📍 {sede}: {mapa}\n\nNecesitamos saber quién está disponible para organizar la convocatoria.\n\n👉 Da tu disponibilidad aquí antes del {limite}:\n{enlace}\n\n¡Vamos '+CLUB.teamShort+'!',
+  rem: 'Recordatorio 🎾\n\nAún nos falta saber si podéis jugar contra {rival} el {fecha} a las {hora}: {pendientes}.\n📍 {sede}: {mapa}\n\n👉 Da tu disponibilidad aquí antes del {limite}:\n{enlace}\n\n¡Gracias!',
+  remOne: '¡Hola {nombre}! 🎾 ¿Puedes jugar contra {rival} el {fecha} a las {hora} ({lugar})?\n\n👉 Da tu disponibilidad aquí antes del {limite}: {enlace}\n📍 {sede}: {mapa}',
   survey: '🎾 Jornada {jornada} terminada: {resultado}.\n\nLos que habéis jugado ({jugadores}), os toca la encuesta postpartido. Son 2 minutos:\n{enlaceEncuesta}\n\n¡Gracias!',
   summary: '🎾 Jornada {jornada}: {resultado}.\n\n{cronica}\n\n{partidos}\n\nTodo en la app: {enlaceJornada}',
   mvp: '🏆 Ya podéis votar al MVP de la jornada {jornada} ({resultado}).\n\nUn voto por cabeza y no vale votarse a uno mismo. Hasta el {limiteMvp}:\n{enlaceMvp}',
-  lineup: '📋 Convocatoria jornada {jornada}\n\n'+CLUB.teamShort+' contra {rival}, {fecha} a las {hora} ({lugar}).\n\n{lista}\n\nTodo en la app: {enlaceJornada}\n\n¡Vamos '+CLUB.teamShort+'!'
+  lineup: '📋 Convocatoria jornada {jornada}\n\n'+CLUB.teamShort+' contra {rival}, {fecha} a las {hora} ({lugar}).\n📍 {sede}: {mapa}\n\n{lista}\n\nTodo en la app: {enlaceJornada}\n\n¡Vamos '+CLUB.teamShort+'!'
 };
 const AV_LABEL = {yes:'Disponible', no:'No disponible', maybe:'Pendiente de confirmar', none:'Sin respuesta'};
 const AV_CHIPS = ['Puedo jugar, pero solo a partir de las 12:00','Tengo molestias','Estoy pendiente de confirmar','Puedo jugar individual o dobles','Prefiero dobles','Llego justo de tiempo'];
@@ -550,7 +550,7 @@ function posters(j){
 
 /* ===================== VISTAS ===================== */
 /* ---------- Portada por perfiles: diseño propio, con su estilo incluido en la app ---------- */
-const IC={cal:'M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
+const IC={pin:'M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5',cal:'M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
   mega:'M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12',
   lock:'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3', team:'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.6-3.4 3.3-5.5 6.5-5.5s5.9 2.1 6.5 5.5M16.5 4.3a3.4 3.4 0 0 1 0 6.4M18 14.6c2 .7 3.3 2.6 3.6 5.4',
   score:'M4 5h16v14H4zM12 5v14M4 12h16', trophy:'M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 3M16 6h3a3 3 0 0 1-3 3M12 13v4M8 20h8M10 17h4',
@@ -1086,6 +1086,7 @@ function vDisponibilidad(j){
   return `<div class="wrap"><div class="survey" style="padding-top:28px">
     <p class="qsec">Jornada ${j}, disponibilidad</p>
     <div class="avhead">${crest(p.rival,'')}<div><h1 class="q" style="margin:0">${esc(CLUB.teamShort)} contra ${esc(clubName(p.rival))}</h1><p class="muted" style="margin:4px 0 0">${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h. ${p.home?'En casa.':'Fuera, en las pistas del '+esc(clubName(p.rival))+'.'}</p></div></div>
+    <a class="avmap" href="${esc(sedeOf(f).url)}" target="_blank" rel="noopener"><span>📍</span><span><b>${esc(sedeOf(f).name)}</b><small>${esc(sedeTxt(sedeOf(f)))}</small></span><em>Cómo llegar</em></a>
     <div class="notice" style="margin:16px 0">${locked? 'El plazo para responder terminó el '+esc(fmtDT(dl))+'. Si necesitas cambiar algo, habla con el capitán.' : 'Puedes cambiar tu respuesta hasta el <b>'+esc(fmtDT(dl))+'</b>.'}</div>
     <div class="avopts">${opt('yes','✓','Cuenta conmigo')}${opt('maybe','?','Lo confirmo antes del plazo')}${opt('no','✕','Esta vez no puedo')}</div>
     <label class="f" for="av-c">Comentario para el capitán (opcional, solo lo ven los capitanes)</label>
@@ -1359,10 +1360,11 @@ function aPrep(j){
       <div class="tfields" style="margin-top:10px"><label>Rival<select id="pp-rival">${topts(p.rival)}</select></label><label>Dónde<select id="pp-home"><option value="1" ${p.home?'selected':''}>En casa</option><option value="0" ${!p.home?'selected':''}>Fuera</option></select></label></div>
       <div class="row" style="margin-top:12px"><button class="btn brass" data-act="prep-save" data-j="${j}">Guardar cambios</button></div>`;
   const box=`<div class="sec-h"><h2>Datos de la eliminatoria</h2>${t.calOk?'<span class="okmark">✓ Confirmado</span>':''}</div>
-    <div class="mvbox"><dl class="kvs"><div><dt>Fecha</dt><dd>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h ${movedTag(f)}</dd></div><div><dt>Rival</dt><dd>${esc(clubName(p.rival))}</dd></div><div><dt>Dónde</dt><dd>${p.home?'En casa':'Fuera'}</dd></div></dl>
+    <div class="mvbox"><dl class="kvs"><div><dt>Fecha</dt><dd>${esc(fdate(f,{weekday:'long',day:'numeric',month:'long'}))}, ${esc(f.time)} h ${movedTag(f)}</dd></div><div><dt>Rival</dt><dd>${esc(clubName(p.rival))}</dd></div><div><dt>Dónde</dt><dd>${p.home?'En casa':'Fuera'}, ${esc(sedeOf(f).name)} · <a href="${esc(sedeOf(f).url)}" target="_blank" rel="noopener">Google Maps</a>${sedeOf(f).exact? '' : ' <small class="muted">(búsqueda por el nombre del club)</small>'}</dd></div></dl>
       ${(f.fctDate&&f.fctDate!==f.date)||(f.fctTime&&f.fctTime!==f.time)? `<div class="notice" style="margin:0">La FCT tiene este partido el ${esc(shortD(f.fctDate||f.date))} a las ${esc(f.fctTime||f.time)} h. La app mantiene lo que habéis puesto${f.lock?.by?' ('+esc(f.lock.by)+')':''}. <button class="textlink" data-act="use-fct" data-j="${j}">Usar lo de la FCT</button></div>` : f.lock&&(f.lock.date||f.lock.time)? `<p class="muted small" style="margin:0">🔒 ${f.lock.date&&f.lock.time?'Fecha y hora fijadas':f.lock.date?'Fecha fijada':'Hora fijada'} a mano${f.lock.by?' por '+esc(f.lock.by):''}: la sincronización con la FCT no las cambia.</p>` : ''}
       ${moved? `<div class="row"><button class="btn ghost sm" data-act="move-reset" data-j="${j}">Volver al ${esc(shortD(f.moved.from))}</button><a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📅 Cambio de fecha: la jornada ${j} contra ${clubName(p.rival)} se juega el ${fdate(f,{weekday:'long',day:'numeric',month:'long'})} a las ${f.time} h (${p.home?'en casa':'fuera'}). Antes era el ${shortD(f.moved.from)}. Todo en la app: ${location.origin}/#jornada-${j}`)}">Avisar al equipo por WhatsApp</a></div>` : ''}
-      ${fold('prep-edit-'+j,'Cambiar fecha, hora, rival o lugar','Si se adelanta o se aplaza, la app se reordena sola',edit)}</div>`;
+      ${fold('prep-edit-'+j,'Cambiar fecha, hora, rival o lugar','Si se adelanta o se aplaza, la app se reordena sola',edit)}
+      ${fold('prep-sede-'+j,'Dirección de la sede',sedeOf(f).addr? esc(sedeOf(f).addr) : 'Sin dirección: el enlace de Maps busca por el nombre del club',`<p class="muted small" style="margin:0 0 8px">Se usa en el enlace de Google Maps de los mensajes y avisos. Se guarda para ${esc(sedeOf(f).name)} y sirve para todas sus jornadas en casa.</p><div class="row"><input type="text" id="sede-addr" value="${esc(venueOf(f.home))}" placeholder="Calle, número, código postal y población" style="flex:1;min-width:0"><button class="btn sm" data-act="sede-save" data-j="${j}">Guardar</button></div>`)}</div>`;
   return `<section class="sec">${lu? `<div class="split"><div>${box}</div><div><div class="sec-h"><h2>Orden de juego</h2></div>${lineupStrip(j)}</div></div>` : `<div style="max-width:640px">${box}</div>`}</section>`;
 }
 const CAP_FIELDS=[['valoracion','Valoración general','¿Cómo ha ido la eliminatoria en conjunto?'],['desarrollo','Desarrollo de la jornada','Cómo fueron los partidos, momentos clave'],['destacados','Jugadores destacados','Quién y por qué'],['positivos','Aspectos positivos',''],['mejorar','Aspectos a mejorar',''],['incidencias','Incidencias','Lesiones, retrasos, pistas, arbitraje…'],['compromiso','Disponibilidad y compromiso del equipo',''],['observaciones','Observaciones adicionales','']];
@@ -1388,7 +1390,14 @@ function aPost(j){
 }
 /* --- WhatsApp --- */
 const appLink = h => location.origin + location.pathname + '#' + h;
-function msgVars(j){ const f=poloFix(j), p=persp(f); return {rival:clubName(p.rival), fecha:fdate(f,{weekday:'long',day:'numeric',month:'long'}), hora:f.time, limite:fmtDT(deadline(j)), enlace:appLink('disponibilidad-'+j), enlaceJornada:appLink('jornada-'+j), jornada:j, lugar:p.home?'en casa':'fuera, en las pistas del '+clubName(p.rival)}; }
+// Sede del partido: dirección guardada (del partido o del club local) o, si no hay, búsqueda en Google Maps por el nombre del club
+function venueOf(tid){ const t=S.teams.find(x=>x.id===tid)||{}; return t.venue || (tid===POLO? (CLUB.venue||'') : ''); }
+function sedeOf(f){ const h=f.home, addr=f.venue||venueOf(h), name= h===POLO? (CLUB.name||CLUB.short) : clubName(h);
+  const q=addr || (name+' tenis '+(h===POLO? CLUB.town||'' : '')).trim();
+  return {name, addr, exact:!!addr, url:'https://www.google.com/maps/search/?api=1&query='+mapsQ(q)}; }
+const sedeTxt = sd => sd.addr? (sd.addr.startsWith(sd.name)? sd.addr.slice(sd.name.length).replace(/^[,\s·]+/,'') : sd.addr) : 'Ubicación según el nombre del club';
+const mapsQ = q => encodeURIComponent(q).replace(/%20/g,'+').replace(/%2C/g,',');
+function msgVars(j){ const f=poloFix(j), p=persp(f), sd=sedeOf(f); return {sede:sd.name, direccion:sd.addr||sd.name, mapa:sd.url, rival:clubName(p.rival), fecha:fdate(f,{weekday:'long',day:'numeric',month:'long'}), hora:f.time, limite:fmtDT(deadline(j)), enlace:appLink('disponibilidad-'+j), enlaceJornada:appLink('jornada-'+j), jornada:j, lugar:p.home?'en casa':'fuera, en las pistas del '+clubName(p.rival)}; }
 const fillMsg = (tpl,v) => String(tpl||'').replace(/\{(\w+)\}/g,(m,k)=>v[k]!=null? v[k] : m);
 function composeText(kind,j){ const v=msgVars(j), a=availFor(j);
   if(kind==='summary'){ const p=persp(poloFix(j)); v.resultado=p.played? `${US} ${p.ps}-${p.rs} ${clubName(p.rival)}` : ''; v.cronica=cronica(j)?.txt||''; v.partidos=(tie(j)?.rubbers||[]).filter(r=>rubberCalc(r).res).map(r=>{ const c=rubberCalc(r); return `${c.res==='W'?'✅':'❌'} ${r.type==='D'?'Dobles':'Ind. '+r.n}: ${(r.polo||[]).map(x=>pname(x)).join(' y ')} ${c.sets.map(x=>x.join('-')).join(' ')}`; }).join('\n'); }
@@ -1396,7 +1405,11 @@ function composeText(kind,j){ const v=msgVars(j), a=availFor(j);
   if(kind==='survey'){ const p=persp(poloFix(j)); v.resultado=p.played? `${US} ${p.ps}-${p.rs} ${clubName(p.rival)}` : 'resultado pendiente'; v.jugadores=participants(j).map(x=>pname(x).split(' ')[0]).join(', '); v.enlaceEncuesta=appLink('encuesta-'+j); }
   if(kind==='rem') v.pendientes=a.none.map(pname).join(', ')||'nadie';
   if(kind==='lineup'){ const roles=rolesOf(j); v.lista=lineupList(j).map(pid=>`• ${pname(pid)}: ${(roles[pid]||[]).join(' + ')}`).join('\n'); }
-  return fillMsg(S.msgs[kind], v); }
+  return withLinks(kind, S.msgs[kind], v); }
+function withLinks(kind,tpl,v){ let out=fillMsg(tpl,v);
+  if(['req','rem','remOne'].includes(kind) && !/\{enlace\}/.test(tpl||'')) out+=`\n\n👉 Da tu disponibilidad aquí: ${v.enlace}`;
+  if(['req','rem','remOne','lineup'].includes(kind) && !/\{mapa\}/.test(tpl||'')) out+=`\n📍 ${v.sede}: ${v.mapa}`;
+  return out; }
 function composer(kind,j,title){
   const c=ui.compose&&ui.compose.kind===kind&&ui.compose.j===j? ui.compose : null;
   if(!c) return '';
@@ -3561,7 +3574,9 @@ document.addEventListener('click', async e=>{
     else if(a==='wa-share'){ try{ await navigator.share({text}); }catch(e){ return; } }
     else { try{ await navigator.clipboard.writeText(text); toast('Texto copiado'); }catch(e){ toast('Selecciona el texto y cópialo a mano'); return; } }
     logSend(kind,j,kind==='rem'?{n:availFor(j).none.length}:null); if(kind==='req') notify('avail',j); else if(kind==='rem') notify('availRem',j); }
-  else if(a==='wa-one'){ const j=+el.dataset.j, pid=el.dataset.pid; const text=fillMsg(S.msgs.remOne,{...msgVars(j),nombre:pname(pid).split(' ')[0]}); waOpen(text,waPhone(phones[pid])); logSend('rem',j,{pid}); }
+  else if(a==='wa-one'){ const j=+el.dataset.j, pid=el.dataset.pid; const text=withLinks('remOne',S.msgs.remOne,{...msgVars(j),nombre:pname(pid).split(' ')[0]}); waOpen(text,waPhone(phones[pid])); logSend('rem',j,{pid}); }
+  else if(a==='sede-save'){ const f=poloFix(+el.dataset.j), v=String($('#sede-addr')?.value||'').trim().slice(0,160); let t=S.teams.find(x=>x.id===f.home);
+    if(!t) return toast('No se encuentra el club local'); t.venue=v; saveState(v? 'Dirección guardada' : 'Dirección quitada'); }
   else if(a==='dl-save'){ const j=+el.dataset.j, v=$('#dl').value; if(!v) return toast('Elige fecha y hora'); ensureTie(j).deadline=v; saveState('Plazo guardado'); }
   else if(a==='dl-reset'){ const t=ensureTie(+el.dataset.j); delete t.deadline; saveState('Plazo por defecto'); }
   else if(a==='conv-save'){ const j=+el.dataset.j, t=ensureTie(j);

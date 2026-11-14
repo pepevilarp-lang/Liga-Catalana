@@ -67,7 +67,7 @@ function svMatchSheet(i){
     <div class="sv-mh st-${s.k}"><p class="sv-mk">Jornada ${f.j} · ${svDay(f)} ${esc(svDate(f,{day:'numeric',month:'long',year:'numeric'}))} · ${svTime(f)}</p>
       <div class="sv-mrow">${side(f.home,'Local')}<div class="sv-msc">${played? `<b>${f.hs}</b><i></i><b>${f.as}</b>` : '<span>VS</span>'}</div>${side(f.away,'Visitante')}</div>
       <p class="sv-mst"><span class="sv-pill ${s.k}">${s.l}</span>${s.v? `<span class="sv-val ${f.status==='official'?'ok':''}">${s.v==='Oficial'? 'Resultado oficial' : 'Pendiente de validar'}</span>` : ''}${s.sub? `<span class="sv-val">${esc(s.sub)}</span>`:''}</p>
-      <p class="sv-loc">${mine? (persp(f).home? 'En casa' : 'Fuera')+' · ' : ''}Pistas del ${esc(svVenue(f))}</p></div>
+      <p class="sv-loc">${mine? (persp(f).home? 'En casa' : 'Fuera')+' · ' : ''}Pistas del ${esc(svVenue(f))} · <a href="${esc(sedeOf(f).url)}" target="_blank" rel="noopener">Cómo llegar</a></p></div>
     ${body}
     <div class="row" style="margin-top:18px">${mine? `<a class="btn" href="#jornada-${f.j}" data-act="close-sheet">Abrir la jornada</a>` : ''}<button class="btn ghost" data-act="close-sheet">Cerrar</button></div>`;
   requestAnimationFrame(()=>{ bg.classList.add('on'); sh.classList.add('on'); sh.scrollTop=0; });

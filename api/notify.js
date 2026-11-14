@@ -3,7 +3,7 @@
 // entre todos (rules.teamManage), sus jugadores. Mismos criterios que firestore.rules (api/_auth.js).
 // Necesita en Vercel la variable de entorno FIREBASE_SERVICE_ACCOUNT con el JSON de la cuenta de servicio.
 const { needTeam, sendErr } = require('./_auth.js');
-const { deliver } = require('./_deliver.js');
+const { deliver, sedeOf } = require('./_deliver.js');
 const won = sc => { const s = String(sc || '').split(/[\s,;]+/).map(x => x.match(/^(\d{1,2})[-\/](\d{1,2})$/)).filter(Boolean); let a = 0, b = 0; s.forEach(m => { if (+m[1] > +m[2]) a++; else if (+m[2] > +m[1]) b++; }); return s.length >= 2 && a !== b; };
 
 module.exports = async (req, res) => {
@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
     const rival = ((S.teams || []).find(t => t.id === rivalId) || {}).name || 'el rival';
     const fecha = fix ? new Date(fix.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
     const active = (S.players || []).filter(p => p.active !== false).map(p => p.id);
-    const base = String(origin || '').replace(/\/$/, '') || '';
+    const base = String(origin || '').replace(/\/$/, '') || process.env.APP_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host || 'lliga.vercel.app'));
     let pids = [], title = '', text = '', url = '/';
 
     if (type === 'avail') { pids = active; title = `¿Juegas la jornada ${j}?`; text = `${US} contra ${rival}, ${fecha} a las ${fix?.time || ''}. Responde en la app.`; url = `/#disponibilidad-${j}`; }
@@ -63,8 +63,9 @@ module.exports = async (req, res) => {
     const auto = { email: true, ...((S.rules || {}).autoRemind || {}), ...(S.auto || {}) };
     const withEmail = ['avail', 'availRem', 'lineup'].includes(type) && auto.email !== false;
     const names = Object.fromEntries((S.players || []).map(p => [p.id, p.name]));
-    const cta = { avail: 'Responder', availRem: 'Responder', lineup: 'Ver la convocatoria' }[type] || 'Abrir en la app';
-    const r = await deliver(A, x => db.doc(P(x)), pids, { title, body: text, url: base + url, tag: type === 'custom' ? `custom-${Date.now()}` : `${type}-${k}`, cta },
+    const cta = { avail: 'Dar mi disponibilidad', availRem: 'Dar mi disponibilidad', lineup: 'Ver la convocatoria' }[type] || 'Abrir en la app';
+    const sd = fix ? sedeOf(S, fix, cfg) : null, where = sd && ['avail', 'availRem', 'lineup'].includes(type) ? { lines: [`Dónde: ${sd.name}${sd.txt ? ', ' + sd.txt : ''}`], links: [{ t: 'Cómo llegar (Google Maps)', url: sd.url }] } : {};
+    const r = await deliver(A, x => db.doc(P(x)), pids, { title, body: text, url: base + url, tag: type === 'custom' ? `custom-${Date.now()}` : `${type}-${k}`, cta, ...where },
       { email: withEmail, team: US, color: cfg && cfg.colors && cfg.colors.primary, names });
     return res.status(200).json({ recipients: r.recipients, reached: r.push, sent: r.push, email: r.email, none: r.none });
   } catch (e) {
