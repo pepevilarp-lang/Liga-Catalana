@@ -1859,3 +1859,15 @@ body.gate::before{background:#0E1216}
   .seg-b{padding:7px 11px;font-size:.84rem}
 }
 @media (prefers-reduced-motion: reduce){.tl-up i,.tl-dn i{animation:none}.sv-ring .fg,.sv-sb i,.pl-bar i{transition:none}}
+
+/* Privacidad: casilla de aceptación y resumen antes de entrar */
+.acc-consent{display:flex;gap:10px;align-items:flex-start;max-width:520px;margin:18px 0 0;color:var(--lc-ink);font-size:.9rem;line-height:1.45;cursor:pointer}
+.acc-consent input{width:20px;height:20px;flex:none;margin:1px 0 0;accent-color:var(--lc-acc);cursor:pointer}
+.acc-consent a,.acc-p a,.acc-privlist a{color:var(--lc-acc);text-underline-offset:3px}
+.acc-consent+.gbtn{margin-top:14px}
+.acc .gbtn:disabled{opacity:.45;cursor:not-allowed}
+.acc-privlist{margin:14px 0 10px;padding-left:20px;max-width:62ch;color:var(--lc-ink);line-height:1.5}
+.acc-privlist li{margin:6px 0}
+.acc-privbtns{margin-top:16px;align-items:center}
+.acc-btn:disabled{cursor:not-allowed}
+.privrow{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin-top:8px}
