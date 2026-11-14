@@ -1350,7 +1350,7 @@ function aJornada(){
     <ol class="jprog">${ph.map((x,i)=>`<li class="p-${x.st}${i===cur?' cur':''}"><button data-act="jtab" data-v="${x.k}" aria-pressed="${x.k===jt}" title="${esc(x.l+'. '+x.d)}"><span class="jd">${x.st==='done'?'✓':i+1}</span><span class="jl">${x.s}</span><small>${esc(x.d)}</small></button></li>`).join('')}</ol>
   </div>
   <div class="nextcard"><div><span class="nk">Siguiente paso</span><b>${esc(na.t)}</b><p>${esc(na.d)}</p></div><div class="row">${na.b}</div></div></section>
-  ${panel}`;
+  ${autoCenter(j)}${panel}`;
 }
 function aPrep(j){
   const f=poloFix(j), p=persp(f), t=tie(j)||blankTie(), topts=sel=>S.teams.filter(x=>x.id!==POLO).map(x=>`<option value="${x.id}" ${sel===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
@@ -1400,10 +1400,10 @@ function composeText(kind,j){ const v=msgVars(j), a=availFor(j);
 function composer(kind,j,title){
   const c=ui.compose&&ui.compose.kind===kind&&ui.compose.j===j? ui.compose : null;
   if(!c) return '';
-  return `<div class="panel composer"><b>${title}</b><p class="muted small" style="margin:4px 0 10px">Revísalo y edítalo antes de enviarlo. WhatsApp no deja elegir el grupo desde un enlace: al abrirse, elige el grupo del equipo.</p>
+  return `<div class="panel composer"><b>${title}</b><p class="muted small" style="margin:4px 0 10px">Revísalo y edítalo antes de enviarlo. ${waCfg().group? '«Copiar y abrir el grupo» copia el texto y abre el grupo del equipo: solo tienes que pegarlo.' : 'WhatsApp no deja elegir el grupo desde un enlace: al abrirse, elige el grupo del equipo. Si vinculas el grupo en «Lo que la app gestiona por ti», se abrirá directamente.'}</p>
     <textarea id="compose-text" rows="10">${esc(c.text)}</textarea>
     <div class="row" style="margin-top:10px"><button class="btn brass" data-act="wa-send" data-kind="${kind}" data-j="${j}"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>Abrir WhatsApp</button>
-      ${navigator.share?`<button class="btn ghost" data-act="wa-share" data-kind="${kind}" data-j="${j}">Compartir…</button>`:''}<button class="btn ghost" data-act="wa-copy" data-kind="${kind}" data-j="${j}">Copiar texto</button><button class="btn ghost sm" data-act="compose-close">Cancelar</button></div></div>`;
+      ${waCfg().group?`<button class="btn" data-act="wa-group" data-kind="${kind}" data-j="${j}">Copiar y abrir el grupo</button>`:''}${navigator.share?`<button class="btn ghost" data-act="wa-share" data-kind="${kind}" data-j="${j}">Compartir…</button>`:''}<button class="btn ghost" data-act="wa-copy" data-kind="${kind}" data-j="${j}">Copiar texto</button><button class="btn ghost sm" data-act="compose-close">Cancelar</button></div></div>`;
 }
 function respChart(j){
   const k=jid(j), ev=[]; Object.entries(avail).forEach(([pid,d])=>(d.h?.[k]||[]).forEach(e=>ev.push({pid,...e})));
@@ -1424,9 +1424,9 @@ function aDisp(j){
   const face=(pid,k)=>{ const v=avOf(pid,j), n=noteOf(pid,j), ph=phones[pid], hs=availStats(pid);
     return `<li class="face ${k}" title="${esc(pname(pid)+(hs.total?' · '+Math.round(hs.pct*100)+'% disponible en la temporada':''))}"><div class="fhit">${avatar(player(pid),'sm')}<b>${esc(pname(pid).split(' ')[0])}</b><small>${k==='none'?'Sin respuesta':esc(AV_LABEL[k])}${v?.at?' · '+relTime(v.at):''}</small>${n?.c?`<em>«${esc(n.c)}»</em>`:''}
       <select class="fsel" data-act="av-admin" data-pid="${esc(pid)}" data-j="${j}" aria-label="Anotar a mano la respuesta de ${esc(pname(pid))}"><option value="">Anotar a mano…</option><option value="yes">Disponible</option><option value="maybe">Pendiente de confirmar</option><option value="no">No disponible</option></select></div>
-      ${k==='none'&&ph&&!closed? `<button class="fwa" data-act="wa-one" data-pid="${esc(pid)}" data-j="${j}" title="Recordar por WhatsApp">Recordar</button>` : ''}</li>`; };
+      ${k==='none'&&ph&&!closed&&waCfg().mode!=='group'? `<button class="fwa" data-act="wa-one" data-pid="${esc(pid)}" data-j="${j}" title="Recordar por WhatsApp">Recordar</button>` : ''}</li>`; };
   const main = closed? `<button class="btn brass" data-act="jtab" data-v="conv">Preparar la convocatoria</button>${t.availClosed?`<button class="btn ghost sm" data-act="avail-reopen" data-j="${j}">Reabrir disponibilidad</button>`:''}`
-    : !t.availReq? `<button class="btn brass" data-act="compose" data-kind="req" data-j="${j}">Solicitar disponibilidad</button><button class="btn ghost sm" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button>`
+    : !t.availReq? `<button class="btn brass" data-act="compose" data-kind="req" data-j="${j}">Solicitar disponibilidad</button><button class="btn ghost sm" data-ax="req-app" data-j="${j}" title="Notificación de la app y correo a quien no la tenga, sin mensaje de WhatsApp">Pedir solo por la app</button><button class="btn ghost sm" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button>`
     : `${a.none.length? `<button class="btn brass" data-act="compose" data-kind="rem" data-j="${j}">Recordar a los ${a.none.length} que faltan</button>` : ''}<button class="btn ${a.none.length?'ghost sm':'brass'}" data-act="avail-close" data-j="${j}">Cerrar disponibilidad</button><button class="btn ghost sm" data-act="compose" data-kind="req" data-j="${j}">Volver a pedir</button>`;
   const dlForm=`<div class="row"><input type="datetime-local" id="dl" value="${dlv}" style="max-width:240px"><button class="btn sm" data-act="dl-save" data-j="${j}">Guardar plazo</button>${t.deadline?`<button class="btn sm ghost" data-act="dl-reset" data-j="${j}">Usar el plazo por defecto</button>`:''}</div><p class="muted small" style="margin:6px 0 0">Por defecto, ${S.rules.deadlineDays} días antes a las ${esc(S.rules.deadlineTime)}.</p>`;
   return `<section class="sec"><div class="sec-h"><h2>Disponibilidad</h2></div>
@@ -1457,7 +1457,8 @@ function aConv(j){
     ${hasDupe?'<div class="notice" style="margin-top:8px">Hay un jugador repetido en los individuales.</div>':''}
     ${warn.length?`<div class="notice" style="margin-top:8px">Sin «disponible» confirmado: ${warn.map(pname).join(', ')}.</div>`:''}
     <div class="row" style="margin-top:16px"><button class="btn ghost" data-act="conv-save" data-j="${j}">Guardar borrador</button>${t.lineupPub?`<button class="btn ghost" data-act="conv-pub" data-j="${j}" data-v="0">Retirar publicación</button><button class="btn brass" data-act="conv-save" data-j="${j}" data-pub="1">Guardar y mantener publicada</button>`:`<button class="btn brass" data-act="conv-save" data-j="${j}" data-pub="1">Publicar convocatoria</button>`}</div>
-    ${t.lineupPub?`<div class="row" style="margin-top:12px"><button class="btn ghost" data-act="compose" data-kind="lineup" data-j="${j}">Anunciar por WhatsApp</button><button class="btn ghost" data-act="poster-scroll">Ver el cartel</button></div>`:''}
+    ${lineupChanged(j)?`<div class="notice" style="margin-top:12px"><b>La convocatoria ha cambiado desde que la anunciaste.</b> El mensaje y el cartel ya muestran la versión actual: compártela de nuevo en el grupo.</div>`:''}
+    ${t.lineupPub?`<div class="row" style="margin-top:12px"><button class="btn ${lineupChanged(j)?'brass':'ghost'}" data-act="compose" data-kind="lineup" data-j="${j}">${lineupChanged(j)?'Anunciar la versión actualizada':t.lineupAnnounced?'Volver a anunciar por WhatsApp':'Anunciar por WhatsApp'}</button><button class="btn ghost" data-act="poster-scroll">Ver el cartel</button></div>`:''}
     ${composer('lineup',j,'Anuncio de la convocatoria')}</section>`;
 }
 function posterOpts(j){ const t=tie(j)||{}; const p=t.poster||{}; const f=poloFix(j);
@@ -1657,7 +1658,7 @@ function aTemporadas(){
     <div class="row"><input type="text" id="ns-id" placeholder="2027-28" style="max-width:140px"><label class="small"><input type="checkbox" id="ns-copy" checked> Copiar plantilla y clubes</label><button class="btn sm" data-act="season-new">Crear temporada</button></div>`;
   const sw=`<label class="sw" aria-label="Activar recordatorios automáticos"><input type="checkbox" data-ar="on" ${ar.on?'checked':''}><i></i></label>`;
   return `<section class="sec"><div class="slist">
-    ${fold('s-ar','Recordatorios automáticos',ar.on? `${(+ar.every||1)===1?'Cada día':'Cada '+ar.every+' días'} a quien no ha respondido${ar.dayBefore!==false?', y el día antes a los convocados':''}` : 'Desactivados',autoRemindPanel(true),false,sw)}
+    ${fold('s-ar','Automatizaciones y WhatsApp',(()=>{ const c=autoCfg(), w=waCfg(); return (c.on? `Recordatorios ${c.firstAfterH} h sin responder, después ${(+c.every)===1?'cada día':'cada '+c.every+' días'}, máximo ${c.max}` : 'En pausa')+(w.group?' · grupo vinculado':' · sin grupo'); })(),autoSettings(),false,`<label class="sw" aria-label="Activar las automatizaciones"><input type="checkbox" data-ax="on" ${autoCfg().on?'checked':''}><i></i></label>`)}
     ${fold('s-plazos','Plazos de disponibilidad',`Aviso ${R.availDays} días antes · plazo ${R.deadlineDays} días antes, a las ${esc(R.deadlineTime)}`,plazos)}
     ${fold('s-punt','Puntuación y MVP',`Victoria ${R.win}, derrota ${R.loss} · dobles ${dblDecider()?'solo si 2-2':'siempre'} · MVP ${R.mvpHours||48} h`,punt)}
     ${fold('s-msgs','Mensajes de WhatsApp',`${MSG_KINDS.length} plantillas${MSG_KINDS.some(([k])=>S.msgs[k]!==DEFAULT_MSGS[k])?' · personalizadas':''}`,msgs)}
@@ -1876,7 +1877,7 @@ function waOpen(text,phone){ const url=`https://wa.me/${phone||''}?text=${encode
 function logSend(kind,j,extra){ const t=ensureTie(j), now=Date.now();
   if(kind==='req') t.availReq={at:now,n:(t.availReq?.n||0)+1};
   else if(kind==='rem') t.remLog=[...(t.remLog||[]),{at:now,...(extra||{})}].slice(-40);
-  else if(kind==='lineup') t.lineupAnnounced=now;
+  else if(kind==='lineup'){ t.lineupAnnounced=now; t.lineupSig=lineupSig(j); }
   else if(kind==='survey') t.surveyAnnounced=now;
   else if(kind==='mvp') t.mvpAnnounced=now;
   saveState(kind==='req'?'Solicitud registrada':kind==='lineup'?'Anuncio registrado':'Recordatorio registrado'); }
@@ -2120,7 +2121,7 @@ function vClubEquipos(){
   const cards=`<div class="ccards stagger">${rows.map(r=>{ const d=clubData[r.t.id]; if(!d) return `<a class="ccard idle" href="#club-equipo-${esc(r.t.id)}"><span class="cc-top"><b>${esc(r.t.name)}</b><small>${esc(teamCat(r.t))}</small></span><span class="cc-meta">Sin calendario ni plantilla cargados todavía</span></a>`;
       const st=withS(d,()=>standings()), me_=st.find(x=>x.id===POLO)||{}, ts=withS(d,()=>teamStats());
       return `<a class="ccard" href="#club-equipo-${esc(r.t.id)}"><span class="cc-top"><b>${esc(r.t.name)}</b><small>${esc(teamCat(r.t))}${d.comp?.group? ', '+esc(d.comp.group):''}</small></span>
-        <span class="cc-res">${me_.pj? me_.pos+'º' : '–'}<small> ${me_.pts||0} pts</small></span><span class="cc-meta">${r.n} jugadores. Eliminatorias ${ts.tw}-${ts.tl}, partidos ${ts.rw}-${ts.rl}.</span><span class="cc-badges"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></span></a>`; }).join('')}</div>`;
+        <span class="cc-res">${me_.pj? me_.pos+'º' : '–'}<small> ${me_.pts||0} pts</small></span><span class="cc-meta">${r.n} jugadores. Eliminatorias ${ts.tw}-${ts.tl}, partidos ${ts.rw}-${ts.rl}.</span><span class="cc-badges"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span>${autoBadges(d)}</span></a>`; }).join('')}</div>`;
   const table=`<table class="eqtable"><thead><tr>${th('name','Equipo')}${th('cat','Categoría')}<th>Capitán</th>${th('n','Jugadores')}${th('next','Próxima jornada')}${th('act','Actividad')}</tr></thead><tbody>
     ${rows.map(r=>`<tr data-href="#club-equipo-${esc(r.t.id)}"><td data-l="Equipo"><a href="#club-equipo-${esc(r.t.id)}"><b>${esc(r.t.name)}</b></a></td><td data-l="Categoría">${esc(teamCat(r.t))||'–'}</td><td data-l="Capitán">${esc(r.caps)||'<span class="muted">Sin asignar</span>'}</td><td data-l="Jugadores">${r.n}</td><td data-l="Próxima jornada">${esc(r.nextTxt)}</td><td data-l="Actividad"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></td></tr>`).join('')}</tbody></table>`;
   return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del ${esc(CLUB.medium)} en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
@@ -3282,6 +3283,7 @@ function ensureIntroCss(){ if(document.getElementById('intro-css')) return; cons
 /* ===================== ROUTER Y RENDER ===================== */
 const route = () => (location.hash||'#inicio').slice(1)||'inicio';
 function render(){
+  { const m=route().match(/^gestion-(prep|disp|conv|res|post)-(\d+)$/); if(m){ ui.adminTab='jornada'; ui.adminJ=+m[2]; ui.jTab=m[1]; ui.jTabSet=true; ui.jTabFor=+m[2]; history.replaceState(null,'','#admin'); } }
   if(me && ui.sLoaded===SEASON_PATH && !ui.teamAuto && !S.players.some(p=>p.id===me)){ const hit=rosterAll().find(p=>p.id===me), other=hit?.teams.find(t=>t!==teamId); if(other){ ui.teamAuto=true; setTimeout(()=>switchTeam(other),0); } }
   ensureHomeCss(); updRoles(); if(authReady && authUser && !me && isManager && !adminSkip && ACC.flow?.role!=='jugador' && ACC.flow?.role!=='capitan'){ adminSkip=true; if(!route().startsWith('club')) history.replaceState(null,'','#club'); }
   const accHtml = authReady && authUser ? accGate() : null;   // acceso por rol, invitaciones y solicitud de gestor (access.js)
@@ -3553,8 +3555,9 @@ document.addEventListener('click', async e=>{
     }catch(err){ toast('No se ha podido guardar: '+(err?.code||err?.message||'error')); } }
   else if(a==='compose'){ const j=+el.dataset.j, kind=el.dataset.kind; ui.compose={kind,j,text:composeText(kind,j)}; renderQuiet(); setTimeout(()=>$('#compose-text')?.focus(),50); }
   else if(a==='compose-close'){ ui.compose=null; renderQuiet(); }
-  else if(a==='wa-send'||a==='wa-share'||a==='wa-copy'){ const j=+el.dataset.j, kind=el.dataset.kind, text=$('#compose-text')?.value||''; ui.compose.text=text;
+  else if(a==='wa-send'||a==='wa-share'||a==='wa-copy'||a==='wa-group'){ const j=+el.dataset.j, kind=el.dataset.kind, text=$('#compose-text')?.value||''; ui.compose.text=text;
     if(a==='wa-send') waOpen(text);
+    else if(a==='wa-group'){ let ok=true; try{ await navigator.clipboard.writeText(text); }catch(e){ ok=false; } const l=document.createElement('a'); l.href=waCfg().group; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); toast(ok? 'Texto copiado: pégalo en el grupo' : 'No se ha podido copiar: cópialo a mano'); }
     else if(a==='wa-share'){ try{ await navigator.share({text}); }catch(e){ return; } }
     else { try{ await navigator.clipboard.writeText(text); toast('Texto copiado'); }catch(e){ toast('Selecciona el texto y cópialo a mano'); return; } }
     logSend(kind,j,kind==='rem'?{n:availFor(j).none.length}:null); if(kind==='req') notify('avail',j); else if(kind==='rem') notify('availRem',j); }

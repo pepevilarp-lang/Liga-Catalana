@@ -3,6 +3,7 @@
 // entre todos (rules.teamManage), sus jugadores. Mismos criterios que firestore.rules (api/_auth.js).
 // Necesita en Vercel la variable de entorno FIREBASE_SERVICE_ACCOUNT con el JSON de la cuenta de servicio.
 const { needTeam, sendErr } = require('./_auth.js');
+const { deliver } = require('./_deliver.js');
 const won = sc => { const s = String(sc || '').split(/[\s,;]+/).map(x => x.match(/^(\d{1,2})[-\/](\d{1,2})$/)).filter(Boolean); let a = 0, b = 0; s.forEach(m => { if (+m[1] > +m[2]) a++; else if (+m[2] > +m[1]) b++; }); return s.length >= 2 && a !== b; };
 
 module.exports = async (req, res) => {
@@ -58,19 +59,14 @@ module.exports = async (req, res) => {
     }
     else return res.status(400).json({ error: 'type' });
 
-    const tokens = [], owner = {};
-    const docs = await Promise.all(pids.map(p => db.doc(P('pushTokens/' + p)).get()));
-    docs.forEach((d, i) => (d.exists ? d.data().tokens || [] : []).forEach(t => { tokens.push(t); owner[t] = pids[i]; }));
-    let sent = 0; const bad = [];
-    for (let i = 0; i < tokens.length; i += 500) {
-      const chunk = tokens.slice(i, i + 500);
-      const r = await A.messaging().sendEachForMulticast({ tokens: chunk, data: { title, body: text, url: base + url, tag: type === 'custom' ? `custom-${Date.now()}` : `${type}-${k}` }, webpush: { headers: { Urgency: 'high', TTL: '86400' } } });
-      sent += r.successCount;
-      r.responses.forEach((x, n) => { const c = x.error && x.error.code; if (c === 'messaging/registration-token-not-registered' || c === 'messaging/invalid-registration-token' || c === 'messaging/invalid-argument') bad.push(chunk[n]); });
-    }
-    await Promise.all(bad.map(t => db.doc(P('pushTokens/' + owner[t])).update({ tokens: A.firestore.FieldValue.arrayRemove(t) }).catch(() => {})));
-    const reached = new Set(tokens.filter(t => !bad.includes(t)).map(t => owner[t])).size;
-    return res.status(200).json({ recipients: pids.length, reached, sent });
+    // Push a quien la tiene activada y, para disponibilidad y convocatoria, correo de respaldo al resto (si el equipo no lo ha desactivado)
+    const auto = { email: true, ...((S.rules || {}).autoRemind || {}), ...(S.auto || {}) };
+    const withEmail = ['avail', 'availRem', 'lineup'].includes(type) && auto.email !== false;
+    const names = Object.fromEntries((S.players || []).map(p => [p.id, p.name]));
+    const cta = { avail: 'Responder', availRem: 'Responder', lineup: 'Ver la convocatoria' }[type] || 'Abrir en la app';
+    const r = await deliver(A, x => db.doc(P(x)), pids, { title, body: text, url: base + url, tag: type === 'custom' ? `custom-${Date.now()}` : `${type}-${k}`, cta },
+      { email: withEmail, team: US, color: cfg && cfg.colors && cfg.colors.primary, names });
+    return res.status(200).json({ recipients: r.recipients, reached: r.push, sent: r.push, email: r.email, none: r.none });
   } catch (e) {
     return sendErr(res, e);
   }
