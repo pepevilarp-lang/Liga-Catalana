@@ -14,7 +14,7 @@
       ]
     },
     {
-      "source": "/(app.js|access.js|club.js|club-config.js|report-doc.js|styles.css|config.js|index.html)",
+      "source": "/(app.js|access.js|club.js|club-config.js|report-doc.js|season-views.js|automation.js|styles.css|config.js|index.html)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -42,6 +42,10 @@
     }
   },
   "crons": [
+    {
+      "path": "/api/remind",
+      "schedule": "0 8 * * *"
+    },
     {
       "path": "/api/remind",
       "schedule": "0 16 * * *"
