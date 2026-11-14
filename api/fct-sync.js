@@ -9,6 +9,18 @@
 // Permisos: los mismos que firestore.rules (api/_auth.js). Datos: en la raíz real del club (clubDb).
 const { getAdmin, needTeam, clubDbFor, sendErr } = require('./_auth.js');
 const FCT_API = 'https://portal.fctennis.cat/app/api/calendario.do';
+// Petición al portal de la FCT con las mismas cabeceras que su web (sin ellas responde 403 a los servidores).
+// Si falla por un error pasajero (403, 429 o 5xx), lo vuelve a intentar una vez.
+async function fctPost(accion, data) {
+  const opts = { method: 'POST', body: JSON.stringify({ accion, data }), headers: {
+    'Content-Type': 'application/json;charset=UTF-8', Accept: 'application/json, text/plain, */*', 'Accept-Language': 'ca,es;q=0.9',
+    Origin: 'https://portal.fctennis.cat', Referer: 'https://portal.fctennis.cat/app/torneos/',
+    'User-Agent': 'Mozilla/5.0 (compatible; LligaCatalana/1.0; +https://lliga.vercel.app)' } };
+  let r = await fetch(FCT_API, opts);
+  if (r.status === 403 || r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 1200)); r = await fetch(FCT_API, opts); }
+  if (!r.ok) throw new Error('FCT respondió ' + r.status + (r.status === 403 ? ' (acceso denegado)' : ''));
+  return r.json();
+}
 // Grupos de la 13a Lliga Catalana 2026-27 (torneo 4296)
 const CLUBCFG0 = require('../club-config.js');
 // Club que se está sincronizando (useClub lo cambia antes de cada club: el original o cualquier otro dado de alta)
@@ -23,18 +35,14 @@ const slug = s => norm(s).replace(/ /g, '-');
 const ymd = d => { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(d || '')); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
 
 async function fctMatches(group) {
-  const r = await fetch(FCT_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'recuperarPartidosEquiposGrupo', data: { codigo: +group } }) });
-  if (!r.ok) throw new Error('FCT respondió ' + r.status);
-  const j = await r.json();
+  const j = await fctPost('recuperarPartidosEquiposGrupo', { codigo: +group });
   if (j.error) throw new Error('FCT: error al leer el grupo ' + group);
   return Array.isArray(j.partidos) ? j.partidos : [];
 }
 
 // Plantilla del equipo del Polo en la FCT (nombre, licencia, categoría y puntos; sin capitán)
 async function fctRoster(teamCode) {
-  const r = await fetch(FCT_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'recuperarJugadoresEquipoLiga', data: { codigoEquipo: +teamCode } }) });
-  if (!r.ok) throw new Error('FCT respondió ' + r.status);
-  const j = await r.json();
+  const j = await fctPost('recuperarJugadoresEquipoLiga', { codigoEquipo: +teamCode });
   if (j.error) throw new Error('FCT: error al leer la plantilla del equipo ' + teamCode);
   return Array.isArray(j.datos) ? j.datos : [];
 }
@@ -77,9 +85,7 @@ function matchPlayer(S, lic, full) {
 }
 // Acta de un partido: quién jugó cada individual y el dobles, con su marcador
 async function fctActa(partidoCode) {
-  const r = await fetch(FCT_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ accion: 'recuperarActaPartido', data: { codigo: +partidoCode } }) });
-  if (!r.ok) throw new Error('FCT respondió ' + r.status);
-  const j = await r.json();
+  const j = await fctPost('recuperarActaPartido', { codigo: +partidoCode });
   if (j.error || !j.acta) throw new Error('FCT: error al leer el acta ' + partidoCode);
   return j.acta;
 }

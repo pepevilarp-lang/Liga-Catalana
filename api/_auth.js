@@ -49,6 +49,7 @@ async function caller(req, opts = {}) {
   if (!token) throw httpErr(401, 'Falta la sesión');
   const user = await A.auth().verifyIdToken(token);
   if (user.email_verified !== true) throw httpErr(403, 'Correo sin verificar');
+  const email = lower(user.email);
   // El club de la petición: lo envía la app en la cabecera X-Club (el que tiene abierto); por defecto, el original
   const hdr = req.headers['x-club'], clubId = opts.club || (validClub(hdr) ? hdr : CLUB.id);
   const root = await dataRoot(db, clubId), P = pather(root);
