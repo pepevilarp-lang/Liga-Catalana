@@ -1910,3 +1910,8 @@ body.gate::before{background:#0E1216}
 .ax-grp input{flex:1;min-width:0}
 .ax-foot{margin:12px 0 0;font-size:.78rem;color:var(--muted);line-height:1.4}
 .slist .ax-set{border-top:0;margin-top:0}
+.avmap{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:14px 0 0;padding:10px 14px;border-radius:14px;background:var(--surface);box-shadow:0 0 0 1px var(--line);text-decoration:none;color:var(--ink)}
+.avmap>span:first-child{font-size:1.2rem}
+.avmap b{display:block;font-size:.92rem}.avmap small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
+.avmap em{font-style:normal;font-weight:800;font-size:.82rem;color:var(--green);white-space:nowrap}
+.sv-loc a{color:inherit;font-weight:700}
