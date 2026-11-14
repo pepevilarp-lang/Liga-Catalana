@@ -822,17 +822,7 @@ function ligaLede(){
   const per=S.fixtures.filter(f=>f.j===1).length, w=nums[nT]||String(nT);
   return `${base} ${w.charAt(0).toUpperCase()+w.slice(1)} clubes, ${nJ} jornadas${nT%2 && per*2<nT? '; cada jornada descansa uno' : ''}.`;
 }
-function ligaCalendar(){
-  const nx=nextPoloFix(); let h=`<section class="sec"><div class="sec-h"><h2>Calendario</h2><div class="chips"><button class="chip" data-act="liga-filter" data-v="0" aria-pressed="${!ui.ligaAll}">Solo el ${esc(teamLabel())}</button><button class="chip" data-act="liga-filter" data-v="1" aria-pressed="${ui.ligaAll}">Todo</button></div></div><ul class="jlist stagger">`;
-  const jOrder = ui.ligaAll? Array.from({length:NJ()},(_,i)=>i+1) : Array.from({length:NJ()},(_,i)=>i+1).sort((a,b)=>{ const fa=poloFix(a)||S.fixtures.find(f=>f.j===a), fb=poloFix(b)||S.fixtures.find(f=>f.j===b); return (fa&&fb? kickoff(fa)-kickoff(fb) : 0)||a-b; });
-  for(const j of jOrder){ const fs=S.fixtures.filter(f=>f.j===j), pf=fs.find(f=>f.home===POLO||f.away===POLO), d=pf||fs[0]; if(!d) continue;
-    if(!ui.ligaAll){ if(pf){ const p=persp(pf);
-        h+=`<li><a class="jrow ${nx&&nx.j===j?'next':''}" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span><span class="vs">${p.home?esc(CLUB.teamShort)+' contra '+esc(clubName(p.rival)):esc(clubName(p.rival))+' contra '+US+''}</span><div class="meta">${p.home?'En casa':'Fuera'}, ${esc(d.time)} h ${movedTag(pf)}</div></span><span class="score">${p.played?`${resBadge(p.ps>p.rs?'W':'L')} ${pf.hs}-${pf.as}`:'<span class="muted small">Pendiente</span>'}</span></a></li>`;
-      } else h+=`<li><a class="jrow rest" href="#jornada-${j}"><span class="jn">${j}<small>${esc(fdate(d))}</small></span><span class="vs">Descansa el ${US}</span><span></span></a></li>`;
-    } else h+=`<li style="padding:12px 0;border-bottom:1px solid var(--line)"><a href="#jornada-${j}" style="text-decoration:none;display:flex;justify-content:space-between"><b>Jornada ${j}</b><span class="muted small">${esc(fdate(d,{weekday:'long',day:'numeric',month:'long'}))}</span></a>
-      <table style="margin-top:4px"><tbody>${fs.map(f=>`<tr class="${f===pf?'us':''}"><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}${pf?'':'<tr><td class="muted">Descansa: '+US+'</td><td></td></tr>'}</tbody></table></li>`; }
-  return h+`</ul><p class="source">Fuente: calendario oficial FCT${fctAgo()? `, resultados actualizados ${esc(fctAgo())}` : ''}.</p></section>`;
-}
+function ligaCalendar(){ return svCalendar(); }   // season-views.js
 function ligaTable(){
   const st=standings(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos}));
   return `<section class="sec"><div class="sec-h"><h2>Clasificación</h2></div>${standingsTable(st)}<p class="source">${standingsSource()}</p></section>
@@ -1019,8 +1009,8 @@ function privateBlock(){
 function vStats(){
   const tabs=[['equipo','Equipo'],['jugadores','Jugadores'],['mvp','MVP'],['disponibilidad','Disponibilidad'],['rankings','Rankings'],['records','Récords']];
   let h=`<div class="wrap"><div class="pagehead"><h1>Estadísticas</h1><p class="lede">Calculadas con los resultados introducidos. Las encuestas solo alimentan los rankings de votos.</p></div>
-  <div class="chips" style="margin-top:18px">${tabs.map(([k,l])=>`<button class="chip" data-act="stats-tab" data-v="${k}" aria-pressed="${ui.statsTab===k}">${l}</button>`).join('')}</div>`;
-  const emp=statsEmpty(); if(emp) return h.replace('<div class="chips"', emp+'<div class="chips"')+`</div>`;
+  <div class="stabs" role="tablist">${tabs.map(([k,l])=>`<button class="stab" role="tab" data-act="stats-tab" data-v="${k}" aria-selected="${ui.statsTab===k}" aria-pressed="${ui.statsTab===k}">${l}</button>`).join('')}</div>`;
+  const emp=statsEmpty(); if(emp) return h.replace('<div class="stabs"', emp+'<div class="stabs"')+`</div>`;
   return h+(ui.statsTab==='equipo'?statsEquipo():ui.statsTab==='jugadores'?statsJugadores():ui.statsTab==='disponibilidad'?statsDisponibilidad():ui.statsTab==='mvp'?`<section class="sec">${mvpRanking(false)}</section>${statsMvpHistory()}`:ui.statsTab==='rankings'?statsRankings():statsRecords())+`</div>`;
 }
 // Inicio de temporada: sin resultados todavía, en lugar de gráficos vacíos se explica cuándo aparecerán
@@ -1030,26 +1020,9 @@ function statsEmpty(){ const mine=S.fixtures.filter(f=>f.home===POLO||f.away===P
   const when= nx? `Aparecerán tras la jornada ${nx.j}, ${esc(fdate(nx,{weekday:'long',day:'numeric',month:'long'}))}, contra ${esc(clubName(persp(nx).rival))}.` : 'Aparecerán en cuanto se cargue el calendario y se juegue la primera jornada.';
   return `<section class="sec"><div class="notice" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between"><div><b>La temporada ${esc(viewSeason)} aún no ha empezado.</b><br><span class="small">${when} Todo se calcula solo con los resultados.</span></div>
     ${prev? `<button class="btn ghost sm" data-act="season-view" data-id="${esc(prev)}">Ver la temporada ${esc(prev)}</button>` : ''}</div></section>`; }
-function statsEquipo(){
-  const ts=teamStats(), evo=playedJornadas().map(j=>({j,v:standings(j).find(r=>r.id===POLO).pos}));
-  let h=`<section class="sec"><div class="figs stagger"><div class="fig"><b>${ts.tw}-${ts.tl}</b><span>eliminatorias</span></div><div class="fig"><b>${ts.rw+ts.rl? count(pct(ts.rw,ts.rw+ts.rl),'%'):'–'}</b><span>partidos ganados (${ts.rw}-${ts.rl})</span></div><div class="fig"><b>${ts.sw}-${ts.sl}</b><span>sets</span></div><div class="fig"><b>${ts.dbl.w}-${ts.dbl.l}</b><span>dobles decisivos</span></div></div>
-    <p class="source">Eliminatorias y partidos: marcador oficial. Sets, juegos y dobles: partidos con marcador introducido.</p></section>
-  <section class="sec"><div class="sec-h"><h2>Partidos por jornada</h2></div>${barsChart(ts.byJ.map(b=>({j:b.j,a:b.ps,b:b.rs})))}<div class="legend"><span><i style="background:var(--win)"></i>Ganados</span><span><i style="background:var(--loss)"></i>Perdidos</span></div></section>
-  <section class="sec"><div class="split"><div><div class="sec-h"><h2>Contra cada club</h2></div><table><tbody class="stagger">${S.teams.filter(t=>t.id!==POLO).map(t=>{ const v=ts.vs[t.id]; return `<tr><td>${esc(t.name)}</td><td>${v?v.w+'-'+v.l:'<span class="muted">Pendiente</span>'}</td><td>${v?v.rw+'-'+v.rl:''}</td></tr>`; }).join('')}</tbody></table></div>
-  <div><div class="sec-h"><h2>Posición</h2></div>${evo.length? lineChart(evo,{invert:true,min:1,max:S.teams.length,unit:'º',h:200}):'<div class="empty">Sin datos.</div>'}</div></div></section>`;
-  const sv=Object.entries(S.published).filter(([,p])=>p.ratings?.q_jornada).map(([k,p])=>({j:+k.slice(1),v:p.ratings.q_jornada}));
-  if(sv.length) h+=`<section class="sec"><div class="sec-h"><h2>Nota del equipo a cada jornada</h2></div>${lineChart(sv,{min:1,max:10,h:160})}<p class="source">Media de la encuesta publicada.</p></section>`;
-  return h;
-}
+function statsEquipo(){ return svStatsTeam(); }   // season-views.js
 function statsJugadores(){
-  const kind=ui.statKind||'S', rows=S.players.filter(p=>p.active!==false).map(p=>({p,st:playerStats(p.id,null,kind)})), key=ui.sortKey;
-  const val=r=> key==='wr'? wilson(r.st.w,r.st.pj) : key==='sd'?r.st.sw-r.st.sl : key==='gd'?r.st.gw-r.st.gl : key==='pj'?r.st.pj : key==='streak'?r.st.bestStreak : r.st.w;
-  rows.sort((a,b)=>val(b)-val(a)||b.st.pj-a.st.pj||a.p.order-b.p.order);
-  const th=(k,l)=>`<th><button data-act="sort" data-v="${k}">${l}${key===k?' ↓':''}</button></th>`;
-  let h=`<section class="sec"><div class="chips"><button class="chip" data-act="stat-kind" data-v="S" aria-pressed="${kind==='S'}">Individuales</button><button class="chip" data-act="stat-kind" data-v="D" aria-pressed="${kind==='D'}">Dobles</button></div>
-    <p class="muted small" style="margin:8px 0 0">${kind==='S'? 'Estadística principal: solo partidos individuales. Los dobles se consultan aparte.' : 'Solo dobles. No influyen en las estadísticas individuales.'} El orden por % tiene en cuenta cuántos partidos ha jugado cada uno.</p>
-    <div class="tscroll" style="margin-top:10px"><table><thead><tr><th>Jugador</th>${th('pj','PJ')}${th('w','G')}<th>P</th>${th('wr','%')}${th('sd','Sets')}${th('gd','Juegos')}${kind==='S'? th('streak','Mejor racha')+'<th class="l">Forma</th>' : '<th class="l">Parejas</th>'}</tr></thead><tbody class="stagger">
-    ${rows.filter(r=>kind==='S'||r.st.pj).map(({p,st})=>`<tr><td>${plink(p.id)}</td><td>${st.pj}</td><td>${st.w}</td><td>${st.l}</td><td>${st.pj?pct(st.w,st.pj)+'%':'–'}</td><td>${st.sw}-${st.sl}</td><td>${st.gw}-${st.gl}</td>${kind==='S'? `<td>${st.bestStreak}</td><td class="l">${formStrip(st.seq)}</td>` : `<td class="l small">${Object.entries(st.partners).map(([m,v])=>esc(pname(m).split(' ')[0])+' '+v.w+'-'+v.l).join(', ')}</td>`}</tr>`).join('') || `<tr><td colspan="8" class="muted">Aún no se han jugado ${kind==='S'?'individuales':'dobles'}.</td></tr>`}</tbody></table></div></section>`;
+  let h=svPlayers();   // tarjetas de jugador (season-views.js); el cara a cara sigue aquí
   const opts=sel=>S.players.map(p=>`<option value="${esc(p.id)}" ${sel===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
   const a=ui.cmpA||S.players[0].id, b=ui.cmpB||(a===S.players[1].id?S.players[0].id:S.players[1].id), A=playerStats(a), Bs=playerStats(b), DA=playerStats(a,null,'D'), DB=playerStats(b,null,'D');
   const grp=(title,rows)=>`<h3 style="margin:18px 0 4px">${title}</h3>`+rows.map(([l,x,y,u=''])=>{ const m=Math.max(Math.abs(x),Math.abs(y),1); return `<div class="cmprow"><div class="meter" style="grid-template-columns:1fr 46px;padding:0"><span class="bar" style="transform:scaleX(-1)"><i data-w="${Math.round(Math.max(0,x)/m*100)}"></i></span><b style="${x>y?'':'font-weight:400'}">${x}${u}</b></div><span class="muted small cl">${l}</span><div class="meter" style="grid-template-columns:46px 1fr;padding:0"><b style="text-align:left;${y>x?'':'font-weight:400'}">${y}${u}</b><span class="bar"><i class="sv" data-w="${Math.round(Math.max(0,y)/m*100)}"></i></span></div></div>`; }).join('');
@@ -1099,7 +1072,7 @@ function statsRecords(){
   const pr={}; S.players.forEach(p=>Object.entries(playerStats(p.id,null,'D').partners).forEach(([m,v])=>{ pr[[p.id,m].sort().join('|')]=v; })); const bp=Object.entries(pr).sort((a,b)=>(b[1].w-b[1].l)-(a[1].w-a[1].l))[0];
   if(bp && bp[1].w) recs.push(['Mejor pareja de dobles',`${bp[0].split('|').map(pname).join(' y ')}, ${bp[1].w}-${bp[1].l}`]);
   const nThree=all.filter(x=>x.c.three).length, nTb=sum(all.map(x=>x.c.tbs));
-  return `<section class="sec"><div class="sec-h"><h2>Récords de la temporada</h2></div>${recs.length? `<table><tbody class="stagger">${recs.map(([a,b])=>`<tr><td class="muted">${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">Los récords aparecerán cuando haya resultados individuales.</div>'}</section>
+  return `<section class="sec"><div class="sec-h"><h2>Récords de la temporada</h2></div>${recs.length? `<div class="recs stagger">${recs.map(([a,b])=>`<div class="rec"><small>${esc(a)}</small><b>${esc(b)}</b></div>`).join('')}</div>`:'<div class="empty">Los récords aparecerán cuando haya resultados individuales.</div>'}</section>
   <section class="sec"><div class="sec-h"><h2>Curiosidades</h2></div><ul class="insights stagger"><li>${all.length} individuales con marcador introducido (los dobles se cuentan aparte).</li><li>${nThree} se han ido al tercer set y ${nTb} sets se han decidido en tie-break.</li><li>${ts.dbl.w+ts.dbl.l} dobles decisivos jugados (${ts.dbl.w} ganados).</li><li>${playedJornadas().length} de ${NJ()} jornadas disputadas en la liga.</li></ul></section>`;
 }
 
@@ -1701,7 +1674,7 @@ function afterRender(root){
   root.querySelectorAll('.stagger').forEach(l=>[...l.children].forEach((c,i)=>c.style.setProperty('--i',Math.min(i,14))));
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     root.querySelectorAll('[data-w]').forEach(el=>el.style.width=el.dataset.w+'%');
-    root.querySelectorAll('.ring .v, .hx-ring .fg, .hx-wr .fg').forEach(el=>el.style.strokeDashoffset=el.dataset.off);
+    root.querySelectorAll('.ring .v, .hx-ring .fg, .hx-wr .fg, .sv-ring .fg').forEach(el=>el.style.strokeDashoffset=el.dataset.off);
   }));
   const pc=root.querySelector('#poster-canvas'); if(pc) drawPoster(pc,+pc.dataset.j);
   root.querySelectorAll('[data-tilt]').forEach(c=>{ if(RM.matches) return; const mv=e=>{ const r=c.getBoundingClientRect(), x=((e.clientX??e.touches?.[0]?.clientX)-r.left)/r.width, y=((e.clientY??e.touches?.[0]?.clientY)-r.top)/r.height; if(!isFinite(x)) return; c.style.setProperty('--rx',((.5-y)*16).toFixed(2)+'deg'); c.style.setProperty('--ry',((x-.5)*20).toFixed(2)+'deg'); c.style.setProperty('--mx',(x*100).toFixed(1)+'%'); c.style.setProperty('--my',(y*100).toFixed(1)+'%'); };
