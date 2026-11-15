@@ -1915,3 +1915,10 @@ body.gate::before{background:#0E1216}
 .avmap b{display:block;font-size:.92rem}.avmap small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .avmap em{font-style:normal;font-weight:800;font-size:.82rem;color:var(--green);white-space:nowrap}
 .sv-loc a{color:inherit;font-weight:700}
+/* Arranque: indicador de carga (aparece a los 0,35 s para no parpadear si carga rápido) */
+.acc-boot{display:grid;justify-items:center;gap:22px;padding:24px 0;opacity:0;animation:accBootIn .4s ease .35s forwards}
+.acc-boot-ball{width:18px;height:18px;border-radius:50%;background:var(--lc-acc);box-shadow:0 0 28px rgba(212,240,76,.35);animation:accBounce .55s cubic-bezier(.45,0,.55,1) infinite alternate}
+.acc-boot-t{font-size:.74rem;font-weight:650;letter-spacing:.22em;text-transform:uppercase;color:var(--lc-mute)}
+@keyframes accBootIn{to{opacity:1}}
+@keyframes accBounce{from{transform:translateY(-26px)}to{transform:translateY(0) scale(1.1,.9)}}
+@media (prefers-reduced-motion: reduce){.acc-boot{animation-delay:0s}.acc-boot-ball{animation:none}}
