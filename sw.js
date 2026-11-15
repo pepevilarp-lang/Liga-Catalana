@@ -1,5 +1,5 @@
 /* Service worker de Polo A: app instalable, funcionamiento sin conexión y notificaciones push */
-const CACHE = 'polo-a-v21';
+const CACHE = 'polo-a-v22';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/config.js', '/club-config.js', '/report-doc.js', '/access.js', '/club.js', '/season-views.js', '/automation.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/badge-96.png', '/img/ball.webp', '/img/escudo.webp', '/img/escudo-sm.webp', '/img/court.jpg', '/img/felt.jpg', '/img/fuzz.webp'];
 
 // Notificaciones (Firebase Cloud Messaging)
@@ -35,7 +35,7 @@ self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Pro
 // Red primero (siempre la última versión); si no hay conexión, la copia guardada
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
-  if (e.request.method !== 'GET' || u.origin !== location.origin || u.pathname.startsWith('/api/')) return;
+  if (e.request.method !== 'GET' || u.origin !== location.origin || u.pathname.startsWith('/api/') || u.pathname.startsWith('/_vercel/')) return;   // analítica de Vercel: siempre directa
   e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {}); return r; })
     .catch(() => caches.match(e.request).then(r => r || caches.match('/index.html'))));
 });
