@@ -213,11 +213,15 @@ function makeFirebase(){
     setRoot(r){ ROOT=String(r||'').replace(/^\/+|\/+$/g,''); }, root:()=>ROOT,
     // Clubes de la cuenta: sus pertenencias (clubs/*/members con su uid) y, en el club original, su ficha en users/<uid>
     // Clubes de la cuenta: accounts/<uid>.clubs es solo un índice; cada club se comprueba con su pertenencia real
-    async myClubs(uid){ const out=[], def=window.CLUB_DEFAULT||CLUB; let ids=[];
-      try{ const a=await fs.doc('accounts/'+uid).get(); ids=Object.keys((a.exists && a.data().clubs)||{}); }catch(e){}
-      for(const club of ids){ try{ const m=await fs.doc('clubs/'+club+'/members/'+uid).get(); if(!m.exists) continue; let c={}; try{ const x=await fs.doc('clubs/'+club).get(); c=x.exists? x.data() : {}; }catch(e){}
-        out.push({club, clubName:c.name||(club===def.id? def.name : club), crestSm:c.crestSm||'', ...m.data()}); }catch(e){} }
-      if(!out.some(x=>x.club===def.id)){ try{ const u=await fs.doc('users/'+uid).get(); if(u.exists && u.data().pid) out.push({club:def.id, clubName:def.name, pid:u.data().pid, roles:['jugador']}); }catch(e){} }
+    async myClubs(uid){ const def=window.CLUB_DEFAULT||CLUB;   // lecturas en paralelo (antes, una tras otra por club)
+      const [a, legacy]=await Promise.all([fs.doc('accounts/'+uid).get().catch(()=>null), fs.doc('users/'+uid).get().catch(()=>null)]);
+      const ids=Object.keys((a && a.exists && a.data().clubs)||{});
+      const rows=await Promise.all(ids.map(async club=>{ try{
+        const [m, x]=await Promise.all([fs.doc('clubs/'+club+'/members/'+uid).get(), fs.doc('clubs/'+club).get().catch(()=>null)]);
+        if(!m.exists) return null; const c= x && x.exists? x.data() : {};
+        return {club, clubName:c.name||(club===def.id? def.name : club), crestSm:c.crestSm||'', ...m.data()}; }catch(e){ return null; } }));
+      const out=rows.filter(Boolean);
+      if(!out.some(x=>x.club===def.id) && legacy && legacy.exists && legacy.data().pid) out.push({club:def.id, clubName:def.name, pid:legacy.data().pid, roles:['jugador']});
       return out; },
     noteClub(uid,club){ return fs.doc('accounts/'+uid).set({clubs:{[club]:true}},{merge:true}).catch(()=>{}); },
     // Ficha de la cuenta en este club: users/<uid> en la raíz; clubs/<id>/members/<uid> después de migrar
@@ -3303,7 +3307,7 @@ function render(){
   const app=$('#app'), gate=!authReady || !authUser || !!accHtml || (!me && !adminSkip);
   document.body.classList.toggle('gate', gate);
   let html, nav=route();
-  if(!authReady) html=accShell('');   // arranque: fondo de Lliga Catalana, sin la identidad de ningún club
+  if(!authReady) html=accShell(ACC_BOOT);   // arranque: fondo de Lliga Catalana con indicador de carga, sin la identidad de ningún club
   else if(!authUser) html=vLogin();
   else if(accHtml) html=accHtml;
   else if(!me && !adminSkip) html=accJoinView(ACC.flow||{}, 'jugador');
@@ -3324,7 +3328,8 @@ function render(){
     else if(r==='docs') html=vDocs(); else if(r.startsWith('doc-')) html=vDoc(r.slice(4));
     else if(r==='stats') html=vStats(); else if(r==='yo'||r==='votar') { html=vYo(); nav='yo'; } else if(r==='admin') html=vAdmin(); else html=vNotFound();
     html+=`<footer class="wrap">Datos oficiales: Federació Catalana de Tennis. App privada del ${esc(curTeam()?.short||'equipo')} (${esc(teamCat(curTeam()))}) del ${esc(CLUB.name)}.${S.updatedAt?' Actualizado el '+new Date(S.updatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':''}</footer>`; }
-  app.innerHTML=`<div class="page">${html}</div>`; app.dataset.ok='1';
+  if(authReady || !app.querySelector('.acc-boot')) app.innerHTML=`<div class="page">${html}</div>`;   // el indicador de arranque no se repinta (la animación no se reinicia)
+  app.dataset.ok='1';
   document.querySelectorAll('[data-nav]').forEach(a=>{ if(a.dataset.nav===nav) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   const al=$('.adminlink'); al.classList.toggle('on',canManage);
   if(!al.querySelector('.al-t')){ al.insertAdjacentHTML('beforeend','<span class="al-t">Gestión</span><span class="al-dot" aria-hidden="true"></span>'); al.setAttribute('aria-label','Gestión'); al.title='Gestión'; }
@@ -3742,9 +3747,15 @@ B.onAuth(async u=>{
   authUser=u; me=null; isAdmin=false; adminSkip=false; claims={}; avail={}; picks={}; ballots={}; myBallot=null; S=seed();
   ACC.priv=undefined; ACC.ctx=null; ACC.capTeams=null; ACC.capKey=''; ACC.req=undefined; ACC.member=null; ACC.memberOf={}; ACC.menu=false; accMenuDraw();
   if(!u){ authReady=true; render(); return; }
-  isAdmin=await B.isAdmin(u.email,u.uid); await accLoadPrivacy(u); await accLoadBrand(); await accLoadMember(u);   // accLoadBrand fija la raíz de datos del club (migrado o no)
-  try{ const m0=await B.getDoc('meta/app'); if(m0){ meta=m0; } checkManager(m0); }catch(e){}
-  try{ await B.relink(); }catch(e){}
+  // Arranque en paralelo (antes eran ~10 lecturas en fila y la pantalla de inicio se quedaba vacía 3-4 s).
+  // accLoadBrand fija la raíz de datos del club (migrado o no): lo que depende de ella espera a brandP.
+  const brandP=accLoadBrand();
+  const [adm]=await Promise.all([B.isAdmin(u.email,u.uid), accLoadPrivacy(u), brandP, accLoadMember(u, brandP)]);
+  isAdmin=adm;
+  await Promise.all([
+    B.getDoc('meta/app').then(m0=>{ if(m0){ meta=m0; } checkManager(m0); }).catch(()=>{}),   // checkManager usa ACC.member (ya cargado)
+    B.relink().catch(()=>{})
+  ]);
   subs.push(B.watchDoc('public/roster', d=>{ roster=d; softRender(); }));
   let first=true;
   // Ficha de la cuenta en este club. Un miembro desactivado por la gestión no entra con su ficha (las reglas tampoco le dejan leer nada)
