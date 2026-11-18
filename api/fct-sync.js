@@ -238,7 +238,9 @@ async function runSeason(db, id) {
   }
   const changed = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} }) !== before;
   const meta = { at: Date.now(), group, ...out };
-  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, ties: S.ties || {}, fctLast: meta, fctError: admin.firestore.FieldValue.delete(), updatedAt: Date.now() } : { fctLast: meta, fctError: admin.firestore.FieldValue.delete() });
+  // getAdmin() del _auth.js compartido (desde el multiclub, este archivo ya no tiene su propio «admin»)
+  const del = getAdmin().firestore.FieldValue.delete();
+  await ref.update(changed ? { teams: S.teams, fixtures: S.fixtures, players: S.players || [], comp: S.comp || {}, ties: S.ties || {}, fctLast: meta, fctError: del, updatedAt: Date.now() } : { fctLast: meta, fctError: del });
   return { season: id, changed, ...meta };
 }
 
