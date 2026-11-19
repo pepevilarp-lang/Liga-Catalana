@@ -732,7 +732,7 @@ function vInicio(){
     ${nx? scoreboard(nx) : ''}</div></section><div class="wrap">`;
   // 1) capitán: centro de operaciones  2) tareas del jugador  3) su próxima jornada  4) resultados  5) clasificación  6) sus números  7) actividad
   ui.homeMyj=true; const co=callouts(nx); ui.homeMyj=false;
-  h+=appsNudge()+opsCard()+myJornadaBlock(nx)+(co? `<section class="sec"><div class="sec-h"><h2>Tienes pendiente</h2></div><div class="tasks">${co}</div></section>` : '');
+  h+=appsNudge()+opsCard()+myJornadaBlock(nx)+(nx? `<section class="sec">${ixJornadaCta(nx.j)}</section>` : '')+(co? `<section class="sec"><div class="sec-h"><h2>Tienes pendiente</h2></div><div class="tasks">${co}</div></section>` : '');
   if(last){ const c=cronica(last.j);
     h+=`<section class="sec"><div class="sec-h"><h2>Último resultado</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${S.published[jid(last.j)]?.mvp? mvpCard(last.j) : ''}</div></div></section>`; }
@@ -853,6 +853,7 @@ function vJornada(j){
     if(!isPlayed(pf)) h+=`<section class="sec"><div class="sec-h"><h2>Disponibilidad</h2>${canManage?`<button class="textlink" data-act="go-admin" data-j="${j}" data-t="disp">Panel del capitán</button>`:''}</div>${availBlock(pf)}</section>`;
     if(pendingSurveys().includes(j)) h+=`<section class="sec"><div class="callout"><div><b>Tu encuesta de esta jornada</b><span>Solo la responden quienes jugaron.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Responder</a></div></div></section>`;
     const hist=teamStats().vs[p.rival];
+    h+=`<section class="sec">${ixJornadaCta(j)}</section>`;
     h+=`<section class="sec"><div class="sec-h"><h2>Contra ${esc(clubName(p.rival))}</h2></div>${crest(p.rival,'')}${hist? `<p>Esta temporada: ${hist.w} ${hist.w===1?'victoria':'victorias'} y ${hist.l} ${hist.l===1?'derrota':'derrotas'}, ${hist.rw}-${hist.rl} en partidos.</p>`:'<p class="muted">Primer enfrentamiento de la temporada.</p>'}</section>`; }
   h+=`<section class="sec"><div class="sec-h"><h2>Resto de la jornada</h2></div><table><tbody>${fs.filter(f=>f!==pf).map(f=>`<tr><td>${esc(team(f.home).name)} <span class="muted">contra</span> ${esc(team(f.away).name)}</td><td>${isPlayed(f)?`<b>${f.hs}-${f.as}</b>`:'<span class="muted">Pendiente</span>'}</td></tr>`).join('')}</tbody></table><p class="source">Fuente: FCT.</p></section></div>`;
   return h;
@@ -982,7 +983,7 @@ function vJugador(id){
       <p class="hlab">Individuales${a.pos&&a.pos!=='DOB'?`, posición habitual: individual ${a.pos.replace('IND ','')}`:''}</p>
       <div class="hfigs five stagger"><div><b>${count(st.pj)}</b><span>partidos</span></div><div><b>${count(st.w)}</b><span>victorias</span></div><div><b>${count(st.l)}</b><span>derrotas</span></div><div><b>${st.pj? count(pct(st.w,st.pj),'%') : '–'}</b><span>win rate</span></div><div><b>${st.streak.n? (st.streak.t==='W'?'+':'−')+st.streak.n : '–'}</b><span>racha</span></div></div></div></div></section>
   <div class="wrap">
-  ${fichaDisplay(id, own)}${introBlock(id, own)}
+  ${fichaDisplay(id, own)}${introBlock(id, own)}${ixPlayerCta(id)}
   <section class="sec"><div class="split cardsplit"><div class="cardcol">${playerCard(id)}<p class="source" style="text-align:center">Índice ${US}: se calcula solo con sus resultados, su disponibilidad y los votos publicados. Se recalcula cada jornada. No es un ranking oficial.</p></div>
     <div><div class="sec-h"><h2>Atributos</h2></div>${radar(id)}<ul class="attrlist">${ATTRS.map(([k,l,d])=>`<li><b>${k}</b> ${l}<small>${d}</small></li>`).join('')}</ul></div></div></section>
   <section class="sec"><div class="split"><div><div class="sec-h"><h2>Victorias y derrotas por jornada</h2><span class="muted small">Individuales</span></div>${wlBars(id)}</div>
@@ -1256,6 +1257,7 @@ function vYo(){
     ${canClub()? `<a class="role mgr" href="#club">${isManager? 'Gestor deportivo' : 'Administrador'} <em>Gestión deportiva ›</em></a>` : ''}</div></div></section>
   <section class="sec"><a class="fcta big press" href="#mi-ficha">${avatar(p,'lg')}<span><b>Mi ficha de jugador</b><small>${(()=>{ const pc=fichaPct(me); return pc? pc+'% completada. ' : ''; })()}Foto, golpe favorito, jugador favorito, grito de guerra, ritual…</small><span class="fbar"><i style="width:${fichaPct(me)}%"></i></span></span><span class="btn brass sm">${fichaPct(me)?'Editar':'Empezar'}</span></a></section>
   <section class="sec"><div class="sec-h"><h2>Pendiente</h2></div>${tasks.length? `<div class="tasks stagger">${tasks.join('')}</div>` : '<div class="empty">Todo al día. Cuando haya disponibilidad que responder o una encuesta tuya, aparecerá aquí.</div>'}</section>
+  ${ixPlayerCta(me)}
   <section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>
   ${connCard()}
 </div>`;
@@ -1268,20 +1270,21 @@ function vEncuesta(j){
   if(S.survey.closed?.[k]) return head+`<div class="empty">El capitán ya ha cerrado esta encuesta.</div></div>`;
   if(ui.survey && ui.survey.j===j) return head+`<section class="sec">${surveyCard()}</section></div>`;
   const done=myBallot?.j?.[k];
-  return head+`<section class="sec"><div class="panel done">${done? `<p class="q">Encuesta enviada ✓</p><p class="muted">Gracias. El capitán publicará los resultados agregados y el MVP.</p><button class="btn ghost" data-act="survey-start" data-j="${j}">Cambiar mis respuestas</button>` : `<p class="q">${surveyQuestions().length} preguntas rápidas</p><p class="muted">Las preguntas sobre compañeros se publican solo como votos agregados. Lo que digas de ti y tus comentarios son privados.</p><button class="btn brass" data-act="survey-start" data-j="${j}">Empezar</button>`}</div></section></div>`;
+  return head+`<section class="sec"><div class="panel done">${done? `<p class="q">Encuesta enviada ✓</p><p class="muted">Gracias. El capitán publicará los resultados agregados y el MVP.</p><button class="btn ghost" data-act="survey-start" data-j="${j}">Cambiar mis respuestas</button>` : `<p class="q">${ixQCount(j)} preguntas rápidas</p><p class="muted">${ixSteps(j).length? 'Empieza por la ficha de tu partido: tus golpes, el juego de tu rival y cómo fue. Con ella se construyen tu informe de jugador y el informe del rival para el equipo. ' : ''}Las preguntas sobre compañeros se publican solo como votos agregados. Lo que digas de ti y tus comentarios son privados.</p><button class="btn brass" data-act="survey-start" data-j="${j}">Empezar</button>`}</div></section></div>`;
 }
 const surveyQuestions = () => S.survey.questions.filter(q=>q.text&&q.type);
 function surveyCard(){
-  const qs=surveyQuestions(), j=ui.survey.j, i=ui.survey.step;
+  const xs=ui.survey.xs||[]; if(ui.survey.step<xs.length) return ixStepCard();   // ficha de cada partido (scout.js)
+  const qs=ixBaseQs(), j=ui.survey.j, i=ui.survey.step-xs.length, tot=xs.length+qs.length;
   if(i>=qs.length) return `<div class="survey"><div class="prog"><i style="width:100%"></i></div><p class="q">Todo listo</p><p class="qsec">Revisa si quieres o envía tus respuestas de la jornada ${j}.</p><div class="nav"><button class="btn ghost" data-act="survey-prev">Atrás</button><button class="btn brass" data-act="survey-send">Enviar respuestas</button></div></div>`;
   const q=qs[i], a=ui.survey.a[q.id]; let body='';
   if(q.type==='scale') body=`<div class="scale">${Array.from({length:10},(_,n)=>`<button data-act="ans" data-q="${q.id}" data-v="${n+1}" aria-pressed="${a===n+1}">${n+1}</button>`).join('')}</div>`;
   else if(q.type==='player'){ const list=participants(j).map(player).filter(Boolean).filter(p=>p.id!==me);
     body=`<div class="picker">${list.map(p=>`<button data-act="ans" data-q="${q.id}" data-v="${esc(p.id)}" aria-pressed="${a===p.id}">${avatar(p)}${esc(p.name)}</button>`).join('')}</div>`; }
   else body=`<textarea data-act="ans-text" data-q="${q.id}" placeholder="Escribe aquí (opcional)" style="margin:20px 0">${esc(a||'')}</textarea>`;
-  return `<div class="survey"><div class="qsec">Jornada ${j}. ${esc(SCOPE_LABEL[q.scope]||'')}, ${i+1} de ${qs.length}</div><div class="prog"><i style="width:${Math.round(i*100/qs.length)}%"></i></div>
+  return `<div class="survey"><div class="qsec">Jornada ${j}. ${esc(SCOPE_LABEL[q.scope]||'')}, ${xs.length+i+1} de ${tot}</div><div class="prog"><i style="width:${Math.round((xs.length+i)*100/tot)}%"></i></div>
     <div class="qbody" key="${i}"><p class="q">${esc(q.text)}</p>${body}</div>
-    <div class="nav"><button class="btn ghost" data-act="survey-prev" ${i===0?'disabled':''}>Atrás</button><button class="btn" data-act="survey-next">${a!=null&&a!==''?'Siguiente':'Saltar'}</button></div></div>`;
+    <div class="nav"><button class="btn ghost" data-act="survey-prev" ${xs.length+i===0?'disabled':''}>Atrás</button><button class="btn" data-act="survey-next">${a!=null&&a!==''?'Siguiente':'Saltar'}</button></div></div>`;
 }
 
 /* ---------------- Puerta de acceso ---------------- */
@@ -1515,6 +1518,7 @@ function aResultadosManual(j){
       <select name="p1" aria-label="Jugador">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2" aria-label="Pareja">${popts(r.polo[1])}</select>`:'<span></span>'}
       <input type="text" name="score" placeholder="6-4 6-3" value="${esc(r.score)}">
       <select name="res"><option value="">Auto</option><option value="W" ${r.res==='W'?'selected':''}>Gana ${US}</option><option value="L" ${r.res==='L'?'selected':''}>Pierde ${US}</option></select>
+      <input type="text" name="riv" placeholder="${r.type==='D'?'Pareja rival (opcional)':'Rival (opcional)'}" value="${esc(r.riv||'')}" style="grid-column:2 / -2" aria-label="Rival">
       <input type="text" name="note" placeholder="Nota: W.O., abandono…" value="${esc(r.note)}" style="grid-column:2 / -2"><button class="btn sm ghost" data-act="res-clear" data-j="${j}" data-r="${i}" ${r.score||r.res?'':'disabled'}>Borrar</button>
       ${(()=>{ const e=validateRubber(r); return e.length&&(r.score||r.res)? `<p class="rerr">${esc(e.join('. '))}</p>` : (rubberCalc(r).res? `<p class="rok">${rubberCalc(r).res==='W'?'Gana el '+US+'':'Gana el rival'}</p>`:''); })()}</div>`).join('')}
     <label class="f" for="moment">Momento de la jornada (público)</label><input type="text" id="moment" value="${esc(t.moment||'')}">
@@ -2536,7 +2540,7 @@ function actaReview(j,d){
     ${chk.blocking? '<p class="muted small" style="margin:6px 0 0">Corrige lo marcado en rojo para poder confirmar.</p>' : ''}</div>`;
 }
 function actaToTie(j){ const A=ui.acta, t=ensureTie(j); A.rows.forEach(r=>{ const idx=rubIdx(r); if(idx<0) return; const rb=t.rubbers[idx];
-  rb.polo=r.pids.slice(0,r.type==='D'?2:1).filter(Boolean); rb.score=r.score.trim(); rb.res= !rb.score && r.winner? (r.winner==='polo'?'W':'L') : null; rb.note=r.note||rb.note||''; }); return t; }
+  rb.polo=r.pids.slice(0,r.type==='D'?2:1).filter(Boolean); rb.score=r.score.trim(); rb.res= !rb.score && r.winner? (r.winner==='polo'?'W':'L') : null; rb.note=r.note||rb.note||''; rb.riv=String(r.rival||rb.riv||'').trim().slice(0,60); }); return t; }
 async function actaConfirm(j){ const A=ui.acta; if(!A) return; const chk=actaCheck(A); if(chk.blocking) return toast('Corrige lo marcado antes de confirmar');
   const d=docs[A.id]; const t=actaToTie(j); const v=validateTie(t); if(v.errors.length){ toast(v.errors[0]); renderQuiet(); return; }
   t.actaId=A.id; finishTieSave(j, A.punt?.polo??'', A.punt?.rival??'');
@@ -3321,6 +3325,9 @@ function render(){
     else if(r.startsWith('disponibilidad-')){ html=vDisponibilidad(+r.slice(15)); nav='yo'; }
     else if(r.startsWith('encuesta-')){ html=vEncuesta(+r.slice(9)); nav='yo'; }
     else if(r.startsWith('mvp-')){ html=vMvp(+r.slice(4)); nav='yo'; }
+    else if(r.startsWith('informe-')){ html=vIxPlayer(r.slice(8)); nav='yo'; }
+    else if(/^rival-\d+$/.test(r)){ html=vIxClub(+r.slice(6)); nav=split?'calendario':'liga'; }
+    else if(/^scout-\d+-\d+$/.test(r)){ const q=r.split('-'); html=vIxScout(+q[1],+q[2]); nav=split?'calendario':'liga'; }
     else if(r==='mi-ficha'){ html=vMiFicha(); nav='yo'; }
     else if(r==='club'){ html=vClub(); nav='club'; } else if(r==='club-equipos'){ html=vClubEquipos(); nav='club'; } else if(r==='club-fct'){ html=vClubFct(); nav='club'; } else if(r==='club-resumen'){ html=vClubResumen(); nav='club'; } else if(r==='club-ajustes'){ html=vClubAjustes(); nav='club'; } else if(r==='club-docs'){ html=vClubDocs(); nav='club'; } else if(r==='club-usuarios'){ html=vClubUsuarios(); nav='club'; }
     else if(r.startsWith('club-equipo-')){ html=vClubTeam(r.slice(12)); nav='club'; }
@@ -3349,6 +3356,7 @@ function render(){
   const bi=$('.brand img'); if(bi && bi.getAttribute('src')!==ASSET.crestSm) bi.setAttribute('src',ASSET.crestSm);
   const mb=$('.mebtn'); if(mb) mb.innerHTML = me? avatar(player(me)) : (authUser? `<span class="av">${esc((authUser.email||'?')[0].toUpperCase())}</span>`:'');
   const dot=document.querySelector('.tabbar [data-nav="yo"]'); if(dot){ dot.querySelector('.dot')?.remove(); const nx=nextPoloFix(); if(pendingSurveys().length || pendingMvp().length || (nx&&me&&availOpen(nx)&&!avOf(me,nx.j))) dot.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
+  try{ ixTick(); }catch(e){ console.warn('informe',e); }
   afterRender(app);
 }
 function editing(){ const a=document.activeElement; return a && a.closest('#app') && /INPUT|TEXTAREA|SELECT/.test(a.tagName); }
@@ -3429,15 +3437,15 @@ document.addEventListener('click', async e=>{
     avail[me]=next; renderQuiet(); if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
     await safe(()=>B.set(SEASON_PATH+'/avail/'+me,next), el.dataset.v==='yes'?'Apuntado: juegas':'Anotado: no puedes'); }
   else if(a==='pick'){ if(!me) return; const k=jid(+el.dataset.j), cur=picks[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:{p:+el.dataset.p,r:+el.dataset.r}},at:Date.now()}; picks[me]=next; renderQuiet(); await safe(()=>B.set(SEASON_PATH+'/picks/'+me,next),'Pronóstico guardado'); }
-  else if(a==='survey-start'){ const j=+el.dataset.j; ui.survey={j,step:0,a:{...(myBallot?.j?.[jid(j)]?.a||{})}}; render(); scrollTo({top:0}); }
+  else if(a==='survey-start'){ const j=+el.dataset.j; ui.survey={j,step:0,a:{...(myBallot?.j?.[jid(j)]?.a||{})},xs:ixSteps(j),x:ixInit(j)}; render(); scrollTo({top:0}); }
   else if(a==='survey-prev'){ ui.survey.step=Math.max(0,ui.survey.step-1); renderQuiet(); }
   else if(a==='survey-next'){ ui.survey.step++; renderQuiet(); }
   else if(a==='ans'){ const q=S.survey.questions.find(x=>x.id===el.dataset.q); ui.survey.a[el.dataset.q]=q?.type==='scale'? +el.dataset.v : el.dataset.v; renderQuiet(); setTimeout(()=>{ if(ui.survey){ ui.survey.step++; renderQuiet(); } },220); }
-  else if(a==='survey-send'){ const k=jid(ui.survey.j); const body={j:{...(myBallot?.j||{}),[k]:{a:ui.survey.a,at:Date.now()}}};
+  else if(a==='survey-send'){ const k=jid(ui.survey.j); const xr=ixClean(ui.survey.x), body={j:{...(myBallot?.j||{}),[k]:{a:ui.survey.a,...(xr&&Object.keys(xr.m).length? {x:xr} : {}),at:Date.now()}}};
     try{ await trackWrite(B.set(SEASON_PATH+'/ballots/'+me,body)); myBallot=body; ui.survey=null; render(); scrollTo(0,0); toast('Respuestas enviadas'); confetti(innerWidth/2,innerHeight/3); }catch(err){ toast('No se ha podido enviar: '+(err?.code||err?.message||'error')); } }
   else if(a==='save-tie'){ const j=+el.dataset.j, t=ensureTie(j);
     document.querySelectorAll('.redit').forEach(row=>{ const r=t.rubbers[+row.dataset.r]; const g=n=>row.querySelector(`[name=${n}]`)?.value??'';
-      r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); r.score=g('score').trim(); r.res=g('res')||null; r.note=g('note').trim(); r.wo=!r.score && /\bw\.?\s*o\b/i.test(r.note); });
+      r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); r.score=g('score').trim(); r.res=g('res')||null; r.note=g('note').trim(); r.riv=g('riv').trim().slice(0,60); r.wo=!r.score && /\bw\.?\s*o\b/i.test(r.note); });
     t.moment=$('#moment').value.trim();
     const val=validateTie(t); if(val.errors.length){ renderQuiet(); toast('Hay errores en los resultados: revísalos'); return; }
     finishTieSave(j, $('#ps')?.value??'', $('#rs')?.value??'');

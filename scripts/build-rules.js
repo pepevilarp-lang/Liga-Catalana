@@ -121,6 +121,8 @@ const DATA = (C) => `
         match /picks/{pid} { allow read: if teamRead(${C}, s); allow write: if (isMe(${C}, pid) && inTeam(${C}, s)) || isStaff(${C}); }
         // Encuestas postpartido: privadas
         match /ballots/{pid} { allow read, write: if (isMe(${C}, pid) && inTeam(${C}, s)) || canPrivate(${C}, s); }
+        // Informe del rival: solo cifras agregadas que publican los capitanes; lo lee todo el equipo
+        match /scout/{d} { allow read: if teamRead(${C}, s); allow write: if canPrivate(${C}, s); }
         // Documentos (troceados) y fotos diarias de la temporada
         match /docs/{id} {
           allow read: if teamRead(${C}, s);
