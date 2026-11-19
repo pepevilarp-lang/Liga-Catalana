@@ -295,6 +295,8 @@ service cloud.firestore {
         match /picks/{pid} { allow read: if teamRead('', s); allow write: if (isMe('', pid) && inTeam('', s)) || isStaff(''); }
         // Encuestas postpartido: privadas
         match /ballots/{pid} { allow read, write: if (isMe('', pid) && inTeam('', s)) || canPrivate('', s); }
+        // Informe del rival: solo cifras agregadas que publican los capitanes; lo lee todo el equipo
+        match /scout/{d} { allow read: if teamRead('', s); allow write: if canPrivate('', s); }
         // Documentos (troceados) y fotos diarias de la temporada
         match /docs/{id} {
           allow read: if teamRead('', s);
@@ -460,6 +462,8 @@ service cloud.firestore {
           match /picks/{pid} { allow read: if teamRead(club, s); allow write: if (isMe(club, pid) && inTeam(club, s)) || isStaff(club); }
           // Encuestas postpartido: privadas
           match /ballots/{pid} { allow read, write: if (isMe(club, pid) && inTeam(club, s)) || canPrivate(club, s); }
+          // Informe del rival: solo cifras agregadas que publican los capitanes; lo lee todo el equipo
+          match /scout/{d} { allow read: if teamRead(club, s); allow write: if canPrivate(club, s); }
           // Documentos (troceados) y fotos diarias de la temporada
           match /docs/{id} {
             allow read: if teamRead(club, s);
