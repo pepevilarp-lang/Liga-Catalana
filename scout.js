@@ -15,6 +15,7 @@ const IX = {
   estilo:['Pega fuerte desde el fondo','Muy regular, no falla','Sube a la red','Saque y volea','Cortados y cambios de ritmo','Muy físico, lo corre todo'],
   rend:['Muy mal','Mal','Normal','Bien','Muy bien'],
   fis:['Fundido','Justo','Normal','Bien','Muy fino'],
+  cab:['Se cae','Irregular','Normal','Sólido','Muy fuerte'],
   factor:['Saque','Regularidad','Físico','Cabeza','Errores no forzados','Táctica'],
   pista:['Lenta','Normal','Rápida','Mucha tierra suelta','Dura, poca tierra','Irregular, con botes raros'],
   clima:['Perfecto','Calor','Frío','Viento','Humedad','Pista mojada']
@@ -96,7 +97,7 @@ function ixInit(j){ const saved=myBallot?.j?.[jid(j)]?.x; const x=saved? JSON.pa
   ixMyRubbers(j).forEach(({r,i})=>{ const m=x.m[i] ||= {}; if(m.riv==null && r.riv) m.riv=r.riv; });
   return x; }
 function ixClean(x){ if(!x||!x.m) return null; const out={v:1,m:{},pista:ixArr(x.pista),clima:ixArr(x.clima)};
-  Object.entries(x.m).forEach(([i,m])=>{ const c={}; ['riv','hand','rend','fis'].forEach(k=>{ if(m[k]) c[k]=String(m[k]).slice(0,60); }); ['est','mc','lc','rd','rw','fac'].forEach(k=>{ const a=ixArr(m[k]); if(a.length) c[k]=a; }); out.m[i]=c; });
+  Object.entries(x.m).forEach(([i,m])=>{ const c={}; ['riv','hand','rend','fis','cab'].forEach(k=>{ if(m[k]) c[k]=String(m[k]).slice(0,60); }); ['est','mc','lc','rd','rw','fac'].forEach(k=>{ const a=ixArr(m[k]); if(a.length) c[k]=a; }); out.m[i]=c; });
   return out; }
 const ixBaseQs = () => surveyQuestions().filter(q=>!(ui.survey?.xs?.length && IX_DUP.has(q.id)));
 const ixQCount = j => { const xs=ixSteps(j).length; return xs + surveyQuestions().filter(q=>!(xs && IX_DUP.has(q.id))).length; };
@@ -125,8 +126,9 @@ function ixStepCard(){
   } else if(st.k==='his'){
     q=dbl? 'El juego de la pareja rival' : 'El juego de tu rival';
     body=`<p class="ix-hint">Esto alimenta el informe del rival que verá el equipo, siempre en cifras agregadas.</p>
-      <h4 class="ix-h4 bad">${dbl?'¿Con qué golpes os hicieron más daño?':'¿Con qué golpes te hizo más daño?'}</h4>${ixChips('rd',IX.shots,m,st.i,true)}
-      <h4 class="ix-h4 good">${dbl?'¿Dónde les encontrasteis el punto débil?':'¿Dónde le encontraste el punto débil?'}</h4>${ixChips('rw',IX.shots,m,st.i,true)}`;
+      <h4 class="ix-h4 bad">${dbl?'¿Cuáles eran sus golpes fuertes?':'¿Cuáles son sus golpes fuertes?'} <small>los que más daño te hicieron</small></h4>${ixChips('rd',IX.shots,m,st.i,true)}
+      <h4 class="ix-h4 good">${dbl?'¿Dónde les encontrasteis el punto débil?':'¿Dónde le encontraste el punto débil?'}</h4>${ixChips('rw',IX.shots,m,st.i,true)}
+      <h4 class="ix-h4">${dbl?'¿Cómo competían de cabeza?':'¿Cómo compite de cabeza?'} <small>en los puntos importantes y cuando va por detrás</small></h4>${ixChips('cab',IX.cab,m,st.i,false)}`;
   } else if(st.k==='how'){
     q='¿Cómo fue el partido?';
     body=`<h4 class="ix-h4">Tu rendimiento</h4>${ixChips('rend',IX.rend,m,st.i,false)}<h4 class="ix-h4">Físicamente</h4>${ixChips('fis',IX.fis,m,st.i,false)}
@@ -135,7 +137,7 @@ function ixStepCard(){
     q='¿Cómo estaban la pista y el día?';
     body=`<h4 class="ix-h4">La pista <small>varias</small></h4>${ixChips('pista',IX.pista,u.x,'',true)}<h4 class="ix-h4">El tiempo <small>varias</small></h4>${ixChips('clima',IX.clima,u.x,'',true)}`;
   }
-  const filled = st.k==='riv'? !!(m.riv||'').trim() : st.k==='mine'? ixArr(m.mc).length+ixArr(m.lc).length>0 : st.k==='his'? ixArr(m.rd).length+ixArr(m.rw).length>0 : st.k==='how'? !!(m.rend||m.fis) : ixArr(u.x.pista).length+ixArr(u.x.clima).length>0;
+  const filled = st.k==='riv'? !!(m.riv||'').trim() : st.k==='mine'? ixArr(m.mc).length+ixArr(m.lc).length>0 : st.k==='his'? ixArr(m.rd).length+ixArr(m.rw).length>0 || !!m.cab : st.k==='how'? !!(m.rend||m.fis) : ixArr(u.x.pista).length+ixArr(u.x.clima).length>0;
   return `<div class="survey ix-sv"><div class="qsec"><span class="ix-tag">🎾 ${tag}</span> ${u.step+1} de ${total}</div><div class="prog"><i style="width:${Math.round(u.step*100/total)}%"></i></div>
     <div class="qbody" key="ix${u.step}"><p class="q">${q}</p>${body}</div>
     <div class="nav"><button class="btn ghost" data-act="survey-prev" ${u.step===0?'disabled':''}>Atrás</button><button class="btn${filled?' brass':''}" data-act="survey-next">${filled?'Siguiente':'Saltar'}</button></div></div>`;
@@ -158,7 +160,7 @@ function ixEntries(pid, bal){ const out=[];
   Object.entries(bal?.j||{}).forEach(([k,b])=>{ const x=b?.x; if(!x?.m) return; const j=+String(k).slice(1), t=S.ties[k], f=poloFix(j); if(!t||!f) return;
     Object.entries(x.m).forEach(([i,m])=>{ const R=t.rubbers[+i]; if(!R||!(R.polo||[]).includes(pid)||isWO(R)) return; const c=rubberCalc(R); if(!c.res) return;
       out.push({j,k,i:+i,type:R.type,res:c.res,score:R.score||'',club:persp(f).rival,riv:String(m.riv||R.riv||'').trim(),hand:m.hand||'',est:ixArr(m.est),mc:ixArr(m.mc),lc:ixArr(m.lc),rd:ixArr(m.rd),rw:ixArr(m.rw),
-        gf:ixGames(c)[0], ga:ixGames(c)[1], rend:IX.rend.indexOf(m.rend)+1, fis:IX.fis.indexOf(m.fis)+1, fac:ixArr(m.fac), pista:ixArr(x.pista), clima:ixArr(x.clima), partner:(R.polo||[]).find(p=>p!==pid)||''}); }); });
+        gf:ixGames(c)[0], ga:ixGames(c)[1], cab:IX.cab.indexOf(m.cab)+1, rend:IX.rend.indexOf(m.rend)+1, fis:IX.fis.indexOf(m.fis)+1, fac:ixArr(m.fac), pista:ixArr(x.pista), clima:ixArr(x.clima), partner:(R.polo||[]).find(p=>p!==pid)||''}); }); });
   return out.sort((a,b)=>a.j-b.j||a.i-b.i); }
 const ixCnt = (E,f) => { const o={}; E.forEach(e=>[...new Set(e[f])].forEach(v=>{ if(v) o[v]=(o[v]||0)+1; })); return o; };
 function ixSelf(E){ const n=E.length; if(!n) return null;
@@ -173,15 +175,18 @@ function ixSelf(E){ const n=E.length; if(!n) return null;
 /* Suma una ficha al rival (solo individuales, por nombre) y al club (individuales y dobles). «src» evita contarla dos veces. */
 function ixAdd(R,C,pid,e){ const id=pid+':'+e.j+':'+e.i, add=(o,l)=>[...new Set(l)].forEach(v=>o[v]=(o[v]||0)+1);
   const c=C[e.club] ||= {n:0,w:0,l:0,est:{},rd:{},rw:{},facW:{},facL:{},src:[]};
-  if(!c.src.includes(id)){ c.src.push(id); c.n++; e.res==='W'? c.l++ : c.w++; add(c.est,e.est); add(c.rd,e.rd); add(c.rw,e.rw); add(e.res==='W'? c.facW : c.facL, e.fac); }
+  if(!c.src.includes(id)){ c.src.push(id); c.n++; if(e.cab>0){ c.cab=(c.cab||0)+e.cab; c.cabN=(c.cabN||0)+1; } e.res==='W'? c.l++ : c.w++; add(c.est,e.est); add(c.rd,e.rd); add(c.rw,e.rw); add(e.res==='W'? c.facW : c.facL, e.fac); }
   if(e.type!=='S'||!e.riv) return; const nk=ixNorm(e.riv); if(!nk) return;
   const a=R[e.club+'|'+nk] ||= {club:e.club,nm:{},n:0,w:0,l:0,gF:0,gA:0,hand:{},est:{},rd:{},rw:{},facW:{},facL:{},by:{},js:[],src:[]};
   a.src ||= []; if(a.src.includes(id)) return; a.src.push(id);
   a.nm[e.riv]=(a.nm[e.riv]||0)+1; a.n++; e.res==='W'? a.l++ : a.w++;      // w y l, desde el punto de vista del rival
-  a.gF=(a.gF||0)+e.gf; a.gA=(a.gA||0)+e.ga; if(e.hand) a.hand[e.hand]=(a.hand[e.hand]||0)+1;
+  a.gF=(a.gF||0)+e.gf; a.gA=(a.gA||0)+e.ga; if(e.cab>0){ a.cab=(a.cab||0)+e.cab; a.cabN=(a.cabN||0)+1; } if(e.hand) a.hand[e.hand]=(a.hand[e.hand]||0)+1;
   add(a.est,e.est); add(a.rd,e.rd); add(a.rw,e.rw); add(e.res==='W'? (a.facW ||= {}) : (a.facL ||= {}), e.fac);
   const by=a.by[pid] ||= {w:0,l:0}; by[e.res==='W'?'w':'l']++; if(!a.js.includes(e.j)) a.js.push(e.j); }
 function ixRivalAgg(all){ const R={}, C={}; Object.entries(all||{}).forEach(([pid,b])=>ixEntries(pid,b).forEach(e=>ixAdd(R,C,pid,e))); return {r:R,c:C}; }
+const ixCab = a => a?.cabN? a.cab/a.cabN : null;
+const ixCabLbl = v => v>=4.3? 'Muy fuerte de cabeza' : v>=3.5? 'Sólido de cabeza' : v>=2.7? 'Normal de cabeza' : v>=2? 'Irregular de cabeza' : 'Se cae de cabeza';
+const ixCabTip = v => v>=3.8? 'Compite muy bien de cabeza: no regales puntos fáciles en los momentos importantes. Juega esos puntos con tu golpe más seguro y no esperes que se caiga solo.' : v<=2.6? 'Le cuesta competir de cabeza: alarga los puntos y los juegos, ponle presión en los marcadores ajustados y no le dejes respirar cuando vaya por detrás.' : '';
 const ixName = a => ixTitle(ixTop(a.nm)?.[0]||'Rival');
 const ixHand = a => (a.hand?.Zurdo||0) > (a.hand?.Diestro||0)? 'zurdo' : (a.hand?.Diestro? 'diestro' : '');
 const ixDanger = (a,k) => a.n? ((a.rd[k]||0)-(a.rw[k]||0))/a.n : 0;
@@ -190,7 +195,7 @@ const ixWeak = a => IX.shots.filter(k=>(a.rw[k]||0)>(a.rd[k]||0)).sort((p,q)=>((
 function ixThreat(a){ const g=a.w+a.l, wr=(a.w+1)/(g+2), gs=((a.gA||0)+3)/((a.gF||0)+(a.gA||0)+6);
   const sr=Object.values(a.rd).reduce((x,y)=>x+y,0), sw=Object.values(a.rw).reduce((x,y)=>x+y,0), bal=(sr+sw)? (sr-sw)/(sr+sw) : 0;
   const conf=Math.min(1,a.n/3);   // con pocas fichas el balance de golpes pesa menos
-  return Math.round(100*(0.35*wr + 0.40*gs + 0.25*(0.5+0.5*bal*conf))); }
+  const cb=ixCab(a); return Math.max(0,Math.min(100,Math.round(100*(0.35*wr + 0.40*gs + 0.25*(0.5+0.5*bal*conf)) + (cb? (cb-3)*3 : 0)))); }
 const ixThreatLbl = v => v>=72? 'PELIGRO MÁXIMO' : v>=56? 'RIVAL DURO' : v>=40? 'PARTIDO ABIERTO' : 'ASEQUIBLE';
 const ixThreatCol = v => v>=72? 'var(--ix-bad)' : v>=56? '#F08A4B' : v>=40? 'var(--ix-mid)' : 'var(--ix-good)';
 function ixForm(s){ const r=s.rend5? (s.rend5-1)/4 : .5, f=s.fis5? (s.fis5-1)/4 : .5; return Math.round(100*(0.5*s.wr5 + 0.25*r + 0.25*f)); }
@@ -368,7 +373,7 @@ function vIxClub(j){
     <p>El informe del rival se construye con las fichas de partido del equipo: quién era el rival, si es zurdo, cómo juega, con qué golpes hace daño y dónde se le encuentra el punto débil. ${isPlayed(f)? 'Si respondéis la encuesta de esta jornada, estará listo para la vuelta.' : 'En cuanto alguien del equipo juegue contra ellos y responda la encuesta, aparecerá aquí.'}</p></div></div></div>`;
   const net=(A,B)=>{ const k=IX.shots.filter(x=>(A[x]||0)>(B[x]||0)).sort((p,q)=>((A[q]||0)-(B[q]||0))-((A[p]||0)-(B[p]||0)))[0]; return k? [k,A[k]] : null; };
   const tE=ixTop(C.est), tD=net(C.rd,C.rw), tW=net(C.rw,C.rd), fL=ixTop(C.facL), fW=ixTop(C.facW);
-  const keys=[tE? `<li><b>Juegan sobre todo así:</b> ${esc(tE[0].toLowerCase())}. ${esc((s=>s.charAt(0).toUpperCase()+s.slice(1))(String(IX_STYLE_TIP[tE[0]]||'').replace(/^[^:]*:\s*/,'')))}</li>` : '', tW? `<li><b>Por dónde atacarles:</b> ${esc(tW[0].toLowerCase())} (${tW[1]} ${tW[1]===1?'vez':'veces'}).</li>` : '', tD? `<li><b>Lo que más daño nos hace:</b> ${esc(tD[0].toLowerCase())}.</li>` : '', fL&&fW&&fL[0]===fW[0]? `<li><b>Lo que decide contra ellos:</b> ${esc(fL[0].toLowerCase())}, tanto cuando ganamos como cuando perdimos. ${esc(String(IX_FAC_L[fL[0]]||'').replace(/^[^:]*:\s*/,'').replace(/^./,c=>c.toUpperCase()))}</li>` : [fL? `<li><b>Cuando perdimos:</b> ${esc(IX_FAC_L[fL[0]]||fL[0])}</li>` : '', fW? `<li><b>Cuando ganamos:</b> lo decidió ${esc(fW[0].toLowerCase())}.</li>` : ''].join(''), zurdos? `<li><b>${zurdos} ${zurdos===1?'zurdo':'zurdos'}</b> entre los jugadores analizados.</li>` : ''].filter(Boolean).join('');
+  const keys=[tE? `<li><b>Juegan sobre todo así:</b> ${esc(tE[0].toLowerCase())}. ${esc((s=>s.charAt(0).toUpperCase()+s.slice(1))(String(IX_STYLE_TIP[tE[0]]||'').replace(/^[^:]*:\s*/,'')))}</li>` : '', tW? `<li><b>Por dónde atacarles:</b> ${esc(tW[0].toLowerCase())} (${tW[1]} ${tW[1]===1?'vez':'veces'}).</li>` : '', tD? `<li><b>Lo que más daño nos hace:</b> ${esc(tD[0].toLowerCase())}.</li>` : '', fL&&fW&&fL[0]===fW[0]? `<li><b>Lo que decide contra ellos:</b> ${esc(fL[0].toLowerCase())}, tanto cuando ganamos como cuando perdimos. ${esc(String(IX_FAC_L[fL[0]]||'').replace(/^[^:]*:\s*/,'').replace(/^./,c=>c.toUpperCase()))}</li>` : [fL? `<li><b>Cuando perdimos:</b> ${esc(IX_FAC_L[fL[0]]||fL[0])}</li>` : '', fW? `<li><b>Cuando ganamos:</b> lo decidió ${esc(fW[0].toLowerCase())}.</li>` : ''].join(''), ixCab(C)? `<li><b>De cabeza:</b> ${esc(ixCabLbl(ixCab(C)).replace(' de cabeza','').toLowerCase())} (${ixCab(C).toFixed(1)}/5). ${esc(ixCabTip(ixCab(C)))}</li>` : '', zurdos? `<li><b>${zurdos} ${zurdos===1?'zurdo':'zurdos'}</b> entre los jugadores analizados.</li>` : ''].filter(Boolean).join('');
   const cards=list.map((x,i)=>{ const a=x.a, nm=ixName(a), hd=ixHand(a), sd=ixArma(a), sw=ixWeak(a);
     const faced=Object.entries(a.by).map(([pid,r])=>`${esc(pname(pid).split(' ')[0])} ${r.w>r.l?'le ganó':r.w<r.l?'perdió':'empató'} ${ixRec(r.w,r.l)}`).join(' · ');
     return `<a class="ix-rcard" href="#scout-${j}-${i}" style="--d:${(0.06*i).toFixed(2)}s"><div class="ix-rc-t"><b>${esc(nm)}</b>${hd?`<span class="ix-hb">${hd==='zurdo'?'Zurdo':'Diestro'}</span>`:''}</div>
@@ -396,14 +401,14 @@ function vIxScout(j, idx){
   const ak=ixArma(a), wk=ixWeak(a), arma=ak? [ak,a.rd[ak]] : null, weak=wk? [wk,a.rw[wk]] : null, tE=ixTop(a.est), fL=ixTop(a.facL||{}), fW=ixTop(a.facW||{}), myHand=/zurd/i.test(profiles?.[me]?.hand||'')? 'zurdo' : 'diestro';
   const myS=me? ixSelf(ixEntries(me,myBallot).filter(e=>e.type==='S')) : null;
   const duels=myS? IX_DUELS.map(([mine,his,txt])=>({txt,e:myS.sc(mine)-ixDanger(a,his)})).filter(d=>Math.abs(d.e)>0.01).sort((p,q)=>Math.abs(q.e)-Math.abs(p.e)).slice(0,4) : [];
-  const plan=[weak? IX_TIP[weak[0]] : '', arma? IX_AVOID[arma[0]] : '', tE? IX_STYLE_TIP[tE[0]] : '', fL? IX_FAC_L[fL[0]] : (fW? `Cuando le ganamos, lo decidió ${fW[0].toLowerCase()}: repite la receta.` : ''),
-    hand==='zurdo'? (myHand==='zurdo'? 'Es zurdo como tú: los patrones de siempre cambian de lado; tu derecha cruzada va a su derecha.' : 'Es zurdo: en el lado de ventaja su saque cortado se abre a tu revés. Resta un paso más a la izquierda, entra en diagonal hacia la bola y devuelve cruzado.') : ''].filter(Boolean).slice(0,5);
+  const plan=[weak? IX_TIP[weak[0]] : '', arma? IX_AVOID[arma[0]] : '', tE? IX_STYLE_TIP[tE[0]] : '', ixCab(a)? ixCabTip(ixCab(a)) : '', fL? IX_FAC_L[fL[0]] : (fW? `Cuando le ganamos, lo decidió ${fW[0].toLowerCase()}: repite la receta.` : ''),
+    hand==='zurdo'? (myHand==='zurdo'? 'Es zurdo como tú: los patrones de siempre cambian de lado; tu derecha cruzada va a su derecha.' : 'Es zurdo: en el lado de ventaja su saque cortado se abre a tu revés. Resta un paso más a la izquierda, entra en diagonal hacia la bola y devuelve cruzado.') : ''].filter(Boolean).slice(0,6);
   const playKeys=[...new Set([...data.filter(d=>d.score>0&&d.k!==ak).sort((p,q)=>q.score-p.score).map(d=>d.k), ak==='Revés'? 'Derecha' : 'Revés'])].filter(k=>IX_PLAYS[k]&&k!==ak).slice(0,2);   // nunca una jugada contra su arma
   const faced=Object.entries(a.by).map(([pid,r])=>`<div class="ix-hrow"><span>${avatar(player(pid))} ${esc(pname(pid))}</span><b class="${r.w>r.l?'good-t':r.w<r.l?'bad-t':''}">${ixRec(r.w,r.l)}</b></div>`).join('');
   const pct=v=>Math.round(v/n*100);
   const hero=ixHero({stamp:'EXPEDIENTE · CONFIDENCIAL', kick:`Informe de scouting · ${clubName(club)}`, name:nm, crest:`<span class="ix-crest">${esc(team(club).abbr||'?')}</span>`,
     sub:`${n} ${n===1?'informe':'informes'} del equipo · jornadas ${a.js.slice().sort((p,q)=>p-q).join(', ')}`,
-    chips:`<span>🏆 Contra nosotros ${ixRec(a.w,a.l)}</span>${(a.gF||a.gA)? `<span>🎾 Juegos ${a.gA||0}-${a.gF||0}</span>` : ''}<span>✋ ${hand==='zurdo'?'Zurdo':'Diestro'}</span>${tE?`<span>🎾 ${esc(tE[0])}</span>`:''}${n<2?'<span class="warn">Muestra pequeña</span>':''}`,
+    chips:`<span>🏆 Contra nosotros ${ixRec(a.w,a.l)}</span>${(a.gF||a.gA)? `<span>🎾 Juegos ${a.gA||0}-${a.gF||0}</span>` : ''}<span>✋ ${hand==='zurdo'?'Zurdo':'Diestro'}</span>${tE?`<span>🎾 ${esc(tE[0])}</span>`:''}${ixCab(a)?`<span>🧠 ${esc(ixCabLbl(ixCab(a)))} · ${ixCab(a).toFixed(1)}/5</span>`:''}${n<2?'<span class="warn">Muestra pequeña</span>':''}`,
     ring:ixRing(x.t,ixThreatLbl(x.t),ixThreatCol(x.t),'AMENAZA')});
   return `<div class="ix-rep">${ixBack('#rival-'+j,'Informe de '+clubName(club))}${hero}<div class="ix-body">
     <div class="ix-duo">
