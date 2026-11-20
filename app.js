@@ -407,7 +407,7 @@ function participants(j){ const t=tie(j); const played=new Set(); (t?.rubbers||[
 function pendingSurveys(){
   if(!me) return [];
   return playedJornadas().filter(j=>{ const f=poloFix(j); if(!f) return false; const k=jid(j);
-    return !S.survey.closed?.[k] && tie(j) && participants(j).includes(me) && !myBallot?.j?.[k]; });
+    return !S.survey.closed?.[k] && tie(j) && participants(j).includes(me) && (!myBallot?.j?.[k] || ixFichaPending(j)); });
 }
 
 /* ---------- Estadísticas ---------- */
@@ -771,7 +771,9 @@ function captainNote(){ const p=pendingAction(); if(!p) return '';
 function callouts(nx){
   let h=''; const ps=pendingSurveys();
   pendingMvp().forEach(j=>{ h+=`<div class="callout"><div><b>🏆 Vota al MVP de la jornada ${j}</b><span>Un voto por jugador. Abierta hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</span></div><div class="row"><a class="btn light" href="#mvp-${j}">Votar</a></div></div>`; });
-  ps.forEach(j=>{ h+=`<div class="callout"><div><b>Encuesta de la jornada ${j}</b><span>Jugaste contra ${esc(clubName(persp(poloFix(j)).rival))}. Tardas dos minutos.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Responder</a></div></div>`; });
+  ps.forEach(j=>{ h+= ixFichaPending(j)
+    ? `<div class="callout"><div><b>Completa la ficha de tu partido, jornada ${j}</b><span>Ya respondiste la encuesta. Falta la ficha contra ${esc(clubName(persp(poloFix(j)).rival))} para tu informe de jugador. Un minuto.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Completar</a></div></div>`
+    : `<div class="callout"><div><b>Encuesta de la jornada ${j}</b><span>Jugaste contra ${esc(clubName(persp(poloFix(j)).rival))}. Tardas dos minutos.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Responder</a></div></div>`; });
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ if(!me || avOf(me,f.j) || (nx && f.j===nx.j && ui.homeMyj)) return; const p=persp(f);
     h+=`<div class="callout"><div><b>¿Puedes jugar el ${esc(fdate(f,{weekday:'long',day:'numeric'}))}?</b><span>Jornada ${f.j} contra ${esc(clubName(p.rival))}. Responde antes del ${esc(fmtDT(deadline(f.j)))}.</span></div><div class="row"><a class="btn light" href="#disponibilidad-${f.j}">Responder</a></div></div>`; });
   return h;
@@ -851,7 +853,7 @@ function vJornada(j){
     if(lineupVisible(j) && lineupList(j).length) h+=`<section class="sec"><div class="sec-h"><h2>Convocatoria</h2>${canManage&&!t.lineupPub?'<span class="muted small">Borrador, solo la ven los administradores</span>':''}</div>${lineupStrip(j)}<div class="row" style="margin-top:14px"><button class="btn" data-act="poster-open" data-j="${j}">Ver el cartel</button>${canManage?`<button class="btn ghost sm" data-act="go-admin" data-j="${j}" data-t="conv">Editar</button>`:''}</div></section>`;
     h+=`<section class="sec"><div class="sec-h"><h2>Partidos</h2></div>${pst? pst+`<div style="margin-top:14px">${t.rubbers.map((r,i)=>rubberRow(r,i,pf)).join('')}</div>` : '<div class="empty">El orden de juego aparecerá cuando el capitán publique la convocatoria.</div>'}</section>`;
     if(!isPlayed(pf)) h+=`<section class="sec"><div class="sec-h"><h2>Disponibilidad</h2>${canManage?`<button class="textlink" data-act="go-admin" data-j="${j}" data-t="disp">Panel del capitán</button>`:''}</div>${availBlock(pf)}</section>`;
-    if(pendingSurveys().includes(j)) h+=`<section class="sec"><div class="callout"><div><b>Tu encuesta de esta jornada</b><span>Solo la responden quienes jugaron.</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">Responder</a></div></div></section>`;
+    if(pendingSurveys().includes(j)) h+=`<section class="sec"><div class="callout"><div><b>${ixFichaPending(j)? 'Falta la ficha de tu partido' : 'Tu encuesta de esta jornada'}</b><span>${ixFichaPending(j)? 'Con ella se construye tu informe de jugador.' : 'Solo la responden quienes jugaron.'}</span></div><div class="row"><a class="btn light" href="#encuesta-${j}">${ixFichaPending(j)? 'Completar' : 'Responder'}</a></div></div></section>`;
     const hist=teamStats().vs[p.rival];
     h+=`<section class="sec">${ixJornadaCta(j)}</section>`;
     h+=`<section class="sec"><div class="sec-h"><h2>Contra ${esc(clubName(p.rival))}</h2></div>${crest(p.rival,'')}${hist? `<p>Esta temporada: ${hist.w} ${hist.w===1?'victoria':'victorias'} y ${hist.l} ${hist.l===1?'derrota':'derrotas'}, ${hist.rw}-${hist.rl} en partidos.</p>`:'<p class="muted">Primer enfrentamiento de la temporada.</p>'}</section>`; }
@@ -1248,7 +1250,7 @@ function vYo(){
   const p=player(me)||{id:me, name:rosterAll().find(x=>x.id===me)?.name||'Jugador', order:'', cat:''}, pr=profiles[me]||{}, tasks=[];
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ const v=avOf(me,f.j); tasks.push(`<a class="task ${v?'done':''}" href="#disponibilidad-${f.j}"><span class="ti">${v?'✓':'?'}</span><span><b>Disponibilidad, jornada ${f.j}</b><small>${v? 'Has dicho: '+AV_LABEL[v.s]+'. Puedes cambiarla hasta el '+esc(fmtDT(deadline(f.j))) : 'Contra '+esc(clubName(persp(f).rival))+'. Responde antes del '+esc(fmtDT(deadline(f.j)))}</small></span></a>`); });
   pendingMvp().forEach(j=>tasks.push(`<a class="task hot" href="#mvp-${j}"><span class="ti">🏆</span><span><b>Vota al MVP, jornada ${j}</b><small>Un voto, hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</small></span></a>`));
-  pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>Encuesta de la jornada ${j}</b><small>Has jugado contra ${esc(clubName(persp(poloFix(j)).rival))}. 2 minutos.</small></span></a>`));
+  pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>${ixFichaPending(j)? 'Ficha de tu partido, jornada '+j : 'Encuesta de la jornada '+j}</b><small>${ixFichaPending(j)? 'Contra '+esc(clubName(persp(poloFix(j)).rival))+'. Falta para tu informe de jugador. 1 minuto.' : 'Has jugado contra '+esc(clubName(persp(poloFix(j)).rival))+'. 2 minutos.'}</small></span></a>`));
   const roles=[isCaptain?'Capitán':'',isAdmin?'Administrador':''].filter(Boolean);
   return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Ver mi perfil</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
   <section class="sec"><div class="row" style="justify-content:flex-end;margin-bottom:-6px"><a class="btn sm ghost" href="/privacidad.html" target="_blank" rel="noopener">Privacidad</a><button class="btn sm ghost" data-acc="priv-withdraw" title="Retira tu consentimiento y cierra la sesión">Retirar consentimiento</button><button class="btn sm ghost" data-act="tour-again">Ver la introducción</button></div><div class="roles"><span class="op-k">Tus perfiles</span><div class="role-list">
@@ -1270,7 +1272,7 @@ function vEncuesta(j){
   if(S.survey.closed?.[k]) return head+`<div class="empty">El capitán ya ha cerrado esta encuesta.</div></div>`;
   if(ui.survey && ui.survey.j===j) return head+`<section class="sec">${surveyCard()}</section></div>`;
   const done=myBallot?.j?.[k];
-  return head+`<section class="sec"><div class="panel done">${done? `<p class="q">Encuesta enviada ✓</p><p class="muted">Gracias. El capitán publicará los resultados agregados y el MVP.</p><button class="btn ghost" data-act="survey-start" data-j="${j}">Cambiar mis respuestas</button>` : `<p class="q">${ixQCount(j)} preguntas rápidas</p><p class="muted">${ixSteps(j).length? 'Empieza por la ficha de tu partido: tus golpes, el juego de tu rival y cómo fue. Con ella se construyen tu informe de jugador y el informe del rival para el equipo. ' : ''}Las preguntas sobre compañeros se publican solo como votos agregados. Lo que digas de ti y tus comentarios son privados.</p><button class="btn brass" data-act="survey-start" data-j="${j}">Empezar</button>`}</div></section></div>`;
+  return head+`<section class="sec"><div class="panel done">${done && ixFichaPending(j)? `<p class="q">Falta la ficha de tu partido</p><p class="muted">Ya respondiste la encuesta de esta jornada. Ahora la encuesta incluye la ficha de tu partido: tus golpes, el juego de tu rival, cómo compite de cabeza y cómo fue. Con ella se construyen tu informe de jugador y el informe del rival. ${ixSteps(j).length} pasos, un minuto.</p><div class="row"><button class="btn brass" data-act="survey-start" data-j="${j}" data-only="1">Completar la ficha</button><button class="btn ghost" data-act="survey-start" data-j="${j}">Cambiar todas mis respuestas</button></div>` : done? `<p class="q">Encuesta enviada ✓</p><p class="muted">Gracias. El capitán publicará los resultados agregados y el MVP.</p><button class="btn ghost" data-act="survey-start" data-j="${j}">Cambiar mis respuestas</button>` : `<p class="q">${ixQCount(j)} preguntas rápidas</p><p class="muted">${ixSteps(j).length? 'Empieza por la ficha de tu partido: tus golpes, el juego de tu rival y cómo fue. Con ella se construyen tu informe de jugador y el informe del rival para el equipo. ' : ''}Las preguntas sobre compañeros se publican solo como votos agregados. Lo que digas de ti y tus comentarios son privados.</p><button class="btn brass" data-act="survey-start" data-j="${j}">Empezar</button>`}</div></section></div>`;
 }
 const surveyQuestions = () => S.survey.questions.filter(q=>q.text&&q.type);
 function surveyCard(){
@@ -3437,7 +3439,7 @@ document.addEventListener('click', async e=>{
     avail[me]=next; renderQuiet(); if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
     await safe(()=>B.set(SEASON_PATH+'/avail/'+me,next), el.dataset.v==='yes'?'Apuntado: juegas':'Anotado: no puedes'); }
   else if(a==='pick'){ if(!me) return; const k=jid(+el.dataset.j), cur=picks[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:{p:+el.dataset.p,r:+el.dataset.r}},at:Date.now()}; picks[me]=next; renderQuiet(); await safe(()=>B.set(SEASON_PATH+'/picks/'+me,next),'Pronóstico guardado'); }
-  else if(a==='survey-start'){ const j=+el.dataset.j; ui.survey={j,step:0,a:{...(myBallot?.j?.[jid(j)]?.a||{})},xs:ixSteps(j),x:ixInit(j)}; render(); scrollTo({top:0}); }
+  else if(a==='survey-start'){ const j=+el.dataset.j; ui.survey={j,step:0,a:{...(myBallot?.j?.[jid(j)]?.a||{})},xs:ixSteps(j),x:ixInit(j),onlyX:el.dataset.only==='1'}; render(); scrollTo({top:0}); }
   else if(a==='survey-prev'){ ui.survey.step=Math.max(0,ui.survey.step-1); renderQuiet(); }
   else if(a==='survey-next'){ ui.survey.step++; renderQuiet(); }
   else if(a==='ans'){ const q=S.survey.questions.find(x=>x.id===el.dataset.q); ui.survey.a[el.dataset.q]=q?.type==='scale'? +el.dataset.v : el.dataset.v; renderQuiet(); setTimeout(()=>{ if(ui.survey){ ui.survey.step++; renderQuiet(); } },220); }
