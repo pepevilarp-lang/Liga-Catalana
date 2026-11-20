@@ -28,7 +28,7 @@
     pepe: { uid: 'demo-pepe', email: 'pepe@demo.dossau', name: 'Pepe Vilar', pid: 'pepe-vilar' },          // gestor + jugador
     joan: { uid: 'demo-joan', email: 'joan@demo.dossau', name: 'Joan Villaseca', pid: 'joan-villaseca', noAdmin: true } // jugador
   };
-  const VER = '2';
+  const VER = '4';
   const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
   function as(w) {
     ls.set('polo-demo-as', JSON.stringify({ uid: w.uid, email: w.email, name: w.name, noAdmin: !!w.noAdmin }));
@@ -68,6 +68,16 @@
       S0.ties['j' + f.j] = { rubbers: [0, 1, 2, 3].map(i => ({ type: 'S', n: i + 1, polo: lineup[i], score: sc(usW[i]), riv: rv[i] }))
         .concat([{ type: 'D', n: 1, polo: [WHO.joan.pid, WHO.pepe.pid], score: sc(usW[4]), riv: rv[0] + ' / ' + rv[1] }]) };
     });
+    // Próxima jornada: el capitán ya ha pedido la disponibilidad y han contestado varios (Pepe todavía no)
+    const nxf = S0.fixtures.filter(f => (f.home === 'polo' || f.away === 'polo') && f.date >= '2027-02-01').sort((x, y) => x.date < y.date ? -1 : 1)[0];
+    const avs = {};
+    if (nxf) {
+      const kj = 'j' + nxf.j; S0.ties[kj] = { ...(S0.ties[kj] || blankTie()), availReq: { at: Date.now() - 2 * 86400000 } };
+      OTH.forEach((pid, n) => { if (n < 12) avs[pid] = { j: { [kj]: n % 5 === 3 ? 'no' : n % 7 === 4 ? 'maybe' : 'yes' }, at: Date.now() - (n + 1) * 3600000 }; });
+      avs[WHO.joan.pid] = { j: { [kj]: 'yes' }, at: Date.now() - 5400000 };
+    }
+    S0.fctLast = { at: Date.now() - 5 * 3600000 };   // sincronizada con la FCT esta madrugada
+    S0.auto = { ...(S0.auto || {}), on: true };        // recordatorios automáticos activados
     const base = 'seasons/' + docIdFor('polo-a', viewSeason);
     await B.set('meta/app', { current: viewSeason, seasons: [viewSeason] });
     await B.set(base, S0);
@@ -102,6 +112,7 @@
     const pj2 = Object.keys(ballots[WHO.pepe.pid]?.j || {}).sort((a, b) => +b.slice(1) - +a.slice(1))[0];
     if (pj2) delete ballots[WHO.pepe.pid].j[pj2].x;
     for (const [pid, b] of Object.entries(ballots)) await B.set(base + '/ballots/' + pid, b);
+    for (const [pid, v] of Object.entries(avs)) await B.set(base + '/avail/' + pid, v);
   }
 
   async function link(w) { as(w); await B.signIn(); await new Promise(r => setTimeout(r, 300)); await B.claim(w.pid); }
