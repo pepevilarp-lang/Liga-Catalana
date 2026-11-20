@@ -165,5 +165,10 @@
     });
   }
 
+  // En la demo solo el Polo A tiene datos: los otros equipos no cuentan para el estado de la FCT
+  document.addEventListener('DOMContentLoaded', () => { try {
+    if (typeof CLUB !== 'undefined' && CLUB.fctGroups) Object.keys(CLUB.fctGroups).forEach(k => { if (/-(polo-b|fem-a)$/.test(k)) delete CLUB.fctGroups[k]; });
+    if (typeof render === 'function') render();
+  } catch (e) {} });
   window.addEventListener('load', () => { bar(); setTimeout(boot, 600); });
 })();
