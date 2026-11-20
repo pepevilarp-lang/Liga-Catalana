@@ -28,7 +28,7 @@
     pepe: { uid: 'demo-pepe', email: 'pepe@demo.dossau', name: 'Pepe Vilar', pid: 'pepe-vilar' },          // gestor + jugador
     joan: { uid: 'demo-joan', email: 'joan@demo.dossau', name: 'Joan Villaseca', pid: 'joan-villaseca', noAdmin: true } // jugador
   };
-  const VER = '1';
+  const VER = '2';
   const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
   function as(w) {
     ls.set('polo-demo-as', JSON.stringify({ uid: w.uid, email: w.email, name: w.name, noAdmin: !!w.noAdmin }));
@@ -98,6 +98,9 @@
     // Pepe deja sin responder la última jornada: así puede probar la encuesta
     const pj = Object.keys(ballots[WHO.pepe.pid]?.j || {}).sort((a, b) => +b.slice(1) - +a.slice(1))[0];
     if (pj) delete ballots[WHO.pepe.pid].j[pj];
+    // …y la anterior la respondió con la encuesta antigua (sin ficha): le sale «Completa la ficha de tu partido»
+    const pj2 = Object.keys(ballots[WHO.pepe.pid]?.j || {}).sort((a, b) => +b.slice(1) - +a.slice(1))[0];
+    if (pj2) delete ballots[WHO.pepe.pid].j[pj2].x;
     for (const [pid, b] of Object.entries(ballots)) await B.set(base + '/ballots/' + pid, b);
   }
 
