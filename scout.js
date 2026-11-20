@@ -90,6 +90,9 @@ const ixRec = (w,l) => `${w}-${l}`;
    ===================================================================== */
 function ixMyRubbers(j, pid){ pid=pid||me; const t=tie(j); if(!t||!pid) return [];
   return t.rubbers.map((r,i)=>({r,i})).filter(x=>(x.r.polo||[]).includes(pid) && rubberCalc(x.r).res && !isWO(x.r)); }
+// Ya respondió la encuesta de esa jornada, pero sin ficha de partido (versión anterior de la encuesta,
+// o respondida antes de cargarse el resultado): queda pendiente solo la ficha
+function ixFichaPending(j){ const b=myBallot?.j?.[jid(j)]; return !!b && !b.x && ixMyRubbers(j).length>0; }
 function ixSteps(j){ const rs=ixMyRubbers(j), st=[];
   rs.forEach(x=>st.push({k:'riv',i:x.i},{k:'mine',i:x.i},{k:'his',i:x.i},{k:'how',i:x.i}));
   if(rs.length) st.push({k:'cond'}); return st; }
@@ -99,7 +102,7 @@ function ixInit(j){ const saved=myBallot?.j?.[jid(j)]?.x; const x=saved? JSON.pa
 function ixClean(x){ if(!x||!x.m) return null; const out={v:1,m:{},pista:ixArr(x.pista),clima:ixArr(x.clima)};
   Object.entries(x.m).forEach(([i,m])=>{ const c={}; ['riv','hand','rend','fis','cab'].forEach(k=>{ if(m[k]) c[k]=String(m[k]).slice(0,60); }); ['est','mc','lc','rd','rw','fac'].forEach(k=>{ const a=ixArr(m[k]); if(a.length) c[k]=a; }); out.m[i]=c; });
   return out; }
-const ixBaseQs = () => surveyQuestions().filter(q=>!(ui.survey?.xs?.length && IX_DUP.has(q.id)));
+const ixBaseQs = () => ui.survey?.onlyX? [] : surveyQuestions().filter(q=>!(ui.survey?.xs?.length && IX_DUP.has(q.id)));
 const ixQCount = j => { const xs=ixSteps(j).length; return xs + surveyQuestions().filter(q=>!(xs && IX_DUP.has(q.id))).length; };
 
 function ixChips(field, list, tgt, r, multi){ const cur=ixArr(tgt[field]);
