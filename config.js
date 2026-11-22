@@ -9,3 +9,15 @@ window.POLO_CONFIG = {
   },
   vapidKey: "BJFunnnF6YnNQTNv9fWNdy7sXGQf2h7uZOXVj1RCfeumNL_nT3sHIlOZrIBKcCrohHITLxVpGA_2qGrNYV3PVz4"
 };
+
+// Analítica de uso (PostHog, UE). Pega aquí la "Project API key" (empieza por phc_). Es pública: va en la app.
+// Vacía = no se carga nada y no se pregunta a nadie.
+window.DX_ANALYTICS = {
+  key: "phc_q5zqwYMPsx6DcEMtTn5Cj8os7gfQEM7iGrYX7wGftAcL",
+  host: "https://eu.i.posthog.com",
+  app: "lliga",
+  privacyUrl: "/privacidad.html",
+  actionAttrs: ["data-act", "data-cx", "data-ax", "data-sx", "data-nav", "data-club"],
+  // Nombre de pantalla sin ids: "jugador-pepe-vilar" -> "jugador", "jornada-10" -> "jornada"
+  screenOf: h => h.replace(/^(jugador|informe|doc|club-doc|club-equipo|disponibilidad|encuesta|mvp|jornada|rival|scout|gestion-\w+)-.*$/, "$1")
+};
