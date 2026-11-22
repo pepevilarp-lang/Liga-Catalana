@@ -143,8 +143,8 @@ function capRotation() {
       <div class="fig"><b>${c.minJ || '–'}</b><span>${c.minJ ? 'jornadas mínimas por jugador' : 'sin mínimo de jornadas'} <button class="textlink" data-cx="settings">${c.minJ ? 'Cambiar' : 'Fijar'}</button></span></div>
       ${c.minJ ? `<div class="fig"><b>${under.length}</b><span>por debajo del mínimo${crit.length ? `, ${crit.length} sin margen` : ''}</span></div>` : ''}</div></section>
   ${crit.length ? `<section class="sec"><div class="notice"><b>Sin margen:</b> ${crit.map(r => esc(pname(r.pid)) + (r.st === 'imp' ? ' (ya no llega)' : ' (tiene que jugar todas las que quedan)')).join(', ')}.</div></section>` : ''}
-  <section class="sec"><div class="tscroll"><table class="cap-rot"><thead><tr><th>Jugador</th>${th('jug', 'Jugadas')}<th>Ind.</th><th>Dob.</th>${th('disp', 'Disponible')}${th('bench', 'Disp. sin jugar')}${th('wl', 'V-D')}${c.minJ ? th('need', 'Mínimo') : ''}<th class="l">Jornada a jornada</th></tr></thead><tbody class="stagger">
-    ${rows.map(r => `<tr><td>${plink(r.pid)}</td><td><b>${r.jug}</b></td><td>${r.ind}</td><td>${r.dob}</td><td>${r.av.total ? `${r.av.yes}/${r.av.total}` : '–'}</td><td>${r.benched || '–'}</td><td>${r.w + r.l ? r.w + '-' + r.l : '–'}</td>${c.minJ ? `<td>${stLbl(r)}</td>` : ''}<td class="l"><span class="rstrip">${r.cells.map(cell).join('')}</span></td></tr>`).join('')}</tbody></table></div>
+  <section class="sec"><div class="tscroll"><table class="cap-rot"><thead><tr><th>Jugador</th>${th('jug', 'Jugadas')}${c.minJ ? th('need', 'Mínimo') : ''}<th class="l">Jornada a jornada</th>${th('disp', 'Disponible')}${th('bench', 'Disp. sin jugar')}<th>Ind.</th><th>Dob.</th>${th('wl', 'V-D')}</tr></thead><tbody class="stagger">
+    ${rows.map(r => `<tr><td>${plink(r.pid)}</td><td><b>${r.jug}</b></td>${c.minJ ? `<td>${stLbl(r)}</td>` : ''}<td class="l"><span class="rstrip">${r.cells.map(cell).join('')}</span></td><td>${r.av.total ? `${r.av.yes}/${r.av.total}` : '–'}</td><td>${r.benched || '–'}</td><td>${r.ind}</td><td>${r.dob}</td><td>${r.w + r.l ? r.w + '-' + r.l : '–'}</td></tr>`).join('')}</tbody></table></div>
     <div class="legend"><span><i style="background:var(--win)"></i>Jugó</span><span><i style="background:var(--brass)"></i>Disponible, no jugó</span><span><i style="background:var(--loss)"></i>No disponible</span><span><i style="background:var(--surface2)"></i>Sin respuesta</span><span><i style="background:transparent;box-shadow:inset 0 0 0 1.5px var(--line)"></i>Por jugar</span></div>
     <p class="muted small" style="margin-top:10px">«Jugadas» cuenta las jornadas con al menos un partido con resultado (individual o dobles); los W.O. no cuentan. «Disponible» se cuenta sobre las jornadas con el plazo cerrado.</p></section>`;
 }
@@ -232,7 +232,8 @@ const CAP_CSS = `
 .cap-sug .cs-warn{margin:12px 0 0;padding-left:18px;font-size:.84rem;color:var(--loss)}
 .cap-sug .cs-foot{margin:10px 0 0}
 .cs-draft{margin:0 0 16px}
-.cap-rot td,.cap-rot th{white-space:nowrap}
+.cap-rot td,.cap-rot th{white-space:nowrap}.cap-rot td:first-child{position:sticky;left:0;background:var(--bg,var(--surface));z-index:1}
+.cv-j{font-weight:400;color:var(--muted)}
 .rstrip{display:inline-flex;gap:3px}.rstrip .rc{width:11px;height:11px;border-radius:3px;display:inline-block;background:var(--surface2)}
 .rstrip .rc.pl{background:var(--win)}.rstrip .rc.av,.rstrip .rc.mb{background:var(--brass)}.rstrip .rc.no{background:var(--loss)}.rstrip .rc.fu{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line)}
 .cr-ok{color:var(--win);font-weight:600}.cr-low{color:var(--muted)}.cr-risk{color:var(--brass);font-weight:600}.cr-crit,.cr-imp{color:var(--loss);font-weight:700}
