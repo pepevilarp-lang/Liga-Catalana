@@ -53,7 +53,7 @@
   history.pushState = function () { const r = ps.apply(this, arguments); setTimeout(pageview, 0); return r; };
   // Acciones con nombre (data-act="conv-save", data-tab="clasificacion"...): más fáciles de leer que el autocapture
   document.addEventListener('click', e => {
-    if (!on) return; for (const a of C.actionAttrs) { const el = e.target.closest?.('[' + a + ']'); if (el) { capture('accion', { accion: el.getAttribute(a), tipo: a.replace(/^data-/, ''), pantalla: screen() }); return; } }
+    if (!on) return; for (const a of C.actionAttrs) { const el = e.target.closest?.('[' + a + ']'); if (el) { capture('accion', { accion: el.getAttribute(a), valor: el.dataset.v || el.dataset.k || undefined, tipo: a.replace(/^data-/, ''), pantalla: screen() }); return; } }
   }, true);
 
   // ---------- Consentimiento ----------
