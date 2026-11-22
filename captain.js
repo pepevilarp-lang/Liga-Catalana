@@ -169,9 +169,9 @@ function capDocsStrip() {
   ensureCapCss(); ensureDocsSub(); const g = Object.values(docGroups()).map(x => x[0]);
   const latest = k => g.filter(d => d.kind === k).sort((a, b) => (b.j || 0) - (a.j || 0) || (b.at || 0) - (a.at || 0))[0];
   return `<div class="cap-docs" aria-label="Documentos a mano">${CAP_DOCS.map(([k, l, alt]) => { const d = latest(k);
-    return `<div class="cd"><span class="cd-i">${d ? docIcon(d) : '＋'}</span><span class="cd-t"><b>${l}</b><small>${d ? esc(d.name) + (d.j ? ', J' + d.j : '') : 'Sin subir'}</small></span>
-      <span class="cd-a">${d ? `<button class="btn sm ghost" data-cx="doc" data-id="${esc(d.id)}">Abrir</button>` : `<button class="btn sm ghost" data-cx="up" data-k="${k}">Subir</button>`}${alt && !d ? `<a class="textlink small" href="#${alt}">Ver en la app</a>` : ''}${k === 'plantilla' || k === 'calendario' ? `<button class="textlink small" data-cx="csv" data-k="${k}" title="Hoja de cálculo con los datos actuales de la app">Exportar</button>` : ''}</span></div>`; }).join('')}
-    <a class="cd cd-all" href="#docs"><span class="cd-t"><b>Todos los documentos</b><small>${g.length} ${g.length === 1 ? 'archivo' : 'archivos'}</small></span><span aria-hidden="true">›</span></a></div>`;
+    return `<div class="cpd"><span class="cpd-h"><span class="cpd-i">${d ? docIcon(d) : '📎'}</span><span class="cpd-t"><b>${l}</b><small>${d ? esc(d.name) + (d.j ? ', J' + d.j : '') : 'Sin subir'}</small></span></span>
+      <span class="cpd-a">${d ? `<button class="btn sm ghost" data-cx="doc" data-id="${esc(d.id)}">Abrir</button>` : `<button class="btn sm ghost" data-cx="up" data-k="${k}">Subir</button>`}${alt && !d ? `<a class="textlink small" href="#${alt}">Ver en la app</a>` : ''}${k === 'plantilla' || k === 'calendario' ? `<button class="textlink small" data-cx="csv" data-k="${k}" title="Hoja de cálculo con los datos actuales de la app">Exportar</button>` : ''}</span></div>`; }).join('')}
+    <a class="cpd cpd-all" href="#docs"><span class="cpd-t"><b>Todos los documentos ›</b><small>${g.length} ${g.length === 1 ? 'archivo' : 'archivos'}</small></span></a></div>`;
 }
 function capCsv(kind) {
   const q = v => { const s = String(v ?? ''); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -208,13 +208,16 @@ document.addEventListener('change', e => {
 
 /* ---------- estilos ---------- */
 const CAP_CSS = `
-.cap-docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin:4px 0 18px}
-.cap-docs .cd{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:inherit;text-decoration:none;min-width:0}
-.cap-docs .cd-i{font-size:1.2rem;width:28px;text-align:center;flex:none;opacity:.85}
-.cap-docs .cd-t{display:flex;flex-direction:column;min-width:0;flex:1}
-.cap-docs .cd-t b{font-size:.9rem}.cap-docs .cd-t small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.76rem}
-.cap-docs .cd-a{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
-.cap-docs .cd-all{justify-content:space-between;background:transparent}
+.cap-docs{display:flex;gap:8px;overflow-x:auto;margin:0 -16px 18px;padding:2px 16px 6px;scroll-snap-type:x proximity;scrollbar-width:none}
+.cap-docs::-webkit-scrollbar{display:none}
+.cap-docs .cpd{flex:0 0 auto;width:208px;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:inherit;text-decoration:none}
+.cap-docs .cpd-h{display:flex;align-items:center;gap:8px;min-width:0}
+.cap-docs .cpd-i{font-size:1.05rem;width:22px;text-align:center;flex:none;opacity:.85}
+.cap-docs .cpd-t{display:flex;flex-direction:column;min-width:0;flex:1}
+.cap-docs .cpd-t b{font-size:.86rem}.cap-docs .cpd-t small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.74rem}
+.cap-docs .cpd-a{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cap-docs .cpd-all{width:150px;justify-content:center;background:transparent}
+@media(min-width:900px){.cap-docs{flex-wrap:wrap;overflow:visible;margin:0 0 18px;padding:0}}
 .cap-sug{border:1px solid var(--brassLine);border-radius:16px;padding:16px;margin:0 0 22px;background:linear-gradient(180deg,rgba(201,168,90,.09),transparent 70%)}
 .cap-sug .cs-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cap-sug .cs-h b{font-size:1.05rem}
 .cap-sug .cs-tag{font-size:.72rem;font-weight:600;padding:3px 8px;border-radius:999px;border:1px solid var(--brassLine);color:var(--brass)}
