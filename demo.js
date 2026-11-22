@@ -28,7 +28,7 @@
     pepe: { uid: 'demo-pepe', email: 'pepe@demo.dossau', name: 'Pepe Vilar', pid: 'pepe-vilar' },          // gestor + jugador
     joan: { uid: 'demo-joan', email: 'joan@demo.dossau', name: 'Joan Villaseca', pid: 'joan-villaseca', noAdmin: true } // jugador
   };
-  const VER = '4';
+  const VER = '6';
   const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
   function as(w) {
     ls.set('polo-demo-as', JSON.stringify({ uid: w.uid, email: w.email, name: w.name, noAdmin: !!w.noAdmin }));
@@ -76,6 +76,11 @@
       OTH.forEach((pid, n) => { if (n < 12) avs[pid] = { j: { [kj]: n % 5 === 3 ? 'no' : n % 7 === 4 ? 'maybe' : 'yes' }, at: Date.now() - (n + 1) * 3600000 }; });
       avs[WHO.joan.pid] = { j: { [kj]: 'yes' }, at: Date.now() - 5400000 };
     }
+    // Jornadas ya jugadas: quien jugó dijo que sí; del resto, la mayoría también, algunos no y alguno sin responder
+    Object.entries(S0.ties).forEach(([kj, t]) => { if (nxf && kj === 'j' + nxf.j) return;
+      const played = new Set((t.rubbers || []).flatMap(r => r.polo || []));
+      P.forEach(pid => { const v = played.has(pid) ? 'yes' : (() => { const x = rnd(); return x < .55 ? 'yes' : x < .8 ? 'no' : x < .9 ? 'maybe' : null; })();
+        if (!v) return; const o = avs[pid] ||= { j: {}, at: Date.now() - 86400000 * 3 }; o.j[kj] = v; }); });
     S0.fctLast = { at: Date.now() - 5 * 3600000 };   // sincronizada con la FCT esta madrugada
     S0.auto = { ...(S0.auto || {}), on: true };        // recordatorios automáticos activados
     const base = 'seasons/' + docIdFor('polo-a', viewSeason);
@@ -112,6 +117,18 @@
     const pj2 = Object.keys(ballots[WHO.pepe.pid]?.j || {}).sort((a, b) => +b.slice(1) - +a.slice(1))[0];
     if (pj2) delete ballots[WHO.pepe.pid].j[pj2].x;
     for (const [pid, b] of Object.entries(ballots)) await B.set(base + '/ballots/' + pid, b);
+    // Documentos del equipo: listado y calendario generados con los datos de la demo, y un acta de ejemplo
+    const b64 = t => btoa(unescape(encodeURIComponent(t)));
+    const csv = rows => '\ufeff' + rows.map(r => r.map(v => String(v ?? '')).join(';')).join('\n');
+    const teamN = id => (S0.teams.find(t => t.id === id) || {}).name || id;
+    const docsDemo = [
+      { name: 'Llistat de jugadors Polo A 2026-27.csv', mime: 'text/csv', kind: 'plantilla', j: null, data: b64(csv([['Ordre', 'Nom', 'Categoria', 'Punts FCT']].concat(S0.players.filter(p => p.active !== false).sort((a, b) => a.order - b.order).map(p => [p.order, p.full || p.name, p.cat, p.pts ?? ''])))) },
+      { name: 'Calendari Lliga Catalana grup Polo A.csv', mime: 'text/csv', kind: 'calendario', j: null, data: b64(csv([['Jornada', 'Data', 'Hora', 'Local', 'Visitant']].concat(S0.fixtures.filter(f => f.home === 'polo' || f.away === 'polo').map(f => [f.j, f.date, f.time || '', teamN(f.home), teamN(f.away)])))) }];
+    try { const r = await fetch('img/demo-acta.jpg'); const bl = await r.blob(); const d = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.readAsDataURL(bl); });
+      docsDemo.push({ name: 'Acta J9 (exemple).jpg', mime: 'image/jpeg', kind: 'acta', j: 9, data: d }); } catch (e) {}
+    for (const [i, d] of docsDemo.entries()) { const id = 'demo' + i;
+      await B.set(base + '/docs/' + id + '/chunks/0', { d: d.data });
+      await B.set(base + '/docs/' + id, { name: d.name, mime: d.mime, size: Math.round(d.data.length * .75), kind: d.kind, j: d.j, group: d.kind + '|' + (d.j || 'g') + '|' + id, version: 1, chunks: 1, status: 'subido', at: Date.now() - (i + 2) * 86400000, by: 'pepe@demo.dossau', byName: 'Pablo Bosch' }); }
     for (const [pid, v] of Object.entries(avs)) await B.set(base + '/avail/' + pid, v);
   }
 
