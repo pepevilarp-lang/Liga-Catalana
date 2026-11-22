@@ -1467,13 +1467,13 @@ function aDisp(j){
 function aConv(j){
   const t=tie(j)||blankTie(), a=availFor(j), dr=capDraft(j), conv=new Set(dr? dr.conv : t.convocados?.length? t.convocados : a.yes);
   const order=[...a.yes,...a.maybe,...a.none,...a.no], rp=i=> dr? (dr.rub[i]||[]) : (t.rubbers[i]?.polo||[]), jug=pid=>capRow(pid,j).jug;
-  const badge=pid=>{ const v=avOf(pid,j)?.s||'none'; return `<em class="av-${v}">${{yes:'disponible',maybe:'pendiente',no:'no disponible',none:'sin respuesta'}[v]}</em>`; };
+  const badge=(pid,nj)=>{ const v=avOf(pid,j)?.s||'none'; return `<em class="av-${v}">${{yes:'disponible',maybe:'pendiente',no:'no disponible',none:'sin respuesta'}[v]}${nj==null?'':`<span class="cv-j" title="Jornadas jugadas esta temporada"> · jugó ${nj}</span>`}</em>`; };
   const popts=sel=>`<option value="">Elegir</option>`+order.map(id=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(pname(id))}${conv.has(id)?'':' (no convocado)'}</option>`).join('');
   const assigned=new Set(t.rubbers.flatMap((r,i)=>rp(i))); const subs=[...conv].filter(x=>!assigned.has(x));
   const dupe=t.rubbers.map((r,i)=>r.type==='S'?rp(i)[0]:null).filter(Boolean); const hasDupe=new Set(dupe).size!==dupe.length;
   const warn=[...assigned].filter(x=>(avOf(x,j)?.s||'none')!=='yes');
   return `<section class="sec">${capSuggestBlock(j)}${capDraftNote(j)}<div class="sec-h"><h2>Convocados</h2><span class="muted small">${conv.size} seleccionados</span></div>
-    <div class="cvgrid">${order.map(id=>{ const n=noteOf(id,j), nj=jug(id); return `<label title="${esc(n?.c||'')}"><input type="checkbox" name="conv" value="${esc(id)}" ${conv.has(id)?'checked':''}> ${esc(pname(id))}${badge(id)}<small class="muted" title="Jornadas jugadas esta temporada">${nj} ${nj===1?'jornada':'jornadas'}</small></label>`; }).join('')}</div></section>
+    <div class="cvgrid">${order.map(id=>{ const n=noteOf(id,j), nj=jug(id); return `<label title="${esc(n?.c||'')}"><input type="checkbox" name="conv" value="${esc(id)}" ${conv.has(id)?'checked':''}> ${esc(pname(id))}${badge(id,nj)}</label>`; }).join('')}</div></section>
   <section class="sec"><div class="sec-h"><h2>Orden de juego</h2></div><p class="muted small">4 individuales y la pareja de dobles (${dblDecider()?'solo cuenta si queda 2-2':'cuenta siempre que se juegue'}). Los convocados sin partido asignado quedan como suplentes.</p>
     ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}" style="grid-template-columns:150px 1fr 1fr"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span><select name="p1">${popts(rp(i)[0])}</select>${r.type==='D'?`<select name="p2">${popts(rp(i)[1])}</select>`:'<span></span>'}</div>`).join('')}
     <p class="small" style="margin-top:10px">Suplentes: ${subs.length? subs.map(pname).join(', ') : 'ninguno'}.</p>
