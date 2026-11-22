@@ -1309,11 +1309,12 @@ document.addEventListener('toggle',e=>{ const d=e.target; if(d?.matches?.('detai
 function vAdmin(){
   if(!canManage) return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1></div><div class="notice">${me? 'La gestión está limitada a los capitanes marcados. Un administrador puede abrirla a todo el equipo en Temporadas y ajustes.' : 'Elige tu nombre en Yo para poder gestionar.'}</div></div>`;
   if(ui.adminTab==='preguntas') ui.adminTab='temporadas';
-  const tabs=[['jornada','Jornada'],['calendario','Calendario'],['plantilla','Plantilla'],['temporadas','Ajustes']];
+  const tabs=[['jornada','Jornada'],['rotacion','Rotación'],['calendario','Calendario'],['plantilla','Plantilla'],['temporadas','Ajustes']];
   if(!tabs.some(x=>x[0]===ui.adminTab)) ui.adminTab='jornada'; const t=ui.adminTab;
   return `<div class="wrap"><div class="pagehead"><h1>Gestión</h1>${viewSeason!==currentSeason()?`<p class="notice">Estás editando la temporada ${esc(viewSeason)}.</p>`:''}</div>
+    ${capDocsStrip()}
     <div class="atabs">${tabs.map(([k,l])=>`<button class="chip" data-act="admin-tab" data-v="${k}" aria-pressed="${t===k}">${l}</button>`).join('')}</div>
-    ${t==='jornada'?aJornada():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():aTemporadas()}</div>`;
+    ${t==='jornada'?aJornada():t==='rotacion'?capRotation():t==='plantilla'?aPlantilla():t==='calendario'?aCalendario():aTemporadas()}</div>`;
 }
 function jSelect(act,cur,onlyPolo=true){ const js= onlyPolo? poloOrder() : Array.from({length:NJ()},(_,i)=>i+1); return `<select data-act="${act}" style="max-width:380px">${js.map(j=>{ const f=poloFix(j); return `<option value="${j}" ${cur===j?'selected':''}>Jornada ${j}${f?', '+(f.home===POLO?''+US+' contra '+team(f.away).short:team(f.home).short+' contra '+US+'')+', '+fdate(f)+(f.moved?.from&&f.moved.from!==f.date? (f.date<f.moved.from?' (adelantada)':' (aplazada)') : ''):''}</option>`; }).join('')}</select>`; }
 function adminJ(){ if(ui.adminJ && poloFix(ui.adminJ)) return ui.adminJ; const nx=nextPoloFix(); if(nx) return nx.j; const l=lastPoloPlayed(); if(l) return l.j; const f=S.fixtures.find(x=>x.home===POLO||x.away===POLO); return f? f.j : null; }
@@ -1464,17 +1465,17 @@ function aDisp(j){
   </section>`;
 }
 function aConv(j){
-  const t=tie(j)||blankTie(), a=availFor(j), conv=new Set(t.convocados?.length? t.convocados : a.yes);
-  const order=[...a.yes,...a.maybe,...a.none,...a.no];
-  const badge=pid=>{ const v=avOf(pid,j)?.s||'none'; return `<em class="av-${v}">${{yes:'disponible',maybe:'pendiente',no:'no disponible',none:'sin respuesta'}[v]}</em>`; };
+  const t=tie(j)||blankTie(), a=availFor(j), dr=capDraft(j), conv=new Set(dr? dr.conv : t.convocados?.length? t.convocados : a.yes);
+  const order=[...a.yes,...a.maybe,...a.none,...a.no], rp=i=> dr? (dr.rub[i]||[]) : (t.rubbers[i]?.polo||[]), jug=pid=>capRow(pid,j).jug;
+  const badge=(pid,nj)=>{ const v=avOf(pid,j)?.s||'none'; return `<em class="av-${v}">${{yes:'disponible',maybe:'pendiente',no:'no disponible',none:'sin respuesta'}[v]}${nj==null?'':`<span class="cv-j" title="Jornadas jugadas esta temporada"> · jugó ${nj}</span>`}</em>`; };
   const popts=sel=>`<option value="">Elegir</option>`+order.map(id=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(pname(id))}${conv.has(id)?'':' (no convocado)'}</option>`).join('');
-  const assigned=new Set(t.rubbers.flatMap(r=>r.polo||[])); const subs=[...conv].filter(x=>!assigned.has(x));
-  const dupe=t.rubbers.filter(r=>r.type==='S').map(r=>r.polo[0]).filter(Boolean); const hasDupe=new Set(dupe).size!==dupe.length;
+  const assigned=new Set(t.rubbers.flatMap((r,i)=>rp(i))); const subs=[...conv].filter(x=>!assigned.has(x));
+  const dupe=t.rubbers.map((r,i)=>r.type==='S'?rp(i)[0]:null).filter(Boolean); const hasDupe=new Set(dupe).size!==dupe.length;
   const warn=[...assigned].filter(x=>(avOf(x,j)?.s||'none')!=='yes');
-  return `<section class="sec"><div class="sec-h"><h2>Convocados</h2><span class="muted small">${conv.size} seleccionados</span></div>
-    <div class="cvgrid">${order.map(id=>{ const n=noteOf(id,j); return `<label title="${esc(n?.c||'')}"><input type="checkbox" name="conv" value="${esc(id)}" ${conv.has(id)?'checked':''}> ${esc(pname(id))}${badge(id)}</label>`; }).join('')}</div></section>
+  return `<section class="sec">${capSuggestBlock(j)}${capDraftNote(j)}<div class="sec-h"><h2>Convocados</h2><span class="muted small">${conv.size} seleccionados</span></div>
+    <div class="cvgrid">${order.map(id=>{ const n=noteOf(id,j), nj=jug(id); return `<label title="${esc(n?.c||'')}"><input type="checkbox" name="conv" value="${esc(id)}" ${conv.has(id)?'checked':''}> ${esc(pname(id))}${badge(id,nj)}</label>`; }).join('')}</div></section>
   <section class="sec"><div class="sec-h"><h2>Orden de juego</h2></div><p class="muted small">4 individuales y la pareja de dobles (${dblDecider()?'solo cuenta si queda 2-2':'cuenta siempre que se juegue'}). Los convocados sin partido asignado quedan como suplentes.</p>
-    ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}" style="grid-template-columns:150px 1fr 1fr"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span><select name="p1">${popts(r.polo[0])}</select>${r.type==='D'?`<select name="p2">${popts(r.polo[1])}</select>`:'<span></span>'}</div>`).join('')}
+    ${t.rubbers.map((r,i)=>`<div class="redit" data-r="${i}" style="grid-template-columns:150px 1fr 1fr"><span class="rn">${RUBBERS[i].label}${r.type==='D'?'<small>'+dblHint()+'</small>':''}</span><select name="p1">${popts(rp(i)[0])}</select>${r.type==='D'?`<select name="p2">${popts(rp(i)[1])}</select>`:'<span></span>'}</div>`).join('')}
     <p class="small" style="margin-top:10px">Suplentes: ${subs.length? subs.map(pname).join(', ') : 'ninguno'}.</p>
     ${hasDupe?'<div class="notice" style="margin-top:8px">Hay un jugador repetido en los individuales.</div>':''}
     ${warn.length?`<div class="notice" style="margin-top:8px">Sin «disponible» confirmado: ${warn.map(pname).join(', ')}.</div>`:''}
@@ -1682,6 +1683,7 @@ function aTemporadas(){
   const sw=`<label class="sw" aria-label="Activar recordatorios automáticos"><input type="checkbox" data-ar="on" ${ar.on?'checked':''}><i></i></label>`;
   return `<section class="sec"><div class="slist">
     ${fold('s-ar','Automatizaciones y WhatsApp',(()=>{ const c=autoCfg(), w=waCfg(); return (c.on? `Recordatorios ${c.firstAfterH} h sin responder, después ${(+c.every)===1?'cada día':'cada '+c.every+' días'}, máximo ${c.max}` : 'En pausa')+(w.group?' · grupo vinculado':' · sin grupo'); })(),autoSettings(),false,`<label class="sw" aria-label="Activar las automatizaciones"><input type="checkbox" data-ax="on" ${autoCfg().on?'checked':''}><i></i></label>`)}
+    ${fold('s-cap','Convocatorias y sugerencias',capSettingsSub(),capSettings())}
     ${fold('s-plazos','Plazos de disponibilidad',`Aviso ${R.availDays} días antes · plazo ${R.deadlineDays} días antes, a las ${esc(R.deadlineTime)}`,plazos)}
     ${fold('s-punt','Puntuación y MVP',`Victoria ${R.win}, derrota ${R.loss} · dobles ${dblDecider()?'solo si 2-2':'siempre'} · MVP ${R.mvpHours||48} h`,punt)}
     ${fold('s-msgs','Mensajes de WhatsApp',`${MSG_KINDS.length} plantillas${MSG_KINDS.some(([k])=>S.msgs[k]!==DEFAULT_MSGS[k])?' · personalizadas':''}`,msgs)}
@@ -2402,7 +2404,7 @@ function vDocs(){
   <section class="sec"><div class="dropzone" id="dropzone"><p><b>Arrastra aquí los archivos</b> o <label class="textlink" style="cursor:pointer">elígelos<input type="file" id="doc-files" multiple hidden accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp,.heic,.txt"></label></p>
     <p class="muted small">PDF, Excel, Word, JPG o PNG, hasta 15 MB por archivo.</p>
     <div class="row" style="justify-content:center;margin-top:8px"><label class="small">Jornada <select id="doc-j" style="width:auto"><option value="">General de la temporada</option>${js.map(j=>`<option value="${j}" ${ui.docJ==j?'selected':''}>Jornada ${j}</option>`).join('')}</select></label>
-      <label class="small">Tipo <select id="doc-k" style="width:auto"><option value="">Detectar por el nombre</option>${Object.entries(DOC_KINDS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></label></div>
+      <label class="small">Tipo <select id="doc-k" style="width:auto"><option value="">Detectar por el nombre</option>${Object.entries(DOC_KINDS).map(([k,l])=>`<option value="${k}" ${ui.docUpKind===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
     <div id="doc-prog"></div></div></section>
   <section class="sec"><div class="chips"><button class="chip" data-act="doc-filter" data-v="" aria-pressed="${!filt}">Todos</button>${Object.entries(DOC_KINDS).map(([k,l])=>`<button class="chip" data-act="doc-filter" data-v="${k}" aria-pressed="${filt===k}">${l}</button>`).join('')}</div></section>
   ${order.length? order.map(k=>`<section class="sec"><div class="sec-h"><h2>${k==='g'?'General de la temporada':'Jornada '+k.slice(1)}</h2></div><ul class="doclist">${byJ[k].map(row).join('')}</ul></section>`).join('') : '<section class="sec"><div class="empty">Aún no hay documentos.</div></section>'}</div>`;
@@ -3594,7 +3596,7 @@ document.addEventListener('click', async e=>{
     if(!t) return toast('No se encuentra el club local'); t.venue=v; saveState(v? 'Dirección guardada' : 'Dirección quitada'); }
   else if(a==='dl-save'){ const j=+el.dataset.j, v=$('#dl').value; if(!v) return toast('Elige fecha y hora'); ensureTie(j).deadline=v; saveState('Plazo guardado'); }
   else if(a==='dl-reset'){ const t=ensureTie(+el.dataset.j); delete t.deadline; saveState('Plazo por defecto'); }
-  else if(a==='conv-save'){ const j=+el.dataset.j, t=ensureTie(j);
+  else if(a==='conv-save'){ const j=+el.dataset.j, t=ensureTie(j); ui.capDraft=null;
     const conv=[...document.querySelectorAll('input[name=conv]:checked')].map(x=>x.value);
     document.querySelectorAll('.redit').forEach(row=>{ const r=t.rubbers[+row.dataset.r]; const g=n=>row.querySelector(`[name=${n}]`)?.value??''; r.polo=[g('p1'),r.type==='D'?g('p2'):''].filter(Boolean); });
     const assigned=new Set(t.rubbers.flatMap(r=>r.polo)); assigned.forEach(x=>{ if(!conv.includes(x)) conv.push(x); });
