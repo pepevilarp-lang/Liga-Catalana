@@ -149,11 +149,13 @@ function teamFor(S, code, name, added, poloCode) {
   const a = toks(name); let best = null, bs = 0;
   S.teams.forEach(x => { if (x.id === POLO || (x.fct && +x.fct !== +code)) return; const b = new Set([...toks(x.name), ...toks(x.short)]); const hit = a.filter(w => b.has(w)).length; const sc = hit / Math.max(a.length, 1); if (sc > bs) { bs = sc; best = x; } });
   if (best && bs >= 0.5) { best.fct = code; return best.id; }
-  // Equipo nuevo: «Mas-Ram, CE» → «CE Mas-Ram»
-  const [base, pre] = String(name).split(/,\s*/); const full = pre ? `${pre} ${base}` : base;
-  let id = slug(base) || 'equipo'; while (S.teams.some(x => x.id === id)) id += '-2';
-  S.teams.push({ id, name: full.trim(), short: base.trim(), abbr: toks(base).map(w => w[0]).join('').toUpperCase().slice(0, 4) || base.slice(0, 3).toUpperCase(), fct: code });
-  added.push(full.trim());
+  // Equipo nuevo: «Mas-Ram, CE» → «CE Mas-Ram»; «Sant Cugat,C T N - A» → «CTN Sant Cugat A» (corto: «Sant Cugat A»)
+  const lm = /\s*-\s*([A-Z])\s*$/.exec(String(name)), L = lm ? lm[1] : '', raw = lm ? String(name).slice(0, lm.index) : String(name);
+  const [b0, p0] = raw.split(/,\s*/), base = b0.trim(), pre = String(p0 || '').trim().replace(/\b([A-Z])\s+(?=[A-Z]\b)/g, '$1');
+  const full = [pre, base, L].filter(Boolean).join(' '), short = [base, L].filter(Boolean).join(' ');
+  let id = slug(short) || 'equipo'; while (S.teams.some(x => x.id === id)) id += '-2';
+  S.teams.push({ id, name: full, short, abbr: (toks(base).map(w => w[0]).join('').toUpperCase().slice(0, 3) || base.slice(0, 3).toUpperCase()) + L, fct: code });
+  added.push(full);
   return id;
 }
 
