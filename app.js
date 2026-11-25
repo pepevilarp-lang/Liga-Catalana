@@ -3519,7 +3519,7 @@ function navTo(paint){
   if(!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || from==null || from===to || document.body.classList.contains('gate')) return paint();
   const d=navDepth(to)-navDepth(from), t=navTab(to)-navTab(from);
   html.dataset.vt = d>0? 'fwd' : d<0? 'back' : t>0? 'right' : t<0? 'left' : 'fade';
-  try{ const vt=document.startViewTransition(()=>{ paint(); }); vt.finished.finally(()=>{ delete html.dataset.vt; }); }
+  try{ const vt=document.startViewTransition(()=>{ paint(); }); vt.ready.catch(()=>{}); vt.updateCallbackDone.catch(()=>{}); vt.finished.catch(()=>{}).finally(()=>{ delete html.dataset.vt; }); }
   catch(e){ delete html.dataset.vt; paint(); }
 }
 window.addEventListener('hashchange',()=>{ if(ui.fe?.dirty) feFlush(); ui.survey=null; ui.avDraft=null; ui.compose=ui.composeAfter||null; ui.composeAfter=null; if(ui.compose) setTimeout(()=>$('#compose-text')?.scrollIntoView({behavior:'smooth',block:'center'}),250); closeSheet(); stageClose(); closePosterModal(); navTo(()=>{ render(); if(route()!==lastRoute) scrollTo(0,0); lastRoute=route(); }); });

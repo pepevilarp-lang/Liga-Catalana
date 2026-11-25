@@ -218,7 +218,7 @@ function accPrivacyView() {
     <span class="acc-k">Protección de datos</span><h1 class="acc-h sm">Antes de entrar</h1>
     <p class="acc-q">Para usar Lliga Catalana tienes que aceptar cómo tratamos tus datos.</p>
     <ul class="acc-privlist">
-      <li>Usamos tu cuenta de Google, tu ficha de la FCT (nombre, licencia, categoría y puntos) y lo que hagas en la app (disponibilidad, convocatorias, resultados, encuestas y votos) <b>solo para organizar tu equipo</b>.</li>
+      <li>Usamos tu cuenta de Google, tu ficha de la FCT (nombre, licencia, categoría y puntos) y lo que hagas en la app (disponibilidad, convocatorias, resultados, encuestas y votos) <b>solo para organizar tu equipo</b>. Tu fecha de nacimiento solo sirve para comprobar que eres tú al entrar: no la guardamos.</li>
       <li>Solo ven tus datos las personas de tu equipo y la gestión de tu club. El teléfono, si lo pones, solo lo ven la gestión y los administradores.</li>
       <li>No los vendemos ni los usamos para publicidad. Puedes pedir que los borremos y retirar este consentimiento cuando quieras, desde «Yo».</li>
     </ul>
