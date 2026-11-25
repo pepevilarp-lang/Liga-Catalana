@@ -183,14 +183,14 @@ function vInicio(){
     h+=`<section class="sec"><div class="sec-h"><h2>Último resultado</h2><a href="#jornada-${last.j}">Ver jornada ${last.j}</a></div>
     <div class="split"><div>${scoreboard(last,true)}</div><div><p class="cronica" style="margin-top:0">${esc(c.txt)}${c.partial?'<small>Faltan los resultados individuales; la crónica se completará cuando se carguen.</small>':''}</p>${S.published[jid(last.j)]?.mvp? mvpCard(last.j) : ''}</div></div></section>`; }
   h+=`<section class="sec"><div class="sec-h"><h2>Clasificación</h2><a href="#clasificacion">${(mine.pj||mine.off)? mine.pos+'º, '+mine.pts+' puntos' : 'Liga completa'}</a></div>${standingsTable(st,true)}<p class="source">${standingsSource()}</p></section>`;
-  h+=myStatsBlock()+activityBlock()+`</div>`;
+  h+=myStatsBlock()+`</div>`;
   return h;
 }
 function leadersBlock(){
-  const rows=S.players.filter(p=>p.active!==false).map(p=>({p,st:playerStats(p.id)})).filter(x=>x.st.pj).sort((a,b)=>wilson(b.st.w,b.st.pj)-wilson(a.st.w,a.st.pj)||b.st.w-a.st.w).slice(0,5);
+  const rows=S.players.filter(p=>p.active!==false).map(p=>({p,st:playerStats(p.id)})).filter(x=>x.st.pj).sort((a,b)=>b.st.w/b.st.pj-a.st.w/a.st.pj||b.st.w-a.st.w).slice(0,5);
   if(!rows.length) return '';
   return `<section class="sec"><div class="sec-h"><h2>Líderes en individuales</h2><a href="#stats" data-act="stats-go" data-v="jugadores">Todas las estadísticas</a></div><div class="leaders stagger">${rows.map((x,i)=>`<button class="leader press" data-player="${esc(x.p.id)}"><span class="lp">${i+1}</span>${avatar(x.p)}<span class="ln">${esc(x.p.name)}<small>${x.st.pj} ${x.st.pj===1?'individual':'individuales'}</small></span><span class="lw">${pct(x.st.w,x.st.pj)}%<small>${x.st.w}-${x.st.l}</small></span></button>`).join('')}</div>
-    <p class="source">Solo individuales. El orden tiene en cuenta el número de partidos jugados.</p></section>`;
+    <p class="source">Solo individuales. Por % de victorias y, si empatan, por número de victorias.</p></section>`;
 }
 function standingsSource(){ const lastJ=Math.max(0,...playedJornadas()), O=S.official, rules=`Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.`;
   if(O && Array.isArray(O.order) && O.asOf>0){

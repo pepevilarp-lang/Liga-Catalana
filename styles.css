@@ -2009,3 +2009,15 @@ body.has-inapp .acc{padding-top:64px}
 .sk-row{display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line,#e3e6df)}
 @keyframes skShine{from{background-position:100% 0}to{background-position:-100% 0}}
 @media (prefers-reduced-motion:reduce){.sk{animation:none}}
+
+/* Yo: cabecera y listas de opciones */
+.yo-head .yo-role{margin:8px 0 0;color:var(--ink);font-weight:700}
+.yo-head .yo-mail{margin:2px 0 0;font-size:.86rem;color:var(--muted);overflow-wrap:anywhere}
+.yo-list{display:grid;border:1px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden}
+.yo-row{display:grid;grid-template-columns:38px 1fr auto;gap:12px;align-items:center;padding:13px 14px;text-decoration:none;color:var(--ink);background:none;border:0;border-top:1px solid var(--line);font:inherit;text-align:left;width:100%;cursor:pointer}
+.yo-row:first-child{border-top:0}
+.yo-row:active{background:color-mix(in srgb,var(--line) 40%,transparent)}
+.yo-row i{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--brass) 14%,transparent);color:var(--brass)}
+.yo-row b{display:block;font-size:.98rem}
+.yo-row small{display:block;color:var(--muted);font-size:.8rem;margin-top:2px;line-height:1.35}
+.yo-row em{font-style:normal;color:var(--muted);font-size:1.3rem}
