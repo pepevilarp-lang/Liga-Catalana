@@ -598,7 +598,7 @@ async function accLinkLocal(who) {
       (S.players || []).filter(p => p.active !== false).forEach(p => { const m = all.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] }; m.teams.push({ id: t.id, name: t.name, season: sid, official: off.includes(p.id), S }); all.set(p.id, m); }); }
     const nameOk = m => { const n = N(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && Ls.some(x => n.includes(x)); };
     const L = [...all.values()], bl = Lc ? L.filter(m => m.lic && lic(m.lic) === Lc) : [];
-    const byName = L.filter(nameOk), open = m0.openClaims === true;
+    const byName = L.filter(nameOk), open = m0.requireLicence !== true;
     if (bl.length === 1 && nameOk(bl[0])) oks.push({ c, R, here, m: bl[0] }); else if (bl.length) nameBad = true;
     else if (open && who.confirm && byName.length === 1 && byName[0].pid === who.confirm) oks.push({ c, R, here, m: byName[0] });
     byName.forEach(m => cands.push({ pid: m.pid, name: m.name, club: c.id, clubName: c.name, confirm: open && byName.length === 1, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) }));
