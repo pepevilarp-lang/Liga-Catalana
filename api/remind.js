@@ -49,7 +49,7 @@ async function runSeason(A, db, id, S, { force, origin, now }) {
   const base = String(origin || '').replace(/\/$/, '');
   const team = (db.cfg && db.cfg.teamShort) || 'Polo', color = db.cfg && db.cfg.colors && db.cfg.colors.primary;
   const teamName = n => ((S.teams || []).find(t => t.id === n) || {}).name || 'el rival';
-  const send = (pids, msg) => deliver(A, p => db.doc(p), pids, msg, { email: cfg.email !== false, team, color, names });
+  const send = (pids, msg) => deliver(A, p => db.doc(p), pids, msg, { email: cfg.email !== false, team, color, names, wa: { club: db.club || '', season: id } });
   const upd = { av: { ...(log.av || {}) }, sched: { ...(log.sched || {}) } }, logs = {};
   const note = (k, e) => { (logs[k] = logs[k] || []).push({ at: now, ...e }); };
   for (const f of (S.fixtures || [])) {

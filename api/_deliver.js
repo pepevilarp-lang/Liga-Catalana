@@ -51,14 +51,33 @@ function mailHtml({ title, lines, cta, url, team, color, links }) {
     <p style="margin:0;color:#6b7a73;font-size:12px">Te llega por correo porque no tienes activadas las notificaciones de la app. Actívalas en «Yo» y dejarás de recibir estos correos.</p></div>`;
 }
 
-// msg = { title, body, url (absoluta), tag, cta, lines? }   opts = { email: bool, team, color, names: {pid: nombre} }
+// WhatsApp (api/_wa.js): a quien no le ha llegado la notificación y ha aceptado WhatsApp en «Yo» (phones/<pid>.wa).
+// La disponibilidad («avail-…», «availRem-…») va con botones «Puedo / No puedo» que responden sin abrir la app.
+async function waTo(doc, pids, msg, opts) {
+  const W = require('./_wa.js'), ok = new Set(); if (!W.configured() || !pids.length) return ok;
+  const snaps = await Promise.all(pids.map(p => doc('phones/' + p).get().catch(() => null)));
+  const m = /^(avail|availRem)-j(\d+)$/.exec(msg.tag || ''), wa = opts.wa || {};
+  for (const [i, s] of snaps.entries()) {
+    const d = s && s.exists ? s.data() : null, to = d && d.wa === true ? W.e164(d.phone) : ''; if (!to) continue;
+    try {
+      if (m && wa.season) await W.sendDispo(to, { team: opts.team || 'Tu equipo', text: msg.body }, v => W.availPayload(wa.club, wa.season, +m[2], pids[i], v));
+      else await W.sendAviso(to, msg);
+      ok.add(pids[i]);
+    } catch (e) { /* plantilla no aprobada, número no válido…: sigue por correo */ }
+  }
+  return ok;
+}
+
+// msg = { title, body, url (absoluta), tag, cta, lines? }   opts = { email: bool, team, color, names: {pid: nombre}, wa: {club, season} }
 async function deliver(A, doc, pids, msg, opts = {}) {
   pids = [...new Set(pids.filter(Boolean))];
-  const res = { recipients: pids.length, push: 0, email: 0, none: 0, failed: [] };
+  const res = { recipients: pids.length, push: 0, whatsapp: 0, email: 0, none: 0, failed: [] };
   if (!pids.length) return res;
   const reached = await pushTo(A, doc, pids, { title: msg.title, body: msg.body, url: msg.url, tag: msg.tag || 'aviso' }).catch(() => new Set());
   res.push = reached.size;
-  const rest = pids.filter(p => !reached.has(p));
+  const waOk = await waTo(doc, pids.filter(p => !reached.has(p)), msg, opts).catch(() => new Set());
+  res.whatsapp = waOk.size;
+  const rest = pids.filter(p => !reached.has(p) && !waOk.has(p));
   const mail = require('./_mail.js');
   if (opts.email && rest.length && mail.via()) {
     const em = await emailsOf(doc, rest);

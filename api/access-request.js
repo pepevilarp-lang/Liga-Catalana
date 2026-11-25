@@ -84,10 +84,10 @@ async function captainPidsOf(cdb) {
 const normWords = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1);
 const normLic = s => String(s || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toUpperCase();
 // Coincidencia fiable = misma licencia federativa y mismo nombre y apellido. Devuelve { status, ... }
-async function verifyPlayer(cdb, first, last, lic, confirmPid) {
-  const F = normWords(first), L = normWords(last), Lc = normLic(lic);
+async function verifyPlayer(cdb, first, last, lic, confirmPid, dob) {
+  const F = normWords(first), L = normWords(last), Lc = normLic(lic), Dh = dob ? require('./_auth.js').dobHash(dob) : '';
   if (!F.length || !L.length) return { status: 'datos' };
-  const { meta, teams } = await seasonsOf(cdb), byPid = new Map(), open = meta.requireLicence !== true;
+  const { meta, teams } = await seasonsOf(cdb), byPid = new Map(), open = meta.openClaims === true;
   teams.forEach(({ t, sid, S }) => (S && S.players || []).filter(p => p.active !== false).forEach(p => {
     const m = byPid.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] };
     m.teams.push({ id: t.id, name: t.name, season: sid, official: officialOf(S).includes(p.id) }); if (!m.lic && p.lic) m.lic = p.lic; byPid.set(p.id, m); }));
@@ -99,8 +99,17 @@ async function verifyPlayer(cdb, first, last, lic, confirmPid) {
     if (byLic.length) return { status: 'nombre' };          // la licencia existe pero el nombre no coincide: no se vincula
   }
   const byName = all.filter(nameOk);
+  // Nombre, apellidos y fecha de nacimiento (la de la ficha de la FCT, guardada solo como huella en private/dob):
+  // si coinciden con un único jugador se le propone «¿Eres …?» y, al confirmarlo, queda vinculado
+  if (Dh && byName.length) {
+    const dobs = (await cdb.doc('private/dob').get()).data() || {}, hit = byName.filter(m => dobs[m.pid] && dobs[m.pid] === Dh);
+    const pub = m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic });
+    if (hit.length === 1) return confirmPid === hit[0].pid ? { status: 'ok', m: hit[0], via: 'nacimiento' } : { status: 'confirmar', candidates: [pub(hit[0])] };
+    if (!hit.length && byName.some(m => dobs[m.pid])) return { status: 'fecha', candidates: byName.map(pub) };
+  }
   // Con un único jugador que coincide en nombre y apellidos, basta con que la persona confirme «Sí, soy yo» (sin licencia).
-  // El club puede exigir la licencia (meta/app.requireLicence). Cada vínculo por nombre se avisa por correo a capitanes y gestión.
+  // Solo durante un periodo de alta abierto por el club (meta/app.openClaims, lo activa un administrador).
+  // Cada vínculo por nombre se avisa por correo a capitanes y gestión.
   if (open && confirmPid && byName.length === 1 && byName[0].pid === confirmPid) return { status: 'ok', m: byName[0], via: 'nombre' };
   if (byName.length) return { status: Lc ? 'licencia' : 'pedir-licencia', confirm: open && byName.length === 1, candidates: byName.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic })) };
   return { status: 'no' };
@@ -133,10 +142,13 @@ async function linkPlayer(A, db, user, body) {
   await aref.set({ day, n: n + 1, at: Date.now() });
   const found = [];
   const confirmPid = /^[\w-]{1,60}$/.test(String(body.confirm || '')) ? String(body.confirm) : '', confirmClub = String(body.confirmClub || '');
-  for (const c of clubs) { const cdb = await clubDbFor(db, c.id); found.push({ c, cdb, v: await verifyPlayer(cdb, body.first, body.last, body.licence, !confirmClub || confirmClub === c.id ? confirmPid : '') }); }
+  for (const c of clubs) { const cdb = await clubDbFor(db, c.id); found.push({ c, cdb, v: await verifyPlayer(cdb, body.first, body.last, body.licence, !confirmClub || confirmClub === c.id ? confirmPid : '', /^\d{4}-\d{2}-\d{2}$/.test(String(body.dob || '')) ? body.dob : '') }); }
   const oks = found.filter(x => x.v.status === 'ok');
   if (!oks.length) {
     if (found.some(x => x.v.status === 'nombre')) return { status: 'nombre' };
+    const conf = found.filter(x => x.v.status === 'confirmar'), tag = x => k => ({ ...k, club: x.c.id, clubName: x.cdb.cfg.name });
+    if (conf.length === 1) return { status: 'confirmar', candidates: conf[0].v.candidates.map(tag(conf[0])) };
+    if (!conf.length && found.some(x => x.v.status === 'fecha')) return { status: 'fecha', candidates: found.flatMap(x => (x.v.candidates || []).map(tag(x))) };
     const cands = found.flatMap(x => (x.v.candidates || []).map(k => ({ ...k, club: x.c.id, clubName: x.cdb.cfg.name, confirm: !!x.v.confirm })));
     if (cands.length) return { status: body.licence ? 'licencia' : 'pedir-licencia', candidates: cands, confirm: cands.length === 1 && cands[0].confirm };
     return { status: 'no' };

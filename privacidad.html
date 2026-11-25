@@ -29,7 +29,7 @@
 <header><div class="wrap">
   <a href="/">‹ Volver a Lliga Catalana</a>
   <h1>Política de privacidad</h1>
-  <p>Versión del <span id="pv">14 de noviembre de 2026</span></p>
+  <p>Versión del <span id="pv">25 de noviembre de 2026</span></p>
 </div></header>
 <main class="wrap">
 
@@ -38,8 +38,9 @@
   </div>
 
   <h2>1. Quién es el responsable</h2>
-  <p>Responsable del tratamiento: <b id="owner">la plataforma Lliga Catalana (Dossau Lab)</b>, junto con el club al que perteneces, que decide quién entra en sus equipos y gestiona sus datos deportivos.</p>
-  <p>Contacto para cualquier cuestión de privacidad: <span id="contact">la gestión deportiva de tu club, que lo trasladará a la plataforma</span>.</p>
+  <p><b id="owner">Dossau Lab</b> (Joan y Pepe), que desarrolla y gestiona la plataforma Lliga Catalana, es el responsable de tu cuenta, del acceso a la app y de las estadísticas de uso.</p>
+  <p>Los datos deportivos de los equipos (plantillas, convocatorias, disponibilidad, resultados) son de <b>tu club</b>, que decide quién entra en sus equipos. Para esos datos, Dossau Lab trata la información por encargo del club y según sus instrucciones, con un contrato de encargado del tratamiento.</p>
+  <p>Contacto para cualquier cuestión de privacidad: <a id="contact" href="mailto:dossaulab@gmail.com">dossaulab@gmail.com</a>. También puedes dirigirte a la gestión deportiva de tu club.</p>
 
   <h2>2. Qué datos tratamos y para qué</h2>
   <table>
@@ -48,10 +49,11 @@
       <tr><td>Cuenta de Google: nombre, correo e identificador</td><td>Entrar en la app y saber quién eres. No vemos tu contraseña.</td></tr>
       <tr><td>Club, equipos y rol (jugador, capitán, gestor)</td><td>Enseñarte solo los equipos que te corresponden y darte los permisos de tu rol.</td></tr>
       <tr><td>Ficha deportiva: nombre completo, número de licencia, categoría y puntos de la Federació Catalana de Tennis (FCT)</td><td>Vincularte con tu ficha y mostrar plantillas, órdenes de juego y resultados. Estos datos los publica la FCT en su portal.</td></tr>
+      <tr><td>Fecha de nacimiento</td><td>Comprobar que eres tú cuando te das de alta como jugador. La compara el servidor con la de tu ficha de la FCT: no guardamos la fecha, solo una huella cifrada que no permite recuperarla, y nadie la ve en la app.</td></tr>
       <tr><td>Resultados y actas de los partidos (quién jugó y con qué marcador)</td><td>Resultados del equipo, clasificación y estadísticas individuales.</td></tr>
       <tr><td>Disponibilidad para cada jornada y comentarios</td><td>Que el capitán pueda hacer la convocatoria.</td></tr>
       <tr><td>Respuestas a la encuesta postpartido y votos al MVP</td><td>Valoración de la jornada y elección del mejor jugador. Los votos son secretos.</td></tr>
-      <tr><td>Teléfono (opcional)</td><td>Que el capitán te pueda escribir por WhatsApp. Solo lo ven los administradores y la gestión de tu equipo.</td></tr>
+      <tr><td>Teléfono (opcional)</td><td>Que el capitán te pueda escribir por WhatsApp. Solo lo ven los administradores y la gestión de tu equipo. Si lo aceptas en «Yo», también para enviarte los avisos de la app desde el número oficial de Lliga Catalana (WhatsApp Business de Meta), que puedes dejar de recibir cuando quieras.</td></tr>
       <tr><td>Fotos (opcional): tu foto de perfil y fotos del equipo</td><td>Mostrarlas en la app y en los carteles de la convocatoria.</td></tr>
       <tr><td>Documentos de la jornada (actas, listados de la FCT)</td><td>Leerlos automáticamente para cargar resultados y plantillas.</td></tr>
       <tr><td>Avisos del móvil (identificador de notificaciones)</td><td>Enviarte recordatorios si los activas.</td></tr>
@@ -75,6 +77,7 @@
   <ul>
     <li><b>Google Firebase</b>: inicio de sesión y base de datos.</li>
     <li><b>Vercel</b>: alojamiento de la web y de sus funciones, y estadísticas de uso y velocidad <b>sin cookies</b> y sin datos personales (páginas visitadas, tipo de dispositivo y país, en conjunto).</li>
+    <li><b>Meta (WhatsApp Business Platform)</b>: envío de avisos por WhatsApp, solo a quien lo ha aceptado.</li>
     <li><b>PostHog</b> (servidores en la Unión Europea): estadísticas de uso <b>solo si las aceptas</b> en la app. Registra qué pantallas abres, qué botones tocas, cuánto dura cada visita y una grabación de la sesión en la que lo que escribes queda oculto. Te identifica con un código interno de la app, tu club, tu equipo, tu rol y tu nombre de jugador; no con tu email. Lo usamos solo para mejorar la app. Puedes cambiar tu respuesta cuando quieras en «Yo», «Estadísticas de uso».</li>
     <li><b>Servicio de inteligencia artificial</b> (por defecto, Groq): solo para leer los documentos que sube la gestión (actas, listados). No se usan para entrenar modelos.</li>
     <li><b>Servicio de correo</b> (Gmail o Resend): avisos e informes que envía la app.</li>
@@ -96,10 +99,10 @@
   <p class="muted" style="margin-top:36px"><small>Lliga Catalana no es un servicio oficial de la Federació Catalana de Tennis.</small></p>
 </main>
 <script>
-  // Datos del responsable: rellénalos aquí (o en window.PRIVACY_CONFIG) cuando estén decididos
+  // Datos del responsable (se pueden cambiar con window.PRIVACY_CONFIG)
   var P = window.PRIVACY_CONFIG || { owner: '', contact: '' };
   if (P.owner) document.getElementById('owner').textContent = P.owner;
-  if (P.contact) document.getElementById('contact').innerHTML = '<a href="mailto:' + P.contact + '">' + P.contact + '</a>';
+  if (P.contact) { var c = document.getElementById('contact'); c.href = 'mailto:' + P.contact; c.textContent = P.contact; }
 </script>
 </body>
 </html>

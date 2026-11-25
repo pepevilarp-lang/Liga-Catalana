@@ -1922,3 +1922,51 @@ body.gate::before{background:#0E1216}
 @keyframes accBootIn{to{opacity:1}}
 @keyframes accBounce{from{transform:translateY(-26px)}to{transform:translateY(0) scale(1.1,.9)}}
 @media (prefers-reduced-motion: reduce){.acc-boot{animation-delay:0s}.acc-boot-ball{animation:none}}
+/* Licencia como alternativa a la fecha de nacimiento */
+.acc-more{border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:10px 14px}
+.acc-more summary{cursor:pointer;color:var(--lc-mute);font-weight:600;font-size:.92rem;list-style:none}
+.acc-more summary::-webkit-details-marker{display:none}
+.acc-more summary::before{content:"+ "}.acc-more[open] summary::before{content:"– "}
+.acc-more[open] .acc-lbl{margin-top:10px}
+.acc-who-f input[type=date]{color-scheme:dark;min-height:48px}
+.fe-wa{display:flex;gap:12px;align-items:flex-start;padding:12px 0 2px;border-top:1px solid var(--line);cursor:pointer}
+.fe-wa input{width:20px;height:20px;margin-top:2px;accent-color:#25D366;flex:none}.fe-wa small{display:block;color:var(--muted);font-size:.84rem;margin-top:2px}
+
+/* ===== Transiciones entre pantallas (View Transitions API) ===== */
+.tp{display:none}
+.tabbar a{isolation:isolate}
+.tabbar a[aria-current="page"] .tp{display:block;position:absolute;inset:4px 14%;border-radius:14px;background:color-mix(in srgb,var(--brass) 15%,transparent);z-index:-1;view-transition-name:tabpill}
+.topnav a{position:relative;isolation:isolate}
+.topnav a[aria-current="page"]:has(.tp){background:transparent}
+.topnav a[aria-current="page"] .tp{display:block;position:absolute;inset:0;border-radius:999px;background:rgba(255,255,255,.12);z-index:-1;view-transition-name:navpill}
+@supports (view-transition-name:none){
+  .topbar{view-transition-name:topbar}
+  .tabbar{view-transition-name:tabbar}
+  html[data-vt] .page{animation:none}
+  ::view-transition-group(*){animation-duration:.34s;animation-timing-function:cubic-bezier(.22,.8,.2,1)}
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.34s;animation-timing-function:cubic-bezier(.22,.8,.2,1)}
+  html[data-vt="fwd"]::view-transition-old(root){animation-name:vtOutLeft}
+  html[data-vt="fwd"]::view-transition-new(root){animation-name:vtInRight}
+  html[data-vt="back"]::view-transition-old(root){animation-name:vtOutRight}
+  html[data-vt="back"]::view-transition-new(root){animation-name:vtInLeft}
+  html[data-vt="right"]::view-transition-old(root){animation-name:vtFadeOut}
+  html[data-vt="right"]::view-transition-new(root){animation-name:vtSlideFromRight}
+  html[data-vt="left"]::view-transition-old(root){animation-name:vtFadeOut}
+  html[data-vt="left"]::view-transition-new(root){animation-name:vtSlideFromLeft}
+  html[data-vt="fade"]::view-transition-old(root){animation-name:vtFadeOut}
+  html[data-vt="fade"]::view-transition-new(root){animation-name:vtRiseIn}
+}
+@keyframes vtOutLeft{to{opacity:0;transform:translateX(-18%)}}
+@keyframes vtInRight{from{opacity:0;transform:translateX(28%)}}
+@keyframes vtOutRight{to{opacity:0;transform:translateX(28%)}}
+@keyframes vtInLeft{from{opacity:0;transform:translateX(-18%)}}
+@keyframes vtFadeOut{to{opacity:0}}
+@keyframes vtSlideFromRight{from{opacity:0;transform:translateX(36px)}}
+@keyframes vtSlideFromLeft{from{opacity:0;transform:translateX(-36px)}}
+@keyframes vtRiseIn{from{opacity:0;transform:translateY(14px)}}
+
+/* Toques: respuesta inmediata al pulsar */
+.btn,.chip,.tabbar a,.topnav a{-webkit-tap-highlight-color:transparent}
+.tabbar a:active svg{transform:scale(.88);transition:transform .12s}
+.btn{transition:transform .15s cubic-bezier(.22,.8,.2,1),background .2s,box-shadow .2s,color .2s}
+@media (hover:hover){.btn.brass:hover{box-shadow:0 8px 22px -10px rgba(148,114,42,.7)}}

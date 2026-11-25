@@ -59,15 +59,36 @@ api/_deliver.js  ── un único punto de entrega por canales
 - Cada club y equipo tiene su configuración en su propia temporada; el servidor resuelve la ruta de datos del club (`api/_auth.js`).
 - El registro por persona (cuántos recordatorios lleva cada uno) está en `remLog/<temporada>`, que solo lee el servidor.
 
-### Fase 2 (cuando se decida)
+### Fase 2: hecha en el código, pendiente de activar
 
-1. Dar de alta Meta Business, WABA y número; aprobar 4 plantillas de utilidad.
-2. Opt-in de WhatsApp en «Yo» (teléfono + casilla), guardado con fecha.
-3. Canal `whatsapp` en `api/_deliver.js` (antes que el correo, después de la notificación o en lugar de ella, según preferencia del jugador).
-4. `api/wa-webhook.js`: verifica la firma, convierte la respuesta del botón en disponibilidad y la guarda (idempotente).
-5. Variables en Vercel: `WA_TOKEN`, `WA_PHONE_ID`, `WA_APP_SECRET`, `WA_VERIFY_TOKEN`.
+El código ya está (diciembre de 2026). No envía nada hasta que se configure:
 
-Nada de lo anterior cambia el resto del sistema: las decisiones (a quién, cuándo) siguen en `api/remind.js`.
+- `api/_wa.js`: envío de plantillas, firma de los botones y de Meta.
+- `api/_deliver.js`: canal WhatsApp después de la notificación y antes del correo, solo a quien tiene `phones/<pid>.wa = true`.
+- `api/wa-webhook.js`: recibe «Puedo / No puedo», comprueba la firma de Meta, la del botón y que el número sea el del jugador, guarda la disponibilidad (idempotente) y le confirma por WhatsApp.
+- «Yo» → Tu teléfono: casilla «Recibir los avisos por WhatsApp» (visible cuando `window.LC_WHATSAPP = true` en `config.js`).
+
+**Pasos para activarlo (los hace Dossau, con sus datos):**
+
+1. **Meta Business**: crear o verificar la empresa en business.facebook.com (datos de Dossau).
+2. **App de Meta** en developers.facebook.com con el producto WhatsApp; añadir un **número dedicado** (que no se use en la app de WhatsApp) con el nombre visible «Lliga Catalana».
+3. **Token permanente**: un usuario del sistema con permiso `whatsapp_business_messaging` → `WA_TOKEN`. El identificador del número → `WA_PHONE_ID`. El secreto de la app → `WA_APP_SECRET`. Un texto inventado → `WA_VERIFY_TOKEN`.
+4. **Variables en Vercel** (proyecto lliga, Production): `WA_TOKEN`, `WA_PHONE_ID`, `WA_APP_SECRET`, `WA_VERIFY_TOKEN` (opcionales: `WA_LANG`, `WA_TPL_AVISO`, `WA_TPL_DISPO`). Volver a publicar.
+5. **Webhook** en la app de Meta: URL `https://lliga.vercel.app/api/wa-webhook`, token de verificación = `WA_VERIFY_TOKEN`; suscribirse al campo `messages`.
+6. **Plantillas** (categoría «Utilidad», idioma español):
+
+   **`aviso_equipo`**
+   - Cuerpo: `{{1}}` + salto de línea + `{{2}}`
+     (ejemplo: «Cambio de horario: jornada 5» / «Polo contra Vall Parc pasa al sábado 12 a las 15:00.»)
+   - Botón de URL: «Abrir en la app», URL dinámica `https://lliga.vercel.app/{{1}}` (ejemplo: `#jornada-5`).
+
+   **`disponibilidad`**
+   - Cuerpo: `{{1}}: {{2}}` (ejemplo: «Polo A: ¿Puedes jugar contra Vall Parc el sábado 12 de diciembre a las 9:00 (en casa)?»)
+   - Dos botones de respuesta rápida: «Puedo» y «No puedo».
+
+7. Cuando Meta apruebe las plantillas: `window.LC_WHATSAPP = true` en `config.js` y publicar. Probar con un móvil propio: aceptar en «Yo», pedir la disponibilidad desde Gestión y pulsar «Puedo».
+
+**Coste orientativo**: plantillas de utilidad en España, unos 0,02 € por mensaje fuera de la ventana de 24 h; las confirmaciones tras la respuesta del jugador son gratis.
 
 ## Fuentes
 
