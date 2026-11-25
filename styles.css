@@ -1970,3 +1970,35 @@ body.gate::before{background:#0E1216}
 .tabbar a:active svg{transform:scale(.88);transition:transform .12s}
 .btn{transition:transform .15s cubic-bezier(.22,.8,.2,1),background .2s,box-shadow .2s,color .2s}
 @media (hover:hover){.btn.brass:hover{box-shadow:0 8px 22px -10px rgba(148,114,42,.7)}}
+
+/* ===== Guía para instalar la app (install.js) ===== */
+.ins{position:fixed;inset:0;z-index:99980;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
+.ins-bg{position:absolute;inset:0;background:rgba(10,14,12,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;transition:opacity .25s;pointer-events:auto}
+.ins-card{position:relative;width:min(460px,100%);margin:0 10px calc(10px + env(safe-area-inset-bottom));background:var(--surface,#fff);color:var(--ink,#13241e);border-radius:28px;padding:26px 22px 14px;box-shadow:0 30px 80px -20px rgba(0,0,0,.5);transform:translateY(110%);transition:transform .38s cubic-bezier(.2,.9,.25,1.05);pointer-events:auto;text-align:center}
+.ins.on .ins-bg{opacity:1}.ins.on .ins-card{transform:none}
+.ins-x{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;border:0;background:var(--bg2,#f1f2ee);color:inherit;font-size:14px;cursor:pointer}
+.ins-ic img{width:64px;height:64px;border-radius:16px;box-shadow:0 10px 24px -10px rgba(0,0,0,.45);animation:insPop .5s .15s cubic-bezier(.2,.9,.3,1.4) both}
+.ins-card h2{margin:12px 0 6px;font-size:1.35rem;letter-spacing:-.01em}
+.ins-card p{margin:0 0 14px;color:var(--muted,#5b6b63);font-size:.95rem;line-height:1.45}
+.ins-big{display:flex;width:100%;justify-content:center;margin:0 0 8px;min-height:50px;font-size:1rem;text-decoration:none}
+.ins-small{font-size:.82rem!important;margin-top:6px!important}
+.ins-later{border:0;background:none;color:var(--muted,#5b6b63);font-weight:600;padding:10px;margin-top:4px;cursor:pointer}
+.ins-steps{list-style:none;margin:6px 0 8px;padding:0;display:grid;gap:8px;text-align:left}
+.ins-steps li{display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:16px;background:var(--bg2,#f3f4f0);animation:insIn .45s calc(.25s + var(--i) * .12s) cubic-bezier(.2,.8,.2,1) both}
+.ins-steps svg{vertical-align:-3px;margin:0 2px}
+.ins-n{flex:none;width:28px;height:28px;border-radius:50%;background:var(--brass,#94722A);color:#fff;font-weight:800;display:grid;place-items:center;font-size:.9rem}
+.ins-arrow{position:fixed;width:44px;height:58px;pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.35));animation:insBob 1.1s ease-in-out infinite}
+.ins-arrow::before{content:"";position:absolute;left:50%;top:0;width:6px;height:40px;margin-left:-3px;border-radius:3px;background:#C6E65A}
+.ins-arrow::after{content:"";position:absolute;left:50%;bottom:0;margin-left:-16px;border:16px solid transparent;border-top:20px solid #C6E65A;border-bottom:0}
+.ins-br{right:18px;bottom:calc(6px + env(safe-area-inset-bottom))}
+.ins-bc{left:50%;margin-left:-22px;bottom:calc(6px + env(safe-area-inset-bottom))}
+.ins-tr{right:14px;top:calc(4px + env(safe-area-inset-top));transform:rotate(180deg);animation-name:insBobUp}
+.ins.on .ins-card{margin-bottom:calc(72px + env(safe-area-inset-bottom))}
+@keyframes insPop{from{transform:scale(.4);opacity:0}}
+@keyframes insIn{from{opacity:0;transform:translateY(10px)}}
+@keyframes insBob{0%,100%{transform:translateY(-6px)}50%{transform:translateY(4px)}}
+@keyframes insBobUp{0%,100%{transform:rotate(180deg) translateY(-6px)}50%{transform:rotate(180deg) translateY(4px)}}
+.inapp{position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:99970;display:flex;gap:10px;align-items:center;padding:10px 12px 10px 14px;border-radius:16px;background:#C6E65A;color:#121614;font:600 13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 10px 30px -10px rgba(0,0,0,.45);animation:insIn .4s both}
+.inapp button{flex:none;border:0;border-radius:999px;background:#121614;color:#C6E65A;font-weight:800;padding:8px 14px;cursor:pointer}
+body.has-inapp .acc{padding-top:64px}
+@media (prefers-reduced-motion:reduce){.ins-arrow,.ins-steps li,.ins-ic img,.inapp{animation:none}.ins-card{transition:none}}
