@@ -1,4 +1,6 @@
 {
+  "buildCommand": "node scripts/build.js",
+  "outputDirectory": "dist",
   "headers": [
     {
       "source": "/(.*)",
@@ -53,6 +55,12 @@
     {
       "path": "/api/fct-sync",
       "schedule": "30 21 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/:fn(access-request|auto-report|extract|fct-clubs|migrate|notify|send-invite|send-report|write-report|wa-webhook|client-error|photo)",
+      "destination": "/api/h?fn=:fn"
     }
   ]
 }

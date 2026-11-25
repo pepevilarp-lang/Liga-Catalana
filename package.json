@@ -1,13 +1,17 @@
 {
   "name": "polo-lliga",
   "private": true,
-  "description": "App del Polo: web estática + funciones /api (notificaciones, IA, correo, FCT e informe semanal)",
+  "description": "App del Polo: web est\u00e1tica + funciones /api (notificaciones, IA, correo, FCT e informe semanal)",
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
     "nodemailer": "^6.9.16",
-    "pdfmake": "0.2.10"
+    "pdfmake": "0.2.10",
+    "@vercel/blob": "^1.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2"
   }
 }

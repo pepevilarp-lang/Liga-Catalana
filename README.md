@@ -3,9 +3,17 @@
 App privada del equipo masculino absoluto del Real Club de Polo de Barcelona.
 GitHub + Vercel + Firebase. Instalable en el móvil y con notificaciones.
 
+## Cómo se trabaja desde diciembre de 2026
+
+- **El código de la app está en `src/app/`**, partido por secciones (`00-inicio.js` … `16-arranque.js`). No hay `app.js` en la raíz: la compilación lo monta juntando las partes en orden.
+- **Compilación** (Vercel la hace sola en cada despliegue): `npm install && node scripts/build.js` → carpeta `dist/` con la web minimizada y la versión de la caché del service worker calculada sola. Para probar en local, sirve `dist/`.
+- **Funciones de Vercel**: `api/remind.js` y `api/fct-sync.js` (tareas programadas) y `api/h.js`, que atiende el resto de rutas (`/api/notify`, `/api/access-request`…) con reescrituras de `vercel.json`. Cada ruta está en `api/_<ruta>.js`.
+- **Errores de la app** en los móviles: Vercel → Logs, buscar `[client-error]`. Con permiso de estadísticas, también en PostHog.
+- **Fotos**: con `BLOB_READ_WRITE_TOKEN` (almacén Blob conectado al proyecto) van a Vercel Blob con miniatura; si no, a Firestore reducidas.
+
 ## Archivos (todo en la raíz del repositorio, respetando estas carpetas)
 ```
-index.html  styles.css  app.js  sw.js  manifest.webmanifest
+index.html  styles.css  src/app/*.js (→ app.js)  sw.js  manifest.webmanifest
 config.js        claves públicas de Firebase y clave web de notificaciones (vapidKey)
 club-config.js   identidad del club: id, nombre, escudo, colores, equipos y grupos FCT (lo usan la app y el servidor)
 access.js        entrada por rol, cierre de sesión, invitaciones, solicitud de gestor, catálogo de clubes e identidad visual
