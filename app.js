@@ -3199,7 +3199,7 @@ function fctNewPanel(){ ensureFctCss(); const N=ui.fctNew, f=ui.fctNewForm||{};
       <label>Género<select id="fn-gender">${['Masculino','Femenino','Mixto'].map(x=>`<option ${g===x?'selected':''}>${x}</option>`).join('')}</select></label>
       <label>Letra del equipo<select id="fn-letter">${['A','B','C','D','E',''].map(x=>`<option value="${x}" ${L===x?'selected':''}>${x||'Sin letra'}</option>`).join('')}</select></label>
       <label class="fn-wide">Código de grupo FCT<input type="text" inputmode="numeric" id="fn-group" value="${esc(f.group||'')}" placeholder="Por ejemplo, 4583" autocomplete="off"></label>
-      <label class="fn-wide">Nombre del equipo <span class="muted small">(opcional)</span><input type="text" id="fn-name" value="${esc(f.name||'')}" placeholder="Se completa solo: ${esc(fctNewName({cat:f.cat||'Absoluto',gender:g,letter:L}).name)}"></label>
+      <label class="fn-wide"><span>Nombre del equipo <span class="muted small" style="font-weight:500">(opcional)</span></span><input type="text" id="fn-name" value="${esc(f.name||'')}" placeholder="Se completa solo: ${esc(fctNewName({cat:f.cat||'Absoluto',gender:g,letter:L}).name)}"></label>
     </div>
     <div class="row" style="margin-top:14px"><button class="btn brass" data-act="fct-new-go">Dar de alta y sincronizar con la FCT</button></div></div></section>`; }
 // «+50», «Masculino», «A» → «Veteranos +50 Masculino A» / «+50 A»
