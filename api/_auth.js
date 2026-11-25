@@ -88,6 +88,14 @@ async function audit(ctx, action, data = {}) {
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   await ctx.db.doc('clubs/' + ctx.clubId + '/audit/' + id).set({ action, data, by: ctx.user.uid, byEmail: ctx.email, at: Date.now(), via: 'servidor' }).catch(() => {});
 }
+// Fecha de nacimiento de la plantilla oficial (FCT): solo se guarda su huella (HMAC con una clave derivada de la cuenta
+// de servicio) en private/dob, que ningún cliente puede leer. Sirve para comprobar «soy yo» sin guardar la fecha.
+function dobHash(date) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(date || '').trim()); if (!m) return '';
+  const d = m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0'), crypto = require('crypto');
+  const key = crypto.createHash('sha256').update('lliga-dob:' + JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}').private_key).digest();
+  return crypto.createHmac('sha256', key).update(d).digest('hex').slice(0, 32);
+}
 const sendErr = (res, e) => res.status(e.status || (e.code && String(e.code).startsWith('auth/') ? 401 : 500)).json({ error: e.message || 'error' });
 
-module.exports = { getAdmin, CLUB_COLLS, isClubPath, dataRoot, pather, clubDb, clubDbFor, clubConfig, allClubs, validClub, caller, teamRole, needTeam, audit, httpErr, sendErr };
+module.exports = { dobHash, getAdmin, CLUB_COLLS, isClubPath, dataRoot, pather, clubDb, clubDbFor, clubConfig, allClubs, validClub, caller, teamRole, needTeam, audit, httpErr, sendErr };

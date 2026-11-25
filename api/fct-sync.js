@@ -11,13 +11,14 @@ const { getAdmin, needTeam, clubDbFor, sendErr } = require('./_auth.js');
 const FCT_API = 'https://portal.fctennis.cat/app/api/calendario.do';
 // Petición al portal de la FCT con las mismas cabeceras que su web (sin ellas responde 403 a los servidores).
 // Si falla por un error pasajero (403, 429 o 5xx), lo vuelve a intentar una vez.
-async function fctPost(accion, data) {
+async function fctPost(accion, data, ep) {
   const opts = { method: 'POST', body: JSON.stringify({ accion, data }), headers: {
     'Content-Type': 'application/json;charset=UTF-8', Accept: 'application/json, text/plain, */*', 'Accept-Language': 'ca,es;q=0.9',
     Origin: 'https://portal.fctennis.cat', Referer: 'https://portal.fctennis.cat/app/torneos/',
     'User-Agent': 'Mozilla/5.0 (compatible; LligaCatalana/1.0; +https://lliga.vercel.app)' } };
-  let r = await fetch(FCT_API, opts);
-  if (r.status === 403 || r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 1200)); r = await fetch(FCT_API, opts); }
+  const url = ep ? FCT_API.replace('calendario.do', ep) : FCT_API;
+  let r = await fetch(url, opts);
+  if (r.status === 403 || r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 1200)); r = await fetch(url, opts); }
   if (!r.ok) throw new Error('FCT respondió ' + r.status + (r.status === 403 ? ' (acceso denegado)' : ''));
   return r.json();
 }
@@ -58,16 +59,18 @@ function shortOf(full) {
 // actualiza licencia, categoría y puntos de los que reconoce, y añade nuevos si la plantilla vino de la FCT.
 function syncRoster(S, list) {
   S.players = Array.isArray(S.players) ? S.players : []; S.comp = S.comp || {};
-  const out = { added: 0, updated: 0 };
+  const out = { added: 0, updated: 0, dobs: {} };
   const fromFct = !S.players.length || S.comp.fctRoster === true;
   list.slice().sort((a, b) => (+a.posicion || 99) - (+b.posicion || 99)).forEach((x, i) => {
     const full = titleCase(x.nombreCompleto || ''); if (!full) return;
     const cat = String(x.codigoCategoriaNombre || '').trim(), pts = +x.puntos || 0, order = +x.posicion || i + 1;
     let p = matchPlayer(S, x.licencia, full);
+    if (p && x.fechaNacimiento) out.dobs[p.id] = String(x.fechaNacimiento);
     if (p) { const before = JSON.stringify(p); if (x.licencia) p.lic = String(x.licencia); if (cat) p.cat = cat; p.pts = pts; if (fromFct) p.order = order; if (JSON.stringify(p) !== before) out.updated++; return; }
     if (!fromFct) return;
     const name = shortOf(full); let id = slug(name) || 'jugador'; while (S.players.some(q => q.id === id)) id += '-2';
     S.players.push({ id, name, full, cat, pts, order, lic: x.licencia ? String(x.licencia) : '', captain: false, active: x.activa !== false, src: 'fct' });
+    if (x.fechaNacimiento) out.dobs[id] = String(x.fechaNacimiento);
     out.added++;
   });
   if (out.added) S.comp.fctRoster = true;
@@ -229,7 +232,12 @@ async function runSeason(db, id) {
   // Plantilla: con el código FCT del equipo del Polo en este grupo
   const poloCode = pc || (S.teams.find(t => t.id === POLO) || {}).fct;
   if (poloCode && (S.comp || {}).fctRosterSync !== false) {
-    try { out.roster = syncRoster(S, await fctRoster(poloCode)); } catch (e) { out.rosterError = e.message; }
+    try { out.roster = syncRoster(S, await fctRoster(poloCode));
+      // Fechas de nacimiento: solo su huella, en private/dob (no la lee ningún cliente); nunca en la temporada
+      const { dobHash } = require('./_auth.js'), h = {}; Object.entries(out.roster.dobs || {}).forEach(([pid, d]) => { const x = dobHash(d); if (x) h[pid] = x; });
+      if (Object.keys(h).length) await db.doc('private/dob').set(h, { merge: true });
+      out.roster.dobs = Object.keys(h).length;
+    } catch (e) { out.rosterError = e.message; }
   }
   // Actas: quién jugó cada partido del Polo y con qué marcador
   if (poloCode && (S.comp || {}).fctActas !== false) {
@@ -288,6 +296,39 @@ async function weeklyReport(db, req, now = new Date()) {
   return { sent: out.to.length, sat };
 }
 
+// Equipos del club en la Lliga Catalana de la FCT, para darlos de alta eligiendo cuáles (Gestión deportiva → Federació).
+// Torneo de la Lliga por temporada (en el portal: «13a Lliga Catalana Absolut i Sènior per Equips»). Se puede
+// sobrescribir con meta/app.fctTorneo cuando empiece la temporada siguiente.
+const LLIGA_TORNEO = { '2026-27': 4296 };
+function catOf(prueba) { const n = String(prueba || ''), m = /\+\s*(\d+)/.exec(n); return m ? '+' + m[1] : /j[uú]nior/i.test(n) ? 'Júnior' : /cadet/i.test(n) ? 'Cadete' : /infantil/i.test(n) ? 'Infantil' : 'Absoluto'; }
+async function discoverTeams(req, body) {
+  const ctx = await require('./_auth.js').caller(req);
+  if (!ctx.isStaff) throw Object.assign(new Error('Solo la gestión del club'), { status: 403 });
+  const db = ctx.cdb, cfg = db.cfg || CLUBCFG0, meta = (await db.doc('meta/app').get()).data() || {};
+  const season = /^\d{4}-\d{2}$/.test(String(body.season || '')) ? body.season : meta.current;
+  const torneo = +((meta.fctTorneo || {})[season] || LLIGA_TORNEO[season] || 0);
+  if (!torneo) throw Object.assign(new Error('Aún no conocemos el código de la Lliga ' + season + ' en la FCT'), { status: 400 });
+  if (!cfg.fctId) throw Object.assign(new Error('Falta el código del club en la FCT'), { status: 400 });
+  const club = await fctPost('recuperarPorIdClub', { idClub: String(cfg.fctId) }, 'club.do'), clubCode = +((club && club.data) || {}).codigo;
+  if (!clubCode) throw Object.assign(new Error('La FCT no reconoce el club ' + cfg.fctId), { status: 502 });
+  const pr = ((await fctPost('recuperarPruebasLiga', { codigoTorneo: torneo, codigoLiga: torneo }, 'liga.do')) || {}).pruebas || [];
+  // Equipos ya dados de alta: su grupo y su código de equipo en la FCT
+  const R = require('./_report.js'), have = [];
+  for (const t of R.clubTeams(meta, cfg)) { const sid = R.docIdFor ? R.docIdFor(t.id, season, cfg) : null; const S = sid ? ((await db.doc('seasons/' + sid).get()).data() || null) : null;
+    const g = +(((S || {}).comp || {}).fctGroup || (cfg.fctGroups || {})[sid] || 0); if (g) have.push({ id: t.id, short: t.short, group: g, team: +(((S || {}).comp || {}).fctTeam || 0), letter: ((S || {}).comp || {}).letter || (/\b([A-Z])\s*$/.exec(t.name || '') || [])[1] || '' }); }
+  const out = [];
+  const groups = await Promise.all(pr.map(p => fctPost('recuperarGrupos', { codigo: p.codigo }).then(j => [p, (j && j.grupos) || []]).catch(() => [p, []])));
+  for (const [p, gs] of groups) for (const g of gs) for (const e of (g.equipos || [])) {
+    if (+e.codigoClub !== clubCode) continue;
+    const letter = (/-\s*([A-Z])\s*$/.exec(e.nombreCuadro || '') || [])[1] || '';
+    const same = have.filter(h => h.group === +g.codigo), dup = same.find(h => h.team === +e.codigo) || (same.length && !same.some(h => h.team) ? same.find(h => !letter || !h.letter || h.letter === letter) : null);
+    out.push({ team: +e.codigo, group: +g.codigo, cat: catOf(p.nombre), gender: p.sexo === 'F' ? 'Femenino' : 'Masculino', letter, division: String(g.nombreGrupo || ''), fctName: String(e.nombreCuadro || ''), have: dup ? dup.short : '' });
+  }
+  const order = c => c === 'Absoluto' ? 0 : c === 'Júnior' ? 1 : 2 + (parseInt(String(c).replace(/\D/g, ''), 10) || 0);
+  out.sort((a, b) => order(a.cat) - order(b.cat) || a.gender.localeCompare(b.gender) || a.letter.localeCompare(b.letter));
+  return { season, torneo, club: cfg.name, teams: out };
+}
+
 // Eliminar un equipo del club (solo la gestión): borra sus temporadas con todo lo que contienen
 // (disponibilidad, encuestas, documentos, MVP…) y lo quita de la lista de equipos del club.
 // El primer equipo del Real Club de Polo no se puede borrar: su temporada es la ruta original (seasons/<temporada>).
@@ -312,7 +353,7 @@ async function deleteTeam(req, body) {
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
-    if (req.method === 'POST') { const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); if (b.action === 'team-delete') return res.status(200).json(await deleteTeam(req, b)); }
+    if (req.method === 'POST') { const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); if (b.action === 'team-delete') return res.status(200).json(await deleteTeam(req, b)); if (b.action === 'fct-discover') return res.status(200).json(await discoverTeams(req, b)); }
     const A = getAdmin(), raw = A.firestore();
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     const cron = !!(process.env.CRON_SECRET && tok === process.env.CRON_SECRET);
@@ -345,4 +386,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports._test = { deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
+module.exports._test = { catOf, discoverTeams, deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };

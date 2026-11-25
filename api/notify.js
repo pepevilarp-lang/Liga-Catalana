@@ -66,8 +66,8 @@ module.exports = async (req, res) => {
     const cta = { avail: 'Dar mi disponibilidad', availRem: 'Dar mi disponibilidad', lineup: 'Ver la convocatoria' }[type] || 'Abrir en la app';
     const sd = fix ? sedeOf(S, fix, cfg) : null, where = sd && ['avail', 'availRem', 'lineup'].includes(type) ? { lines: [`Dónde: ${sd.name}${sd.txt ? ', ' + sd.txt : ''}`], links: [{ t: 'Cómo llegar (Google Maps)', url: sd.url }] } : {};
     const r = await deliver(A, x => db.doc(P(x)), pids, { title, body: text, url: base + url, tag: type === 'custom' ? `custom-${Date.now()}` : `${type}-${k}`, cta, ...where },
-      { email: withEmail, team: US, color: cfg && cfg.colors && cfg.colors.primary, names });
-    return res.status(200).json({ recipients: r.recipients, reached: r.push, sent: r.push, email: r.email, none: r.none });
+      { email: withEmail, team: US, color: cfg && cfg.colors && cfg.colors.primary, names, wa: { club: clubId || '', season } });
+    return res.status(200).json({ recipients: r.recipients, reached: r.push, sent: r.push, whatsapp: r.whatsapp, email: r.email, none: r.none });
   } catch (e) {
     return sendErr(res, e);
   }

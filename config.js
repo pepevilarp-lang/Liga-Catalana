@@ -21,3 +21,8 @@ window.DX_ANALYTICS = {
   // Nombre de pantalla sin ids: "jugador-pepe-vilar" -> "jugador", "jornada-10" -> "jornada"
   screenOf: h => h.replace(/^(jugador|informe|doc|club-doc|club-equipo|disponibilidad|encuesta|mvp|jornada|rival|scout|gestion-\w+)-.*$/, "$1")
 };
+
+// Avisos por WhatsApp (WhatsApp Business Platform). Ponlo a true cuando estén en Vercel WA_TOKEN, WA_PHONE_ID,
+// WA_APP_SECRET y WA_VERIFY_TOKEN y Meta haya aprobado las plantillas (ver docs/WHATSAPP.md): entonces cada jugador
+// verá en «Yo» la casilla para recibirlos.
+window.LC_WHATSAPP = false;

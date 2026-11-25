@@ -290,7 +290,7 @@ let profiles={}, installEvt=null, pushState=null, myVotes={}, mvpVotes={}, mvpSu
 let canPrivate=false;   // datos privados (respuestas individuales, comentarios, quién votó a quién): solo administradores y capitanes marcados
 const teamMode = () => S.rules?.teamManage !== false;
 function updRoles(){ isCaptain=!!(me && (S.captains||[]).includes(me)); canPrivate=isAdmin||isCaptain; canManage=canPrivate || isManager || (teamMode() && !!me && (!S.memberIds?.length || S.memberIds.includes(me))); return canManage; }
-let claims={}, avail={}, picks={}, ballots={}, myBallot=null, notes={}, photos={}, phones={}, meta=null;
+let claims={}, avail={}, picks={}, ballots={}, myBallot=null, notes={}, photos={}, phones={}, meta=null, waOptIn=false;
 let subs=[], mineSub=null;
 const ui = { ligaAll:false, statsTab:'equipo', rankFilter:'season', sortKey:'w', cmpA:null, cmpB:null, adminTab:'jornada', jTab:'disp', compose:null, poster:null, adminJ:null, survey:null, pendingRender:false, revealed:{} };
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
@@ -1207,7 +1207,8 @@ function vMiFicha(){
             <p class="muted small">Desde el móvil puedes hacerte una foto en el momento.</p></div></div></section>
       ${FICHA.map(s=>`<section class="fe-card"><h2>${s.sec}</h2><p class="muted small">${s.sub}</p>${s.fields.map(field).join('')}</section>`).join('')}
       <section class="fe-card"><h2>Tu teléfono</h2><p class="muted small">Privado: solo lo usa el equipo para avisarte por WhatsApp si falta tu respuesta. No se muestra en tu perfil.</p>
-        <div class="fe-f"><label class="fe-l" for="fe-phone"><span>📱</span>Móvil</label><input id="fe-phone" data-fe-phone type="tel" value="${esc(ui.fe.phone)}" placeholder="+34 600 000 000"></div></section>
+        <div class="fe-f"><label class="fe-l" for="fe-phone"><span>📱</span>Móvil</label><input id="fe-phone" data-fe-phone type="tel" value="${esc(ui.fe.phone)}" placeholder="+34 600 000 000"></div>
+        ${window.LC_WHATSAPP? `<label class="fe-wa"><input type="checkbox" data-act="wa-optin" ${waOptIn?'checked':''} ${ui.fe.phone.trim()?'':'disabled'}><span><b>Recibir los avisos por WhatsApp</b><small>Disponibilidad con botones «Puedo / No puedo», convocatoria y cambios de horario, desde el número oficial de Lliga Catalana. Lo puedes quitar cuando quieras.</small></span></label>` : ''}</section>
     </div></div>
     <div class="fe-bar"><span id="fe-status" class="fe-status">${ui.fe.dirty?'Guardando…':'Todo guardado'}</span><a class="btn sm" href="#jugador-${esc(me)}">Ver cómo queda</a></div></div>`;
 }
@@ -2149,7 +2150,7 @@ function vClubEquipos(){
         <span class="cc-res">${me_.pj? me_.pos+'º' : '–'}<small> ${me_.pts||0} pts</small></span><span class="cc-meta">${r.n} jugadores. Eliminatorias ${ts.tw}-${ts.tl}, partidos ${ts.rw}-${ts.rl}.</span><span class="cc-badges"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span>${autoBadges(d)}</span></a>`; }).join('')}</div>`;
   const table=`<table class="eqtable"><thead><tr>${th('name','Equipo')}${th('cat','Categoría')}<th>Capitán</th>${th('n','Jugadores')}${th('next','Próxima jornada')}${th('act','Actividad')}</tr></thead><tbody>
     ${rows.map(r=>`<tr data-href="#club-equipo-${esc(r.t.id)}"><td data-l="Equipo"><a href="#club-equipo-${esc(r.t.id)}"><b>${esc(r.t.name)}</b></a></td><td data-l="Categoría">${esc(teamCat(r.t))||'–'}</td><td data-l="Capitán">${esc(r.caps)||'<span class="muted">Sin asignar</span>'}</td><td data-l="Jugadores">${r.n}</td><td data-l="Próxima jornada">${esc(r.nextTxt)}</td><td data-l="Actividad"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></td></tr>`).join('')}</tbody></table>`;
-  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del ${esc(CLUB.medium)} en la Lliga Catalana, temporada ${esc(viewSeason)}.</p><a class="btn brass" href="#club-fct" data-act="fct-new-open" style="margin-top:12px">Dar de alta un equipo</a></div>
+  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del ${esc(CLUB.medium)} en la Lliga Catalana, temporada ${esc(viewSeason)}.</p><a class="btn brass" href="#club-fct" data-act="fct-find" style="margin-top:12px">Dar de alta equipos</a></div>
     <section class="sec">${filters}<div style="margin-top:12px">${view==='table'? table : cards}</div></section>${fctHero()}</div>`;
 }
 
@@ -3190,7 +3191,9 @@ const FCT_CATS=['Absoluto','Júnior','Cadete','Infantil','+25','+30','+35','+40'
 function fctGroupFrom(v){ const t=String(v||'').trim(); if(/^\d{3,7}$/.test(t)) return +t; const m=/(?:grupo|codigo|group)[^0-9]{0,4}(\d{3,7})/i.exec(t)||/(\d{4,7})(?!.*\d{4,7})/.exec(t); return m? +m[1] : 0; }
 function fctNewPanel(){ ensureFctCss(); const N=ui.fctNew, f=ui.fctNewForm||{};
   if(N) return `<section class="sec"><div class="fnew">${fctNewProgress(N)}</div></section>`;
-  if(!ui.fctNewOpen) return `<section class="sec"><div class="fnew fnew-c"><div><h2>Dar de alta un equipo</h2><p class="muted small">Con el código de grupo de la FCT, la app trae calendario, resultados, plantilla y actas.</p></div><button class="btn brass" data-act="fct-new-open">Dar de alta un equipo</button></div></section>`;
+  if(ui.fctBulk) return `<section class="sec">${fctBulkView()}</section>`;
+  if(ui.fctFind) return `<section class="sec">${fctFindView()}</section>`;
+  if(!ui.fctNewOpen) return `<section class="sec"><div class="fnew fnew-c"><div><h2>Dar de alta equipos</h2><p class="muted small">La app busca los equipos del club en la Lliga Catalana de la FCT y trae su calendario, resultados, plantilla y actas.</p></div><div class="row"><button class="btn brass" data-act="fct-find">Buscar los equipos del club</button><button class="btn ghost" data-act="fct-new-open">Con el código de grupo</button></div></div></section>`;
   const g=f.gender||'Masculino', L=f.letter??'A';
   return `<section class="sec"><div class="fnew"><div class="sec-h"><h2>Dar de alta un equipo</h2><button class="btn ghost sm" data-act="fct-new-close">Cancelar</button></div>
     <p class="muted small" style="margin:0 0 14px">El código de grupo está en el portal de la Federació (Lliga Catalana → categoría → grupo). También puedes pegar el enlace del grupo.</p>
@@ -3222,28 +3225,62 @@ function fctNewProgress(N){ const t=clubTeams().find(x=>x.id===N.tid)||{name:N.n
     ${step(true,'Equipo creado', esc(teamCat(t))+(N.group? ', grupo FCT '+N.group : ''))}
     ${step(N.state==='sync'? null : N.state==='error'? false : true, N.state==='sync'? 'Consultando la Federació…' : 'Datos de la Federació', N.state==='sync'? 'Calendario, resultados, plantilla y actas' : x.season? fctSummary(t,x).replace(/^[^:]+:\s*/,'') : '')}
     ${step(N.state==='done'&&d? true : N.state==='error'? false : null, N.state==='done'? 'Estadísticas al día' : 'Estadísticas y clasificación')}</ol>${body}`; }
+// Crea un equipo con su temporada y lo sincroniza con la FCT. Devuelve {tid, name, state:'done'|'error', res, msg}
+async function fctCreateTeam({cat,gender,letter,group,team,division,name}){
+  const auto=fctNewName({cat,gender,letter}); name=(name||'').trim()||auto.name; const short=auto.short||name;
+  const taken=clubTeams().find(t=>normTxt(t.name)===normTxt(name)||normTxt(t.short)===normTxt(short));
+  if(taken) return {name, state:'error', msg:`Ya hay un equipo «${taken.short||taken.name}» en el club`};
+  let id=slug(short)||'equipo'; while(clubTeams().some(t=>t.id===id) || id===POLO) id+='-2';
+  try{
+    await saveMeta({teams:[...clubTeams(),{id,name,short,cat,gender}], removedTeams:(meta?.removedTeams||[]).filter(x=>x!==id)});
+    const sid=docIdFor(id,viewSeason); FCT_GROUPS[sid]=group;
+    const seed=emptyTeamSeed(id); seed.comp={...seed.comp, name, group:teamCat({cat,gender})+(division? ', '+division : ''), fctGroup:group, letter, cat, ...(team? {fctTeam:team} : {}), ...(division? {division} : {})};
+    await B.set('seasons/'+sid,{...seed, seasonId:viewSeason, teamId:id, memberIds:[]});
+    clubKey=''; ensureClubSubs();
+    if(B.mode!=='firebase') return {tid:id, name, group, state:'error', msg:'Equipo creado. La sincronización con la FCT funciona en la app publicada, no en esta vista previa.'};
+    const x=await fctSyncTeam(id,true);
+    if(!x || x.error || x.skipped) return {tid:id, name, group, state:'error', res:x, msg: !x? 'No se ha podido consultar la FCT. Vuelve a intentarlo.' : x.skipped==='grupo-vacio'? `La FCT no devuelve partidos para el grupo ${group}: revisa el código.` : x.error? 'La FCT ha respondido con un error: '+x.error : 'No se ha sincronizado: '+x.skipped};
+    return {tid:id, name, group, state:'done', res:x};
+  }catch(e){ return {tid:id, name, group, state:'error', msg:'No se ha podido crear el equipo: '+(e?.message||e)}; }
+}
 async function fctNewTeam(){
   const v=id=>document.getElementById(id)?.value??'', cat=v('fn-cat'), gender=v('fn-gender'), letter=v('fn-letter'), group=fctGroupFrom(v('fn-group'));
   ui.fctNewForm={cat,gender,letter,group:v('fn-group'),name:v('fn-name')};
   if(!(group>0)) return toast('Escribe el código del grupo de la FCT (un número)');
-  const auto=fctNewName({cat,gender,letter}), name=v('fn-name').trim()||auto.name, short=auto.short||name;
-  const taken=clubTeams().find(t=>normTxt(t.name)===normTxt(name)||normTxt(t.short)===normTxt(short));
-  if(taken) return toast(`Ya hay un equipo «${taken.short||taken.name}» en el club`);
-  let id=slug(short)||'equipo'; while(clubTeams().some(t=>t.id===id) || id===POLO) id+='-2';
-  ui.fctNew={tid:id, name, group, state:'sync'}; ui.fctNewOpen=false; renderQuiet();
-  try{
-    await saveMeta({teams:[...clubTeams(),{id,name,short,cat,gender}], removedTeams:(meta?.removedTeams||[]).filter(x=>x!==id)});
-    const sid=docIdFor(id,viewSeason); FCT_GROUPS[sid]=group;
-    const seed=emptyTeamSeed(id); seed.comp={...seed.comp, name, group:teamCat({cat,gender}), fctGroup:group, letter, cat};
-    await B.set('seasons/'+sid,{...seed, seasonId:viewSeason, teamId:id, memberIds:[]});
-    clubKey=''; ensureClubSubs();
-    if(B.mode!=='firebase'){ ui.fctNew={...ui.fctNew, state:'error', msg:'Equipo creado. La sincronización con la FCT funciona en la app publicada, no en esta vista previa.'}; return renderQuiet(); }
-    const x=await fctSyncTeam(id,true);
-    if(!x || x.error || x.skipped){ ui.fctNew={...ui.fctNew, state:'error', res:x, msg: !x? 'No se ha podido consultar la FCT. Vuelve a intentarlo.' : x.skipped==='grupo-vacio'? `La FCT no devuelve partidos para el grupo ${group}: revisa el código.` : x.error? 'La FCT ha respondido con un error: '+x.error : 'No se ha sincronizado: '+x.skipped}; return renderQuiet(); }
-    ui.fctNew={...ui.fctNew, state:'done', res:x}; renderQuiet();
-    try{ confetti(innerWidth/2,innerHeight/3,60); }catch(e){}
-  }catch(e){ ui.fctNew={...ui.fctNew, state:'error', msg:'No se ha podido crear el equipo: '+(e?.message||e)}; renderQuiet(); }
+  const auto=fctNewName({cat,gender,letter}), name=v('fn-name').trim()||auto.name;
+  ui.fctNew={tid:'', name, group, state:'sync'}; ui.fctNewOpen=false; renderQuiet();
+  const r=await fctCreateTeam({cat,gender,letter,group,name});
+  if(!r.tid){ ui.fctNew=null; ui.fctNewOpen=true; renderQuiet(); return toast(r.msg); }
+  ui.fctNew={...r}; renderQuiet(); if(r.state==='done') try{ confetti(innerWidth/2,innerHeight/3,60); }catch(e){}
 }
+// Buscar en la FCT los equipos del club en la Lliga de esta temporada y elegir cuáles dar de alta
+async function fctFind(){
+  if(B.mode!=='firebase'){ ui.fctFind={state:'error', msg:'La búsqueda en la FCT funciona en la app publicada, no en esta vista previa.'}; return renderQuiet(); }
+  ui.fctFind={state:'loading'}; ui.fctNew=null; ui.fctNewOpen=false; renderQuiet();
+  try{ const tok=await B.idToken(); const r=await fetch('/api/fct-sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok,'X-Club':CLUB.id},body:JSON.stringify({action:'fct-discover',season:viewSeason})});
+    const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||('error '+r.status));
+    const teams=(d.teams||[]).map(t=>({...t, key:t.group+'-'+t.team, label:fctNewName(t).name}));
+    ui.fctFind={state:'list', teams, sel:new Set(teams.filter(t=>!t.have).map(t=>t.key)), club:d.club};
+  }catch(e){ ui.fctFind={state:'error', msg:'No se ha podido consultar la FCT: '+(e?.message||e)}; }
+  renderQuiet(); }
+async function fctBulkAdd(){ const F=ui.fctFind; if(!F?.teams) return; const pick=F.teams.filter(t=>F.sel.has(t.key)&&!t.have); if(!pick.length) return toast('Marca al menos un equipo');
+  ui.fctBulk={items:pick.map(t=>({key:t.key, label:t.label, division:t.division, state:'wait'}))}; ui.fctFind=null; renderQuiet();
+  for(const [i,t] of pick.entries()){ const it=ui.fctBulk.items[i]; it.state='sync'; renderQuiet();
+    const r=await fctCreateTeam(t); Object.assign(it,r); renderQuiet(); }
+  if(pick.length===1 && ui.fctBulk.items[0].tid){ ui.fctNew={...ui.fctBulk.items[0]}; ui.fctBulk=null; renderQuiet(); }
+  if(ui.fctBulk?.items.some(x=>x.state==='done')||ui.fctNew?.state==='done') try{ confetti(innerWidth/2,innerHeight/3,70); }catch(e){} }
+function fctFindView(){ const F=ui.fctFind;
+  if(F.state==='loading') return `<div class="fnew"><div class="fnew-load"><i></i><div><b>Buscando los equipos del ${esc(CLUB.medium)} en la Federació…</b><small>Lliga Catalana ${esc(viewSeason)}, todas las categorías</small></div></div></div>`;
+  if(F.state==='error') return `<div class="fnew"><p class="fc-note">${esc(F.msg)}</p><div class="row" style="margin-top:10px"><button class="btn brass" data-act="fct-find">Volver a intentarlo</button><button class="btn ghost" data-act="fct-new-open">Con el código de grupo</button><button class="btn ghost" data-act="fct-new-close">Cerrar</button></div></div>`;
+  const avail=F.teams.filter(t=>!t.have), n=F.teams.filter(t=>F.sel.has(t.key)&&!t.have).length;
+  return `<div class="fnew"><div class="sec-h"><h2>${F.teams.length} equipos del club en la FCT</h2><button class="btn ghost sm" data-act="fct-new-close">Cerrar</button></div>
+    <p class="muted small" style="margin:0 0 12px">Marca los que quieras dar de alta. La app trae de cada uno su calendario, resultados, plantilla y actas.</p>
+    ${avail.length>1? `<label class="fpick-all"><input type="checkbox" data-act="fct-pick-all" ${n===avail.length?'checked':''}> Marcar todos</label>` : ''}
+    <ul class="fpick">${F.teams.map(t=>`<li class="${t.have?'have':''}"><label><input type="checkbox" data-act="fct-pick" data-k="${esc(t.key)}" ${t.have?'disabled':F.sel.has(t.key)?'checked':''}><span class="fp-n"><b>${esc(t.label)}</b><small>${esc(t.division||'')}${t.division?' · ':''}grupo ${t.group}</small></span>${t.have? `<span class="fp-tag">Ya en la app${t.have!==t.label? ': '+esc(t.have) : ''}</span>` : ''}</label></li>`).join('')}</ul>
+    <div class="row" style="margin-top:14px"><button class="btn brass" data-act="fct-bulk" ${n?'':'disabled'}>${n? `Dar de alta ${n===1?'1 equipo':n+' equipos'}` : 'Marca algún equipo'}</button><button class="btn ghost" data-act="fct-new-open">Con el código de grupo</button></div></div>`; }
+function fctBulkView(){ const B_=ui.fctBulk, done=B_.items.every(x=>x.state==='done'||x.state==='error');
+  return `<div class="fnew"><div class="sec-h"><h2>${done? 'Equipos dados de alta' : 'Dando de alta los equipos…'}</h2>${done? '<button class="btn ghost sm" data-act="fct-new-close">Cerrar</button>' : ''}</div>
+    <ol class="fnew-steps">${B_.items.map(x=>{ const t=clubTeams().find(c=>c.id===x.tid); return `<li class="${x.state==='done'?'ok':x.state==='error'?'ko':x.state==='sync'?'run':'wait'}"><i></i><span><b>${esc(x.label)}</b><small>${x.state==='wait'? 'En cola' : x.state==='sync'? 'Consultando la Federació…' : x.state==='error'? esc(x.msg||'Error') : esc(fctSummary(t||{short:x.label},x.res||{}).replace(/^[^:]+:\s*/,''))}</small></span>${x.state==='done'? `<button class="btn ghost sm" data-act="team-open" data-t="${esc(x.tid)}">Abrir</button>` : ''}</li>`; }).join('')}</ol></div>`; }
 // Eliminar un equipo: su temporada con todo lo que contiene y su sitio en la lista del club (lo hace el servidor)
 async function teamDelete(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t||tid===MAIN_TEAM) return;
   const typed=prompt(`Se eliminará el equipo «${t.name}» con su calendario, plantilla, resultados, disponibilidad, encuestas y documentos de esta temporada. No se puede deshacer.\n\nPara confirmarlo, escribe: ${t.short}`);
@@ -3273,6 +3310,12 @@ const FCT_CSS=`
 .fnew-j{list-style:none;margin:0;padding:0;display:grid;gap:6px}.fnew-j li{display:grid;grid-template-columns:44px 1fr auto 120px;gap:10px;align-items:center;padding:8px 12px;border-radius:12px;background:var(--bg2,#f3f4f0)}
 .fnew-j .fj{font-weight:800;color:var(--muted,#5b6b63)}.fnew-j b.w{color:#2E8B57}.fnew-j b.l{color:#C8553D}.fnew-j small{color:var(--muted,#5b6b63);text-align:right}
 .btn.danger{color:#B3412B;border-color:#E3B5A8}
+.fnew-load{display:flex;gap:14px;align-items:center;padding:6px 0}.fnew-load i{flex:none;width:26px;height:26px;border-radius:50%;border:3px solid #d9ded8;border-top-color:#94722A;animation:fnspin .8s linear infinite}.fnew-load small{display:block;color:var(--muted,#5b6b63)}
+.fpick{list-style:none;margin:0;padding:0;display:grid;gap:6px}.fpick label{display:grid;grid-template-columns:22px 1fr auto;gap:12px;align-items:center;padding:10px 14px;border-radius:12px;background:var(--bg2,#f3f4f0);cursor:pointer;transition:background .15s}
+.fpick label:hover{background:#eceee7}.fpick input{width:18px;height:18px;accent-color:#94722A}.fpick small{display:block;color:var(--muted,#5b6b63);font-size:.8rem}.fpick .have label{opacity:.6;cursor:default}
+.fp-tag{font-size:.75rem;font-weight:700;color:#2E8B57;background:#e3f1e8;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.fpick-all{display:flex;gap:10px;align-items:center;font-weight:700;font-size:.86rem;margin:0 0 8px 14px}.fpick-all input{width:18px;height:18px;accent-color:#94722A}
+.fnew-steps .wait i{background:transparent;border:2px dashed #cfd5cd}.fnew-steps li .btn{margin-left:auto}
 @media (max-width:720px){.fnew-grid{grid-template-columns:1fr 1fr}.fnew-grid .fn-wide{grid-column:span 2}.fnew-kpis{grid-template-columns:1fr 1fr}.fnew-j li{grid-template-columns:40px 1fr auto}.fnew-j small{display:none}}
 .fctc{display:grid;gap:10px}
 .fctc-row{display:grid;grid-template-columns:minmax(160px,1.2fr) 2fr auto;gap:12px 16px;align-items:center;padding:14px 16px;border-radius:18px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df);box-shadow:inset 4px 0 0 var(--line,#e3e6df)}
@@ -3434,6 +3477,7 @@ function render(){
   if(authReady || !app.querySelector('.acc-boot')) app.innerHTML=`<div class="page">${html}</div>`;   // el indicador de arranque no se repinta (la animación no se reinicia)
   app.dataset.ok='1';
   document.querySelectorAll('[data-nav]').forEach(a=>{ if(a.dataset.nav===nav) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+  document.querySelectorAll('.tabbar a[data-nav], .topnav a[data-nav]').forEach(a=>{ if(!a.querySelector('.tp')) a.insertAdjacentHTML('afterbegin','<i class="tp" aria-hidden="true"></i>'); });
   if(authUser?.uid && authReady) dxIdentify(authUser.uid,{club:CLUB.id||'', equipo:teamId||'', rol: isAdmin? 'admin' : isManager? 'gestor' : isCaptain? 'capitan' : me? 'jugador' : 'sin-ficha', jugador: me? (player(me)?.name||me) : ''});
   const al=$('.adminlink'); al.classList.toggle('on',canManage);
   if(!al.querySelector('.al-t')){ al.insertAdjacentHTML('beforeend','<span class="al-t">Gestión</span><span class="al-dot" aria-hidden="true"></span>'); al.setAttribute('aria-label','Gestión'); al.title='Gestión'; }
@@ -3463,7 +3507,22 @@ function renderQuiet(){ // re-render sin repetir la animación de entrada
 }
 document.addEventListener('focusout',()=>setTimeout(()=>{ if(ui.pendingRender&&!editing()){ ui.pendingRender=false; renderQuiet(); } },150));
 let lastRoute=null;
-window.addEventListener('hashchange',()=>{ if(ui.fe?.dirty) feFlush(); ui.survey=null; ui.avDraft=null; ui.compose=ui.composeAfter||null; ui.composeAfter=null; if(ui.compose) setTimeout(()=>$('#compose-text')?.scrollIntoView({behavior:'smooth',block:'center'}),250); closeSheet(); stageClose(); closePosterModal(); render(); if(route()!==lastRoute) scrollTo(0,0); lastRoute=route(); });
+/* Transiciones entre pantallas (View Transitions API, donde exista): de pestaña a pestaña la página se desliza hacia
+   el lado de la pestaña; al entrar en un detalle (una jornada, un jugador…) entra desde la derecha y al volver, al revés.
+   La barra de arriba y la de pestañas no se mueven y la marca de la pestaña activa se desliza hasta la nueva.
+   Sin la API, o con «reducir movimiento», se pinta como siempre. */
+const NAV_TABS=['inicio','clasificacion','calendario','liga','equipo','stats','yo','admin','club','club-equipos','club-fct','club-docs','club-usuarios','club-resumen','club-ajustes'];
+const navDepth=r=> !r||NAV_TABS.includes(r)||r==='votar'? 0 : /^scout-/.test(r)? 2 : 1;
+const navTab=r=>{ const i=NAV_TABS.indexOf(r); if(i>=0) return i; const b=/^(jornada|rival|scout)-/.test(r)? 'calendario' : /^jugador-/.test(r)? 'equipo' : /^(doc|docs)/.test(r)? 'admin' : /^club/.test(r)? 'club' : 'yo'; return NAV_TABS.indexOf(b); };
+function navTo(paint){
+  const from=lastRoute, to=route(), html=document.documentElement;
+  if(!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || from==null || from===to || document.body.classList.contains('gate')) return paint();
+  const d=navDepth(to)-navDepth(from), t=navTab(to)-navTab(from);
+  html.dataset.vt = d>0? 'fwd' : d<0? 'back' : t>0? 'right' : t<0? 'left' : 'fade';
+  try{ const vt=document.startViewTransition(()=>{ paint(); }); vt.finished.finally(()=>{ delete html.dataset.vt; }); }
+  catch(e){ delete html.dataset.vt; paint(); }
+}
+window.addEventListener('hashchange',()=>{ if(ui.fe?.dirty) feFlush(); ui.survey=null; ui.avDraft=null; ui.compose=ui.composeAfter||null; ui.composeAfter=null; if(ui.compose) setTimeout(()=>$('#compose-text')?.scrollIntoView({behavior:'smooth',block:'center'}),250); closeSheet(); stageClose(); closePosterModal(); navTo(()=>{ render(); if(route()!==lastRoute) scrollTo(0,0); lastRoute=route(); }); });
 function toast(m){ const t=$('#toast'); if(!t) return; t.textContent=m; t.classList.add('on'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('on'),2600); }
 
 /* ===================== ESCRITURA ===================== */
@@ -3531,7 +3590,7 @@ document.addEventListener('click', async e=>{
   else if(a==='cmp'){ ui.cmpA=el.dataset.id; ui.statsTab='jugadores'; }
   else if(a==='admin-tab' && el.dataset.v!=='docs-go'){ ui.adminTab=el.dataset.v; render(); }
   else if(a==='avail'){ if(!me) return; const k=jid(+el.dataset.j); const cur=avail[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:el.dataset.v},at:Date.now()};
-    avail[me]=next; renderQuiet(); if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
+    avail[me]=next; renderQuiet(); try{ navigator.vibrate?.(el.dataset.v==='yes'? [10,40,14] : 10); }catch(e){} if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
     await safe(()=>B.set(SEASON_PATH+'/avail/'+me,next), el.dataset.v==='yes'?'Apuntado: juegas':'Anotado: no puedes'); }
   else if(a==='pick'){ if(!me) return; const k=jid(+el.dataset.j), cur=picks[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:{p:+el.dataset.p,r:+el.dataset.r}},at:Date.now()}; picks[me]=next; renderQuiet(); await safe(()=>B.set(SEASON_PATH+'/picks/'+me,next),'Pronóstico guardado'); }
   else if(a==='survey-start'){ const j=+el.dataset.j; ui.survey={j,step:0,a:{...(myBallot?.j?.[jid(j)]?.a||{})},xs:ixSteps(j),x:ixInit(j),onlyX:el.dataset.only==='1'}; render(); scrollTo({top:0}); }
@@ -3611,8 +3670,12 @@ document.addEventListener('click', async e=>{
   else if(a==='cteams-save'){ const teams=clubTeams().map(t=>{ const row=document.querySelector(`#ctlist [data-id="${t.id}"]`); const g=n=>row?.querySelector(`[name=${n}]`)?.value.trim(); return {...t, name:g('name')||t.name, short:g('short')||t.short, cat:g('cat')||'', gender:g('gender')||''}; }); await saveMeta({teams},'Equipos guardados'); }
   else if(a==='cteam-add'){ const name=$('#ct-name').value.trim(), short=$('#ct-short').value.trim()||name; if(!name) return toast('Escribe el nombre del equipo'); let id=slug(short); while(clubTeams().some(t=>t.id===id)) id+='-2'; await saveMeta({teams:[...clubTeams(),{id,name,short,cat:''}], removedTeams:(meta?.removedTeams||[]).filter(x=>x!==id)},'Equipo añadido: '+short); clubKey=''; }
   else if(a==='cteam-del'){ teamDelete(el.dataset.t); }
-  else if(a==='fct-new-open'){ ui.fctNewOpen=true; ui.fctNew=null; if(route()==='club-fct') renderQuiet(); }
-  else if(a==='fct-new-close'){ ui.fctNewOpen=false; ui.fctNew=null; renderQuiet(); }
+  else if(a==='fct-new-open'){ ui.fctNewOpen=true; ui.fctNew=null; ui.fctFind=null; ui.fctBulk=null; if(route()==='club-fct') renderQuiet(); }
+  else if(a==='fct-new-close'){ ui.fctNewOpen=false; ui.fctNew=null; ui.fctFind=null; ui.fctBulk=null; renderQuiet(); }
+  else if(a==='fct-find'){ if(route()!=='club-fct') location.hash='club-fct'; fctFind(); }
+  else if(a==='fct-pick'){ const F=ui.fctFind; if(F?.sel){ el.checked? F.sel.add(el.dataset.k) : F.sel.delete(el.dataset.k); renderQuiet(); } }
+  else if(a==='fct-pick-all'){ const F=ui.fctFind; if(F?.teams){ F.sel=new Set(el.checked? F.teams.filter(t=>!t.have).map(t=>t.key) : []); renderQuiet(); } }
+  else if(a==='fct-bulk'){ fctBulkAdd(); }
   else if(a==='fct-new-go'){ fctNewTeam(); }
   else if(a==='admin-tab' && el.dataset.v==='docs-go'){ location.hash='docs'; return; }
   else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash='docs'; }
@@ -3655,7 +3718,7 @@ document.addEventListener('click', async e=>{
       p.name=g('name').value.trim()||p.name; p.full=g('full').value.trim()||p.name; p.order=+g('order').value||p.order; p.cat=g('cat').value.trim(); p.pts=+g('pts').value||0; p.active=g('active').checked; p.captain=caps.includes(p.id);
       const v=g('phone').value.trim(); if((ph[p.id]||'')!==v){ phChanged.push([p.id,v]); if(v) ph[p.id]=v; else delete ph[p.id]; } });
     if(!canClub()) caps=caps.filter(id=>S.players.some(p=>p.id===id && p.active!==false));
-    const capOld=S.captains||[]; S.captains=caps; if(canClub() || !Array.isArray(S.officialCaptains)) S.officialCaptains=offNew; phones=ph; phChanged.forEach(([pid,v])=>safe(()=> v? B.set('phones/'+pid,{phone:v,at:Date.now()}) : B.del('phones/'+pid)));
+    const capOld=S.captains||[]; S.captains=caps; if(canClub() || !Array.isArray(S.officialCaptains)) S.officialCaptains=offNew; phones=ph; phChanged.forEach(([pid,v])=>safe(()=> v? B.merge('phones/'+pid,{phone:v,at:Date.now()}) : B.del('phones/'+pid)));
     saveState('Plantilla guardada');
     if(offNew.join()!==offOld.join()) accAudit('capitanes-oficiales', {team:teamId, antes:offOld, ahora:offNew});
     if(caps.join()!==capOld.join()){ accAudit(canClub()? 'capitanes' : 'capitan-adicional', {team:teamId, antes:capOld, ahora:caps}); setTimeout(()=>accSyncCaptainPids(true),1500); } }
@@ -3757,7 +3820,8 @@ document.addEventListener('click', async e=>{
   else if(a==='install'){ if(!installEvt) return; installEvt.prompt(); const c=await installEvt.userChoice.catch(()=>null); installEvt=null; renderQuiet(); if(c?.outcome==='accepted') toast('Instalando…'); }
   else if(a==='push-on') enablePush();
   else if(a==='push-test'){ try{ const reg=await navigator.serviceWorker.ready; reg.showNotification(teamLabel(),{body:'Así te llegarán los avisos del equipo 🎾',icon:'/icons/icon-192.png',badge:'/icons/badge-96.png'}); }catch(e){ toast('No se ha podido mostrar la prueba'); } }
-  else if(a==='phone-save'){ const v=$('#my-phone').value.trim(); phones[me]=v; await safe(()=> v? B.set('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me),'Teléfono guardado'); }
+  else if(a==='wa-optin'){ if(!me) return; const on=el.checked, v=(phones[me]||'').trim(); if(on && !v){ el.checked=false; return toast('Escribe primero tu móvil'); } waOptIn=on; await safe(()=>B.merge('phones/'+me, on? {phone:v, wa:true, waAt:Date.now()} : {wa:false, waOffAt:Date.now()}), on? 'Recibirás los avisos por WhatsApp' : 'Ya no recibirás avisos por WhatsApp'); renderQuiet(); }
+  else if(a==='phone-save'){ const v=$('#my-phone').value.trim(); phones[me]=v; await safe(()=> v? B.merge('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me),'Teléfono guardado'); }
   else if(a==='tf-save'){ const o={}; document.querySelectorAll('[data-tf]').forEach(x=>{ const v=x.value.trim(); if(v) o[x.dataset.tf]=v; }); o.at=Date.now(); profiles[me]=o; await safe(()=>B.set('profiles/'+me,o),'Ficha guardada'); renderQuiet(); }
   else if(a==='notify'){ notify(el.dataset.type,+el.dataset.j); }
   else if(a==='demo-reset'){ if(confirm('¿Borrar todos los datos de la vista previa?')){ await B.reset(); location.reload(); } }
@@ -3794,7 +3858,7 @@ document.addEventListener('change', e=>{ const el=e.target, a=el.dataset?.act;
   else if(a==='cmp-a'){ ui.cmpA=el.value; renderQuiet(); } else if(a==='cmp-b'){ ui.cmpB=el.value; renderQuiet(); } });
 document.addEventListener('input', e=>{ const el=e.target;
   if(el.dataset?.fe && ui.fe){ ui.fe.draft[el.dataset.fe]=el.value; clearTimeout(ui.fe.pt); ui.fe.pt=setTimeout(feRefresh,180); feQueue(); }
-  if(el.hasAttribute?.('data-fe-phone') && ui.fe && me){ ui.fe.phone=el.value; clearTimeout(ui.fe.ft); feStatus('Guardando…','saving'); ui.fe.ft=setTimeout(async()=>{ const v=ui.fe.phone.trim(); phones[me]=v; try{ await trackWrite(v? B.set('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me)); feStatus('Guardado ✓','ok'); }catch(err){ feStatus('No se ha guardado','ko'); } },900); } if(el.dataset?.act==='ans-text'&&ui.survey) ui.survey.a[el.dataset.q]=el.value; if(el.dataset?.act==='av-text'&&ui.avDraft) ui.avDraft.c=el.value; if(el.id==='compose-text'&&ui.compose) ui.compose.text=el.value; });
+  if(el.hasAttribute?.('data-fe-phone') && ui.fe && me){ ui.fe.phone=el.value; clearTimeout(ui.fe.ft); feStatus('Guardando…','saving'); ui.fe.ft=setTimeout(async()=>{ const v=ui.fe.phone.trim(); phones[me]=v; try{ await trackWrite(v? B.merge('phones/'+me,{phone:v,at:Date.now()}) : B.del('phones/'+me)); feStatus('Guardado ✓','ok'); }catch(err){ feStatus('No se ha guardado','ko'); } },900); } if(el.dataset?.act==='ans-text'&&ui.survey) ui.survey.a[el.dataset.q]=el.value; if(el.dataset?.act==='av-text'&&ui.avDraft) ui.avDraft.c=el.value; if(el.id==='compose-text'&&ui.compose) ui.compose.text=el.value; });
 document.addEventListener('dragover', e=>{ const z=e.target.closest?.('#dropzone'); if(z){ e.preventDefault(); z.classList.add('over'); } });
 document.addEventListener('dragleave', e=>{ const z=e.target.closest?.('#dropzone'); if(z) z.classList.remove('over'); });
 document.addEventListener('drop', e=>{ const z=e.target.closest?.('#dropzone'); if(z){ e.preventDefault(); z.classList.remove('over'); const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) uploadDocs(fs); } });
@@ -3827,7 +3891,7 @@ function subscribeData(){ // se rehace al identificarse o al cambiar de temporad
     updRoles(); subscribePriv(); syncMvpSubs(); softRender(); }));
   dataSubs.push(B.watchColl(SEASON_PATH+'/avail', m=>{ avail=m; softRender(); }));
   if(me){ dataSubs.push(B.watchDoc(SEASON_PATH+'/availNotes/'+me, d=>{ if(!canPrivate){ notes={[me]:d||{}}; softRender(); } }));
-    dataSubs.push(B.watchDoc('phones/'+me, d=>{ if(d?.phone) phones[me]=d.phone; softRender(); })); }
+    dataSubs.push(B.watchDoc('phones/'+me, d=>{ if(d?.phone) phones[me]=d.phone; waOptIn=d?.wa===true; softRender(); })); }
   updRoles(); subscribePriv(); syncMvpSubs(true);
 }
 let mvpCounts={};
