@@ -1654,7 +1654,7 @@ function aCalendario(){
   <section class="sec">${fold('liga-cfg','Configuración de la liga','Competición, código FCT, clubes y clasificación a mano',cfg)}</section>`;
 }
 const currentSeason = () => meta?.current || SEASON_ID;
-const clubTeams = () => { const base=(Array.isArray(meta?.teams) && meta.teams.length)? meta.teams : []; return [...base, ...DEFAULT_CLUB_TEAMS.filter(d=>!base.some(t=>t.id===d.id))].map(t=>({gender:'',...t})); };
+const clubTeams = () => { const base=(Array.isArray(meta?.teams) && meta.teams.length)? meta.teams : [], gone=new Set(meta?.removedTeams||[]); return [...base, ...DEFAULT_CLUB_TEAMS.filter(d=>!base.some(t=>t.id===d.id))].filter(t=>!gone.has(t.id)).map(t=>({gender:'',...t})); };
 const curTeam = () => clubTeams().find(t=>t.id===teamId) || clubTeams()[0];
 const teamLabel = () => curTeam()?.short || CLUB.teamShort;
 const teamCat = t => [t?.cat, (t?.gender||'').toLowerCase()].filter(Boolean).join(' ');
@@ -2149,7 +2149,7 @@ function vClubEquipos(){
         <span class="cc-res">${me_.pj? me_.pos+'º' : '–'}<small> ${me_.pts||0} pts</small></span><span class="cc-meta">${r.n} jugadores. Eliminatorias ${ts.tw}-${ts.tl}, partidos ${ts.rw}-${ts.rl}.</span><span class="cc-badges"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span>${autoBadges(d)}</span></a>`; }).join('')}</div>`;
   const table=`<table class="eqtable"><thead><tr>${th('name','Equipo')}${th('cat','Categoría')}<th>Capitán</th>${th('n','Jugadores')}${th('next','Próxima jornada')}${th('act','Actividad')}</tr></thead><tbody>
     ${rows.map(r=>`<tr data-href="#club-equipo-${esc(r.t.id)}"><td data-l="Equipo"><a href="#club-equipo-${esc(r.t.id)}"><b>${esc(r.t.name)}</b></a></td><td data-l="Categoría">${esc(teamCat(r.t))||'–'}</td><td data-l="Capitán">${esc(r.caps)||'<span class="muted">Sin asignar</span>'}</td><td data-l="Jugadores">${r.n}</td><td data-l="Próxima jornada">${esc(r.nextTxt)}</td><td data-l="Actividad"><span class="ccb act-${r.act}">${esc(r.actTxt)}</span></td></tr>`).join('')}</tbody></table>`;
-  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del ${esc(CLUB.medium)} en la Lliga Catalana, temporada ${esc(viewSeason)}.</p></div>
+  return `<div class="wrap club"><div class="pagehead"><h1>Equipos</h1><p class="lede">Equipos del ${esc(CLUB.medium)} en la Lliga Catalana, temporada ${esc(viewSeason)}.</p><a class="btn brass" href="#club-fct" data-act="fct-new-open" style="margin-top:12px">Dar de alta un equipo</a></div>
     <section class="sec">${filters}<div style="margin-top:12px">${view==='table'? table : cards}</div></section>${fctHero()}</div>`;
 }
 
@@ -2351,7 +2351,7 @@ function vClubAjustes(){
     ${cmSetupPanel()}
     ${cmIdentityPanel()}
     <section class="sec" id="ctlist"><div class="sec-h"><h2>Equipos del club</h2></div><p class="muted small">Cada equipo tiene su propia temporada: calendario, plantilla, resultados, disponibilidad y MVP. Jugadores, fotos y fichas son del club.</p>
-      <div>${teams.map(t=>`<div class="qedit" data-id="${esc(t.id)}" style="grid-template-columns:1fr 110px 1fr 120px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="cat" value="${esc(t.cat||'')}" aria-label="Categoría" placeholder="Categoría"><select name="gender" aria-label="Género"><option value="">Género</option>${['Masculino','Femenino','Mixto'].map(g=>`<option ${t.gender===g?'selected':''}>${g}</option>`).join('')}</select></div>`).join('')}</div>
+      <div>${teams.map(t=>`<div class="qedit" data-id="${esc(t.id)}" style="grid-template-columns:1fr 110px 1fr 120px 92px"><input type="text" name="name" value="${esc(t.name)}" aria-label="Nombre"><input type="text" name="short" value="${esc(t.short)}" aria-label="Nombre corto"><input type="text" name="cat" value="${esc(t.cat||'')}" aria-label="Categoría" placeholder="Categoría"><select name="gender" aria-label="Género"><option value="">Género</option>${['Masculino','Femenino','Mixto'].map(g=>`<option ${t.gender===g?'selected':''}>${g}</option>`).join('')}</select>${t.id===MAIN_TEAM? '<span class="muted small" title="Su temporada es la ruta original de la app">Principal</span>' : `<button class="btn sm ghost danger" data-act="cteam-del" data-t="${esc(t.id)}" ${ui.teamDel===t.id?'disabled':''}>${ui.teamDel===t.id?'Eliminando…':'Eliminar'}</button>`}</div>`).join('')}</div>
       <div class="row" style="margin-top:10px"><button class="btn sm brass" data-act="cteams-save">Guardar equipos</button><input type="text" id="ct-name" placeholder="Nuevo equipo (por ejemplo, Veteranos +35)" style="max-width:280px"><input type="text" id="ct-short" placeholder="Nombre corto" style="max-width:140px"><button class="btn sm ghost" data-act="cteam-add">Añadir equipo</button></div></section>
     ${mgrSec}
     ${autoReportPanel()}
@@ -3161,7 +3161,7 @@ function vClubFct(){
   if(!canClub()) return vClub(); ensureClubSubs();
   const m=meta||{}, al=(m.fctAlerts||{}).on!==false;
   return `<div class="wrap club"><div class="pagehead"><p class="qsec">Gestión deportiva</p><h1>Federació (FCT)</h1><p class="lede">La app se mantiene al día con el portal de la Federació Catalana de Tennis: cada noche y cuando pulsas «Sincronizar».</p></div>
-  ${fctHero(false)}${fctCenter()}
+  ${fctNewPanel()}${fctHero(false)}${fctCenter()}
   <section class="sec"><div class="sec-h"><h2>Qué se sincroniza</h2></div><ul class="fcth-what">
     <li><b>Calendario</b><span>Fechas, horas y aplazamientos de toda la liga. Lo que alguien cambia a mano en la app no se toca; la diferencia queda como aviso.</span></li>
     <li><b>Resultados</b><span>De todos los equipos del grupo. Pasan a oficiales cuando la FCT cierra el acta.</span></li>
@@ -3170,9 +3170,9 @@ function vClubFct(){
   <section class="sec"><div class="sec-h"><h2>Avisos por correo</h2></div><div class="panel">
     <label class="chkline"><input type="checkbox" data-act="fct-alerts" ${al?'checked':''}> <span>Enviar un correo a los gestores cuando la sincronización de la noche encuentre datos que no cuadran o falle</span></label>
     <p class="muted small" style="margin:6px 0 0">${(m.managerEmails||[]).length? 'Se envía a: '+esc(m.managerEmails.join(', ')) : 'Aún no hay gestores con correo: añádelos en Configuración.'}</p></div></section></div>`; }
-async function fctSyncTeam(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t) return null; const info=fctTeamInfo(t);
+async function fctSyncTeam(tid,created){ const t=clubTeams().find(x=>x.id===tid); if(!t) return null; const info=fctTeamInfo(t);
   if(!info.grp){ toast('Pon primero el código del grupo FCT'); return null; }
-  if(!info.d){ await B.set('seasons/'+info.sid,{comp:{name:t.name, fctGroup:info.grp}, teams:[{id:POLO,name:CLUB.short,short:CLUB.teamShort}], fixtures:[], players:[], captains:[], ties:{}, memberIds:[]}).catch(()=>{}); }
+  if(!info.d && !created){ await B.set('seasons/'+info.sid,{comp:{name:t.name, fctGroup:info.grp}, teams:[{id:POLO,name:CLUB.short,short:CLUB.teamShort}], fixtures:[], players:[], captains:[], ties:{}, memberIds:[]}).catch(()=>{}); }
   (ui.fctBusy ||= {})[tid]=1; renderQuiet();
   try{ const tok=await B.idToken(); const r=await fetch('/api/fct-sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({season:info.sid})});
     if(r.status===501||r.status===404){ toast('Falta configurar la sincronización en Vercel (FIREBASE_SERVICE_ACCOUNT)'); return null; }
@@ -3181,7 +3181,99 @@ async function fctSyncTeam(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t)
   }catch(e){ toast(`${t.short||t.name}: sin conexión con el servidor`); return null; }
   finally{ delete ui.fctBusy[tid]; renderQuiet(); } }
 const fctSummary=(t,x)=> !x? '' : x.skipped==='grupo-vacio'? `${t.short||t.name}: la FCT no devuelve partidos para ese grupo; revisa el código` : x.skipped? `${t.short||t.name}: ${x.skipped}` : `${t.short||t.name}: ${x.results||0} resultados, ${x.dates||0} fechas${x.created? ', '+x.created+' partidos nuevos' : ''}${x.roster?.added? ', '+x.roster.added+' jugadores importados' : ''}${x.actas?.loaded?.length? ', actas de las jornadas '+x.actas.loaded.join(', ') : ''}${x.actas?.unmatched?.length? '. '+x.actas.unmatched.length+' jugadores de las actas no están en la plantilla (ver Equipos)' : ''}${(x.diffs||[]).length+(x.dateDiffs||[]).length? ', '+((x.diffs||[]).length+(x.dateDiffs||[]).length)+' por revisar' : ''}`;
+/* ---------- Alta de un equipo desde la FCT (Gestión deportiva → Federació) ----------
+   Un solo paso: nombre, categoría, letra y código de grupo de la FCT. La app crea el equipo y su temporada y
+   trae de la FCT el calendario de todo el grupo, los resultados de las jornadas ya jugadas, la plantilla
+   oficial y las actas del club (quién jugó y con qué marcador): las estadísticas quedan hechas desde el primer momento. */
+const FCT_CATS=['Absoluto','Júnior','Cadete','Infantil','+25','+30','+35','+40','+45','+50','+55','+60','+65','+70','+75','+80'];
+// Código de grupo: el número o un enlace del portal de la FCT que lo contenga
+function fctGroupFrom(v){ const t=String(v||'').trim(); if(/^\d{3,7}$/.test(t)) return +t; const m=/(?:grupo|codigo|group)[^0-9]{0,4}(\d{3,7})/i.exec(t)||/(\d{4,7})(?!.*\d{4,7})/.exec(t); return m? +m[1] : 0; }
+function fctNewPanel(){ ensureFctCss(); const N=ui.fctNew, f=ui.fctNewForm||{};
+  if(N) return `<section class="sec"><div class="fnew">${fctNewProgress(N)}</div></section>`;
+  if(!ui.fctNewOpen) return `<section class="sec"><div class="fnew fnew-c"><div><h2>Dar de alta un equipo</h2><p class="muted small">Con el código de grupo de la FCT, la app trae calendario, resultados, plantilla y actas.</p></div><button class="btn brass" data-act="fct-new-open">Dar de alta un equipo</button></div></section>`;
+  const g=f.gender||'Masculino', L=f.letter??'A';
+  return `<section class="sec"><div class="fnew"><div class="sec-h"><h2>Dar de alta un equipo</h2><button class="btn ghost sm" data-act="fct-new-close">Cancelar</button></div>
+    <p class="muted small" style="margin:0 0 14px">El código de grupo está en el portal de la Federació (Lliga Catalana → categoría → grupo). También puedes pegar el enlace del grupo.</p>
+    <div class="fnew-grid">
+      <label>Categoría<select id="fn-cat">${FCT_CATS.map(c=>`<option ${(f.cat||'Absoluto')===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label>Género<select id="fn-gender">${['Masculino','Femenino','Mixto'].map(x=>`<option ${g===x?'selected':''}>${x}</option>`).join('')}</select></label>
+      <label>Letra del equipo<select id="fn-letter">${['A','B','C','D','E',''].map(x=>`<option value="${x}" ${L===x?'selected':''}>${x||'Sin letra'}</option>`).join('')}</select></label>
+      <label class="fn-wide">Código de grupo FCT<input type="text" inputmode="numeric" id="fn-group" value="${esc(f.group||'')}" placeholder="Por ejemplo, 4583" autocomplete="off"></label>
+      <label class="fn-wide">Nombre del equipo <span class="muted small">(opcional)</span><input type="text" id="fn-name" value="${esc(f.name||'')}" placeholder="Se completa solo: ${esc(fctNewName({cat:f.cat||'Absoluto',gender:g,letter:L}).name)}"></label>
+    </div>
+    <div class="row" style="margin-top:14px"><button class="btn brass" data-act="fct-new-go">Dar de alta y sincronizar con la FCT</button></div></div></section>`; }
+// «+50», «Masculino», «A» → «Veteranos +50 Masculino A» / «+50 A»
+function fctNewName({cat,gender,letter}){ const vet=/^\+\d/.test(cat), name=[vet?'Veteranos '+cat:cat, gender, letter].filter(Boolean).join(' ');
+  const short=[vet? cat : cat==='Absoluto'? (gender==='Femenino'?'Femenino':CLUB.teamShort) : cat, gender==='Femenino'&&cat!=='Absoluto'?'Fem.':'', letter].filter(Boolean).join(' ');
+  return {name, short}; }
+function fctNewProgress(N){ const t=clubTeams().find(x=>x.id===N.tid)||{name:N.name}, d=clubData[N.tid], x=N.res||{};
+  const step=(ok,txt,sub='')=>`<li class="${ok===true?'ok':ok===false?'ko':'run'}"><i></i><span><b>${txt}</b>${sub? `<small>${sub}</small>` : ''}</span></li>`;
+  let body='';
+  if(N.state==='done' && d){ const fx=d.fixtures||[], mine=fx.filter(f=>f.home===POLO||f.away===POLO), played=mine.filter(isPlayed).sort((a,b)=>a.j-b.j), js=fx.map(f=>+f.j), lastJ=js.length? Math.max(...js) : 0;
+    const acts=Object.keys(d.ties||{}).filter(k=>(d.ties[k].rubbers||[]).some(r=>(r.polo||[]).length)).length, players=(d.players||[]).filter(p=>p.active!==false).length;
+    const st=withS(d,()=>standings()), me_=st.find(r=>r.id===POLO)||{}, ts=withS(d,()=>teamStats()), nx=mine.filter(f=>!isPlayed(f)).sort((a,b)=>String(a.date).localeCompare(b.date))[0];
+    body=`<div class="fnew-kpis"><div><b>${lastJ}</b><span>jornadas en el calendario</span></div><div><b>${played.length}</b><span>${played.length===1?'jornada jugada':'jornadas jugadas'}</span></div><div><b>${players}</b><span>jugadores en la plantilla</span></div><div><b>${me_.pj? me_.pos+'º' : '–'}</b><span>${me_.pts||0} puntos en la clasificación</span></div></div>
+      ${played.length? `<ul class="fnew-j">${played.map(f=>{ const p=persp(f), w=p.ps>p.rs; return `<li><span class="fj">J${f.j}</span><span>${esc(withS(d,()=>clubName(p.rival)))}</span><b class="${w?'w':'l'}">${p.ps}-${p.rs}</b><small>${f.status==='official'?'oficial':'provisional'}${d.ties?.['j'+f.j]?.rubbers?.some(r=>(r.polo||[]).length)? ', con acta' : ''}</small></li>`; }).join('')}</ul>` : '<p class="muted small">Aún no se ha jugado ninguna jornada.</p>'}
+      <p class="small" style="margin:12px 0 0">Partidos ${ts.rw}-${ts.rl}${acts? `, ${acts} ${acts===1?'acta cargada':'actas cargadas'} con quién jugó cada partido` : ''}.${nx? ` Próxima jornada: J${nx.j} contra ${esc(withS(d,()=>clubName(persp(nx).rival)))}, ${esc(fdate(nx,{weekday:'long',day:'numeric',month:'long'}))}.` : ''}</p>
+      ${x.actas?.unmatched?.length? `<p class="fc-note">Jugadores de las actas que no están en la plantilla: ${esc(x.actas.unmatched.join(', '))}.</p>` : ''}
+      <div class="row" style="margin-top:14px"><button class="btn brass" data-act="team-open" data-t="${esc(N.tid)}">Abrir la app del equipo</button><a class="btn ghost" href="#club-equipo-${esc(N.tid)}">Ver la ficha del equipo</a><button class="btn ghost" data-act="fct-new-close">Dar de alta otro</button></div>`; }
+  else if(N.state==='error') body=`<p class="fc-note">${esc(N.msg||'No se ha podido sincronizar')}</p><div class="row" style="margin-top:10px"><button class="btn brass" data-act="fct-one" data-tid="${esc(N.tid)}">Volver a intentarlo</button><button class="btn ghost" data-act="fct-new-close">Cerrar</button></div>`;
+  return `<div class="sec-h"><h2>${esc(t.name)}</h2></div><ol class="fnew-steps">
+    ${step(true,'Equipo creado', esc(teamCat(t))+(N.group? ', grupo FCT '+N.group : ''))}
+    ${step(N.state==='sync'? null : N.state==='error'? false : true, N.state==='sync'? 'Consultando la Federació…' : 'Datos de la Federació', N.state==='sync'? 'Calendario, resultados, plantilla y actas' : x.season? fctSummary(t,x).replace(/^[^:]+:\s*/,'') : '')}
+    ${step(N.state==='done'&&d? true : N.state==='error'? false : null, N.state==='done'? 'Estadísticas al día' : 'Estadísticas y clasificación')}</ol>${body}`; }
+async function fctNewTeam(){
+  const v=id=>document.getElementById(id)?.value??'', cat=v('fn-cat'), gender=v('fn-gender'), letter=v('fn-letter'), group=fctGroupFrom(v('fn-group'));
+  ui.fctNewForm={cat,gender,letter,group:v('fn-group'),name:v('fn-name')};
+  if(!(group>0)) return toast('Escribe el código del grupo de la FCT (un número)');
+  const auto=fctNewName({cat,gender,letter}), name=v('fn-name').trim()||auto.name, short=auto.short||name;
+  const taken=clubTeams().find(t=>normTxt(t.name)===normTxt(name)||normTxt(t.short)===normTxt(short));
+  if(taken) return toast(`Ya hay un equipo «${taken.short||taken.name}» en el club`);
+  let id=slug(short)||'equipo'; while(clubTeams().some(t=>t.id===id) || id===POLO) id+='-2';
+  ui.fctNew={tid:id, name, group, state:'sync'}; ui.fctNewOpen=false; renderQuiet();
+  try{
+    await saveMeta({teams:[...clubTeams(),{id,name,short,cat,gender}], removedTeams:(meta?.removedTeams||[]).filter(x=>x!==id)});
+    const sid=docIdFor(id,viewSeason); FCT_GROUPS[sid]=group;
+    const seed=emptyTeamSeed(id); seed.comp={...seed.comp, name, group:teamCat({cat,gender}), fctGroup:group, letter, cat};
+    await B.set('seasons/'+sid,{...seed, seasonId:viewSeason, teamId:id, memberIds:[]});
+    clubKey=''; ensureClubSubs();
+    if(B.mode!=='firebase'){ ui.fctNew={...ui.fctNew, state:'error', msg:'Equipo creado. La sincronización con la FCT funciona en la app publicada, no en esta vista previa.'}; return renderQuiet(); }
+    const x=await fctSyncTeam(id,true);
+    if(!x || x.error || x.skipped){ ui.fctNew={...ui.fctNew, state:'error', res:x, msg: !x? 'No se ha podido consultar la FCT. Vuelve a intentarlo.' : x.skipped==='grupo-vacio'? `La FCT no devuelve partidos para el grupo ${group}: revisa el código.` : x.error? 'La FCT ha respondido con un error: '+x.error : 'No se ha sincronizado: '+x.skipped}; return renderQuiet(); }
+    ui.fctNew={...ui.fctNew, state:'done', res:x}; renderQuiet();
+    try{ confetti(innerWidth/2,innerHeight/3,60); }catch(e){}
+  }catch(e){ ui.fctNew={...ui.fctNew, state:'error', msg:'No se ha podido crear el equipo: '+(e?.message||e)}; renderQuiet(); }
+}
+// Eliminar un equipo: su temporada con todo lo que contiene y su sitio en la lista del club (lo hace el servidor)
+async function teamDelete(tid){ const t=clubTeams().find(x=>x.id===tid); if(!t||tid===MAIN_TEAM) return;
+  const typed=prompt(`Se eliminará el equipo «${t.name}» con su calendario, plantilla, resultados, disponibilidad, encuestas y documentos de esta temporada. No se puede deshacer.\n\nPara confirmarlo, escribe: ${t.short}`);
+  if(typed==null) return; if(normTxt(typed)!==normTxt(t.short)) return toast('No coincide: el equipo no se ha eliminado');
+  ui.teamDel=tid; renderQuiet();
+  try{
+    if(B.mode==='firebase'){ const tok=await B.idToken(); const r=await fetch('/api/fct-sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({action:'team-delete',team:tid,season:viewSeason})});
+      const d=await r.json().catch(()=>({})); if(!r.ok) return toast('No se ha eliminado: '+(d.error||r.status));
+      meta={...(meta||{}), teams:(meta?.teams||[]).filter(x=>x.id!==tid), removedTeams:[...new Set([...(meta?.removedTeams||[]),tid])]}; }
+    else { await B.del('seasons/'+docIdFor(tid,viewSeason)).catch(()=>{}); await saveMeta({teams:clubTeams().filter(x=>x.id!==tid), removedTeams:[...new Set([...(meta?.removedTeams||[]),tid])]}); }
+    delete clubData[tid]; delete FCT_GROUPS[docIdFor(tid,viewSeason)]; if(ui.fctNew?.tid===tid) ui.fctNew=null; clubKey='';
+    if(teamId===tid){ const first=clubTeams()[0]; if(first) switchTeam(first.id); }
+    toast('Equipo eliminado: '+t.short);
+  } catch(e){ toast('No se ha eliminado: sin conexión con el servidor'); }
+  finally{ ui.teamDel=null; renderQuiet(); } }
 const FCT_CSS=`
+.fnew{padding:20px 22px;border-radius:20px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df)}
+.fnew-c{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}.fnew-c h2{margin:0 0 4px}.fnew-c p{margin:0}
+.fnew-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.fnew-grid label{display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:.86rem}.fnew-grid .fn-wide{grid-column:span 3}
+.fnew-grid input,.fnew-grid select{width:100%;font-weight:500}
+.fnew-steps{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:10px}.fnew-steps li{display:flex;gap:12px;align-items:flex-start}.fnew-steps b{display:block}.fnew-steps small{display:block;color:var(--muted,#5b6b63);font-size:.84rem}
+.fnew-steps i{flex:none;width:22px;height:22px;border-radius:50%;margin-top:1px;background:#d9ded8;position:relative}
+.fnew-steps .ok i{background:#2E8B57}.fnew-steps .ok i::after{content:"";position:absolute;left:7px;top:3px;width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg)}
+.fnew-steps .ko i{background:#C8553D}.fnew-steps .run i{border:3px solid #d9ded8;border-top-color:#94722A;background:transparent;animation:fnspin .8s linear infinite}
+@keyframes fnspin{to{transform:rotate(360deg)}}
+.fnew-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 14px}.fnew-kpis div{padding:12px 14px;border-radius:14px;background:var(--bg2,#f3f4f0)}.fnew-kpis b{display:block;font-size:1.6rem;line-height:1.1}.fnew-kpis span{font-size:.8rem;color:var(--muted,#5b6b63)}
+.fnew-j{list-style:none;margin:0;padding:0;display:grid;gap:6px}.fnew-j li{display:grid;grid-template-columns:44px 1fr auto 120px;gap:10px;align-items:center;padding:8px 12px;border-radius:12px;background:var(--bg2,#f3f4f0)}
+.fnew-j .fj{font-weight:800;color:var(--muted,#5b6b63)}.fnew-j b.w{color:#2E8B57}.fnew-j b.l{color:#C8553D}.fnew-j small{color:var(--muted,#5b6b63);text-align:right}
+.btn.danger{color:#B3412B;border-color:#E3B5A8}
+@media (max-width:720px){.fnew-grid{grid-template-columns:1fr 1fr}.fnew-grid .fn-wide{grid-column:span 2}.fnew-kpis{grid-template-columns:1fr 1fr}.fnew-j li{grid-template-columns:40px 1fr auto}.fnew-j small{display:none}}
 .fctc{display:grid;gap:10px}
 .fctc-row{display:grid;grid-template-columns:minmax(160px,1.2fr) 2fr auto;gap:12px 16px;align-items:center;padding:14px 16px;border-radius:18px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df);box-shadow:inset 4px 0 0 var(--line,#e3e6df)}
 .fctc-row.st-ok{box-shadow:inset 4px 0 0 #1F7A4D}.fctc-row.st-rev{box-shadow:inset 4px 0 0 #94722A}.fctc-row.st-nogroup,.fctc-row.st-nodata,.fctc-row.st-new{box-shadow:inset 4px 0 0 #9aa6a0}
@@ -3481,7 +3573,7 @@ document.addEventListener('click', async e=>{
   else if(a==='fct-gedit'){ ui.fctEdit=el.dataset.tid; renderQuiet(); setTimeout(()=>document.getElementById('fct-g-'+el.dataset.tid)?.focus(),60); }
   else if(a==='fct-gsave'){ const tid=el.dataset.tid, v=+(document.getElementById('fct-g-'+tid)?.value||0); if(!(v>0&&v<1e7)) return toast('Escribe el código del grupo FCT (un número)');
     const t=clubTeams().find(x=>x.id===tid), info=fctTeamInfo(t); if(info.d) await safe(()=>B.update('seasons/'+info.sid,{comp:{...(info.d.comp||{}),fctGroup:v}}),'Grupo FCT guardado'); else { FCT_GROUPS[info.sid]=v; toast('Grupo guardado: pulsa «Crear y sincronizar»'); } ui.fctEdit=null; renderQuiet(); }
-  else if(a==='fct-one'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); const t=clubTeams().find(x=>x.id===el.dataset.tid), x=await fctSyncTeam(el.dataset.tid); if(x) toast(fctSummary(t,x)); }
+  else if(a==='fct-one'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); const tid=el.dataset.tid, t=clubTeams().find(x=>x.id===tid), nw=ui.fctNew?.tid===tid; if(nw){ ui.fctNew={...ui.fctNew,state:'sync'}; renderQuiet(); } const x=await fctSyncTeam(tid,nw); if(nw) ui.fctNew= x&&!x.error&&!x.skipped? {...ui.fctNew,state:'done',res:x} : {...ui.fctNew,state:'error',res:x,msg:'No se ha podido sincronizar. Revisa el código del grupo.'}; if(x) toast(fctSummary(t,x)); renderQuiet(); }
   else if(a==='fct-all'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); const out=[]; for(const t of clubTeams()){ if(!fctTeamInfo(t).grp) continue; const x=await fctSyncTeam(t.id); if(x) out.push(fctSummary(t,x)); } toast(out.length? out.join('. ') : 'Ningún equipo tiene grupo FCT'); }
   else if(a==='ar-now'){ if(B.mode!=='firebase') return toast('Funciona en la app publicada, no en esta vista previa'); el.disabled=true;
     try{ const tok=await B.idToken(); const r=await fetch('/api/remind',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({season:viewSeason,origin:location.origin})});
@@ -3517,7 +3609,11 @@ document.addEventListener('click', async e=>{
     const managers=[...(meta?.managers||[]).filter(x=>x.email!==email),{name,email}]; await saveMeta({managers, managerEmails:managers.map(x=>x.email)},'Gestor añadido: '+(name||email)); accAudit('gestor-anadido',{email}); }
   else if(a==='mgr-del'){ const gone=(meta?.managers||[])[+el.dataset.i]?.email||'', managers=(meta?.managers||[]).filter((_,i)=>i!==+el.dataset.i); await saveMeta({managers, managerEmails:managers.map(x=>x.email)},'Gestor quitado'); accAudit('gestor-quitado',{email:gone}); }
   else if(a==='cteams-save'){ const teams=clubTeams().map(t=>{ const row=document.querySelector(`#ctlist [data-id="${t.id}"]`); const g=n=>row?.querySelector(`[name=${n}]`)?.value.trim(); return {...t, name:g('name')||t.name, short:g('short')||t.short, cat:g('cat')||'', gender:g('gender')||''}; }); await saveMeta({teams},'Equipos guardados'); }
-  else if(a==='cteam-add'){ const name=$('#ct-name').value.trim(), short=$('#ct-short').value.trim()||name; if(!name) return toast('Escribe el nombre del equipo'); let id=slug(short); while(clubTeams().some(t=>t.id===id)) id+='-2'; await saveMeta({teams:[...clubTeams(),{id,name,short,cat:''}]},'Equipo añadido: '+short); clubKey=''; }
+  else if(a==='cteam-add'){ const name=$('#ct-name').value.trim(), short=$('#ct-short').value.trim()||name; if(!name) return toast('Escribe el nombre del equipo'); let id=slug(short); while(clubTeams().some(t=>t.id===id)) id+='-2'; await saveMeta({teams:[...clubTeams(),{id,name,short,cat:''}], removedTeams:(meta?.removedTeams||[]).filter(x=>x!==id)},'Equipo añadido: '+short); clubKey=''; }
+  else if(a==='cteam-del'){ teamDelete(el.dataset.t); }
+  else if(a==='fct-new-open'){ ui.fctNewOpen=true; ui.fctNew=null; if(route()==='club-fct') renderQuiet(); }
+  else if(a==='fct-new-close'){ ui.fctNewOpen=false; ui.fctNew=null; renderQuiet(); }
+  else if(a==='fct-new-go'){ fctNewTeam(); }
   else if(a==='admin-tab' && el.dataset.v==='docs-go'){ location.hash='docs'; return; }
   else if(a==='team-docs'){ switchTeam(el.dataset.t); location.hash='docs'; }
   else if(a==='doc-filter'){ ui.docKind=el.dataset.v||''; renderQuiet(); }
