@@ -540,6 +540,7 @@ function accJoinView(f, role) {
     const st = L.res?.status, cand = L.res?.candidates || [];
     if (st === 'cerrado') return accShell(`${head('Tu club aún no ha abierto el registro')}<p class="acc-p">Ningún club ha abierto todavía el registro de jugadores: primero su gestor deportivo da de alta el club y prepara sus equipos y plantillas. Cuando lo active podrás entrar con tus datos. Si te han enviado una invitación, úsala:</p>${accCodeForm()}${accAccount()}`, 'acc-launch', 'join-closed');
     if (st === 'ocupada') return accShell(`${head('Esta ficha ya tiene cuenta')}<p class="acc-p">La ficha de <b>${esc(L.res.name)}</b> ya está vinculada a otra cuenta de Google. Si eres tú y no la reconoces, pide al club que la revise.</p><div class="acc-acts">${reqBtn('', 'Pedir al club que lo revise')}<button class="acc-link" data-acc="link-edit">Volver</button></div>${accAccount()}`, 'acc-launch', 'join-taken');
+    if (st === 'otra-ficha') return accShell(`${head('Tu cuenta ya tiene jugador')}<p class="acc-p">Este Gmail ya está ligado a otro jugador del club, así que no lo podemos ligar también a <b>${esc(L.res.name)}</b>. Para registrar a otra persona, entra con su propia cuenta de Google.</p><div class="acc-acts"><button class="acc-link" data-acc="link-edit">Volver</button></div>${accAccount()}`, 'acc-launch', 'join-other');
     if (st === 'limite' || st === 'desactivado') return accShell(`${head(st === 'limite' ? 'Demasiados intentos' : 'Tu acceso está desactivado')}<p class="acc-p">${st === 'limite' ? 'Por seguridad, hoy ya no se pueden hacer más comprobaciones con esta cuenta. Inténtalo mañana o pide al club que te vincule.' : 'La gestión del club ha desactivado el acceso de esta cuenta.'}</p><div class="acc-acts">${st === 'limite' ? reqBtn() : ''}</div>${accAccount()}`, 'acc-launch', 'join-limit');
     if (st === 'pedir-licencia' && L.res.confirm && cand.length === 1 && !f.withLic) { const x = cand[0], pl = rosterAll().find(p => p.id === x.pid) || { id: x.pid, name: x.name };
       return accShell(`${head('¿Eres ' + esc(x.name) + '?', x.clubName || '')}
@@ -597,7 +598,7 @@ async function accLinkLocal(who) {
       (S.players || []).filter(p => p.active !== false).forEach(p => { const m = all.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] }; m.teams.push({ id: t.id, name: t.name, season: sid, official: off.includes(p.id), S }); all.set(p.id, m); }); }
     const nameOk = m => { const n = N(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && Ls.some(x => n.includes(x)); };
     const L = [...all.values()], bl = Lc ? L.filter(m => m.lic && lic(m.lic) === Lc) : [];
-    const byName = L.filter(nameOk), open = m0.openClaims === true;
+    const byName = L.filter(nameOk), open = m0.requireLicence !== true;
     if (bl.length === 1 && nameOk(bl[0])) oks.push({ c, R, here, m: bl[0] }); else if (bl.length) nameBad = true;
     else if (open && who.confirm && byName.length === 1 && byName[0].pid === who.confirm) oks.push({ c, R, here, m: byName[0] });
     byName.forEach(m => cands.push({ pid: m.pid, name: m.name, club: c.id, clubName: c.name, confirm: open && byName.length === 1, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) }));

@@ -87,7 +87,7 @@ const normLic = s => String(s || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '
 async function verifyPlayer(cdb, first, last, lic, confirmPid) {
   const F = normWords(first), L = normWords(last), Lc = normLic(lic);
   if (!F.length || !L.length) return { status: 'datos' };
-  const { meta, teams } = await seasonsOf(cdb), byPid = new Map(), open = meta.openClaims === true;
+  const { meta, teams } = await seasonsOf(cdb), byPid = new Map(), open = meta.requireLicence !== true;
   teams.forEach(({ t, sid, S }) => (S && S.players || []).filter(p => p.active !== false).forEach(p => {
     const m = byPid.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] };
     m.teams.push({ id: t.id, name: t.name, season: sid, official: officialOf(S).includes(p.id) }); if (!m.lic && p.lic) m.lic = p.lic; byPid.set(p.id, m); }));
@@ -99,8 +99,8 @@ async function verifyPlayer(cdb, first, last, lic, confirmPid) {
     if (byLic.length) return { status: 'nombre' };          // la licencia existe pero el nombre no coincide: no se vincula
   }
   const byName = all.filter(nameOk);
-  // Periodo de alta abierto por el club (meta/app.openClaims, lo activa un administrador): con un único jugador que
-  // coincide en nombre y apellidos, basta con que la persona confirme «Sí, soy yo» (sin licencia)
+  // Con un único jugador que coincide en nombre y apellidos, basta con que la persona confirme «Sí, soy yo» (sin licencia).
+  // El club puede exigir la licencia (meta/app.requireLicence). Cada vínculo por nombre se avisa por correo a capitanes y gestión.
   if (open && confirmPid && byName.length === 1 && byName[0].pid === confirmPid) return { status: 'ok', m: byName[0], via: 'nombre' };
   if (byName.length) return { status: Lc ? 'licencia' : 'pedir-licencia', confirm: open && byName.length === 1, candidates: byName.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic })) };
   return { status: 'no' };
@@ -110,6 +110,17 @@ async function activeClubs(db) {
   const out = [];
   (await db.collection('clubs').get()).forEach(d => { const x = d.data() || {}; if (x.activation && x.activation.at) out.push({ id: d.id, name: x.name || '' }); });
   return out;
+}
+// Aviso a capitanes y gestión: alguien se ha ligado a una ficha solo con nombre y apellidos. Si no es esa persona,
+// lo deshacen en Gestión deportiva → Usuarios (o en Gestión → Plantilla, «Liberar»).
+async function notifyNameLink(db, cdb, m, email) {
+  const mail = require('./_mail.js'); if (!mail.via()) return;
+  const t = m.teams[0] || {}, { to } = await recipients(db, { role: 'jugador', season: t.season }, cdb); if (!to.length) return;
+  const app = (process.env.APP_URL || 'https://lliga.vercel.app') + '/#club-usuarios', esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const line = `${m.name} (${m.teams.map(x => x.name).join(', ')}) ha entrado en la app con la cuenta ${email}, confirmando su nombre y apellidos.`;
+  await mail.sendMail({ to: to.slice(0, 10), subject: `Nuevo jugador en la app: ${m.name}`,
+    text: `${line}\n\nSi no es esta persona, quítale el acceso en Gestión deportiva → Usuarios: ${app}`,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#13261F;max-width:600px"><p>${esc(line)}</p><p>Si no es esta persona, quítale el acceso en <a href="${esc(app)}" style="color:#94722A">Gestión deportiva → Usuarios</a>.</p></div>` });
 }
 // Busca al jugador en las plantillas oficiales de todos los clubes activados. Vincula solo con coincidencia fiable
 // (nombre + licencia); una misma persona puede quedar vinculada en varios clubes con la misma cuenta.
@@ -136,6 +147,8 @@ async function linkPlayer(A, db, user, body) {
     if (cl.exists && cl.data().uid !== user.uid) { if (oks.length === 1) return { status: 'ocupada', name: m.name }; continue; }
     const mref = db.doc('clubs/' + c.id + '/members/' + user.uid), mem = await mref.get(), cur = mem.exists ? mem.data() : {};
     if (cur.status === 'inactivo') { if (oks.length === 1) return { status: 'desactivado' }; continue; }
+    // Esta cuenta ya está ligada a otro jugador de este club: no se cambia (se perdería su ficha, su capitanía…)
+    if (cur.pid && cur.pid !== m.pid) { if (oks.length === 1) return { status: 'otra-ficha', name: m.name }; continue; }
     const at = Date.now(), b = db.batch();
     const via = v.via || 'licencia';
     b.set(cref, { uid: user.uid, email, at, via });
@@ -152,6 +165,7 @@ async function linkPlayer(A, db, user, body) {
     if (capTeams.length) { const pids = await captainPidsOf(cdb); await cdb.doc('meta/app').set({ captainPids: pids }, { merge: true });
       for (const x of capTeams) await audit('capitan-oficial-asignado', { pid: m.pid, team: x.id }); }
     linked.push({ club: c.id, clubName: cdb.cfg.name, pid: m.pid, name: m.name, teams: m.teams.map(x => x.id), captain: capTeams.map(x => x.id) });
+    if (via === 'nombre') await notifyNameLink(db, cdb, m, email).catch(() => {});
   }
   if (!linked.length) return { status: 'ocupada', name: oks[0].v.m.name };
   return { status: 'vinculado', ...linked[0], clubs: linked };
