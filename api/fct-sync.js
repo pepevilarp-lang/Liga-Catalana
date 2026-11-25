@@ -173,6 +173,9 @@ function syncSeason(S, partidos, poloCode) {
     const locName = (+p.codigoEquipo === +locCode ? p.equipo : p.contrario)?.nombreCuadro || '';
     const visName = (+p.codigoEquipo === +locCode ? p.contrario : p.equipo)?.nombreCuadro || '';
     const home = teamFor(S, locCode, locName, out.newTeams, poloCode), away = teamFor(S, visCode, visName, out.newTeams, poloCode);
+    // Club de la FCT de cada equipo (para su dirección: «Cómo llegar»)
+    [[home, +p.codigoEquipo === +locCode ? p.equipo : p.contrario], [away, +p.codigoEquipo === +locCode ? p.contrario : p.equipo]].forEach(([id, e]) => {
+      const c = +((e || {}).codigoClub || 0), t = S.teams.find(x => x.id === id); if (c && t && t.fctClub !== c) t.fctClub = c; });
     const date = ymd(p.fecha), time = /^\d{1,2}:\d{2}$/.test(p.hora || '') ? p.hora.padStart(5, '0') : '15:00';
     let f = S.fixtures.find(x => +x.j === j && ((x.home === home && x.away === away) || (x.home === away && x.away === home)));
     if (!f) { if (!date) continue; f = { j, date, time, home, away, hs: null, as: null, status: null }; S.fixtures.push(f); out.created++; }
@@ -219,6 +222,29 @@ function pickPoloCode(S, partidos) {
   for (const [c, n] of seen) if (new RegExp('-\\s*' + L + '\\s*$').test(n)) return c;
   return null;
 }
+// Dirección de cada club, de la ficha del club en la FCT (calle, código postal y población), para el enlace «Cómo llegar»
+// de todos los rivales. Una dirección escrita a mano en la app manda: solo se rellenan las vacías o las que puso la FCT.
+let CLUB_DIR = null, CLUB_DIR_AT = 0;
+async function clubDirectory() {
+  if (CLUB_DIR && Date.now() - CLUB_DIR_AT < 6 * 3600e3) return CLUB_DIR;
+  const { fetchAll } = require('./_fct-clubs.js'), m = new Map();
+  for (const c of await fetchAll()) if (c && c.codigo) m.set(+c.codigo, c);
+  CLUB_DIR = m; CLUB_DIR_AT = Date.now(); return m;
+}
+function fctAddress(c) {
+  const { title, town } = require('./_fct-clubs.js')._test;
+  const fix = x => { const v = String(x || '').replace(/\s+/g, ' ').trim().replace(/\.(?=[^\s\d,.])/g, '. '); return v && v === v.toUpperCase() ? title(v) : v; };
+  const dir = fix(c.direccion), cp = String(c.cp || '').trim(), pob = town(c.poblacion);
+  if (!dir && !pob) return '';
+  return [title(c.nombre), dir, [cp, pob].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+async function fillVenues(S) {
+  const need = (S.teams || []).filter(t => t.fctClub && (!t.venue || t.venueSrc === 'fct') && !(t.id === POLO && CLUBCFG.venue));
+  if (!need.length) return 0;
+  const dir = await clubDirectory(); let n = 0;
+  for (const t of need) { const c = dir.get(+t.fctClub), a = c ? fctAddress(c) : ''; if (a && t.venue !== a) { t.venue = a; t.venueSrc = 'fct'; n++; } }
+  return n;
+}
 async function runSeason(db, id) {
   const ref = db.doc('seasons/' + id), snap = await ref.get(); if (!snap.exists) return { season: id, skipped: 'no-existe' };
   const S = snap.data(), prevUnmatched = new Set((((S.fctLast || {}).actas || {}).unmatched) || []), group = +((S.comp || {}).fctGroup || KNOWN_GROUPS[id] || 0);
@@ -229,6 +255,7 @@ async function runSeason(db, id) {
   const before = JSON.stringify({ t: S.teams, f: S.fixtures, p: S.players || [], c: S.comp || {}, x: S.ties || {} });
   const pc = pickPoloCode(S, partidos);
   const out = syncSeason(S, partidos, pc);
+  try { out.venues = await fillVenues(S); } catch (e) { out.venuesError = e.message; }
   // Plantilla: con el código FCT del equipo del Polo en este grupo
   const poloCode = pc || (S.teams.find(t => t.id === POLO) || {}).fct;
   if (poloCode && (S.comp || {}).fctRosterSync !== false) {
@@ -431,4 +458,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports._test = { pool, runPart, alertPlatform, catOf, discoverTeams, deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
+module.exports._test = { fctAddress, fillVenues, pool, runPart, alertPlatform, catOf, discoverTeams, deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
