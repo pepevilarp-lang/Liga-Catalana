@@ -84,10 +84,10 @@ async function captainPidsOf(cdb) {
 const normWords = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9ñ ]+/g, ' ').split(/\s+/).filter(w => w.length > 1);
 const normLic = s => String(s || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toUpperCase();
 // Coincidencia fiable = misma licencia federativa y mismo nombre y apellido. Devuelve { status, ... }
-async function verifyPlayer(cdb, first, last, lic) {
+async function verifyPlayer(cdb, first, last, lic, confirmPid) {
   const F = normWords(first), L = normWords(last), Lc = normLic(lic);
   if (!F.length || !L.length) return { status: 'datos' };
-  const { teams } = await seasonsOf(cdb), byPid = new Map();
+  const { meta, teams } = await seasonsOf(cdb), byPid = new Map(), open = meta.openClaims === true;
   teams.forEach(({ t, sid, S }) => (S && S.players || []).filter(p => p.active !== false).forEach(p => {
     const m = byPid.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] };
     m.teams.push({ id: t.id, name: t.name, season: sid, official: officialOf(S).includes(p.id) }); if (!m.lic && p.lic) m.lic = p.lic; byPid.set(p.id, m); }));
@@ -99,7 +99,10 @@ async function verifyPlayer(cdb, first, last, lic) {
     if (byLic.length) return { status: 'nombre' };          // la licencia existe pero el nombre no coincide: no se vincula
   }
   const byName = all.filter(nameOk);
-  if (byName.length) return { status: Lc ? 'licencia' : 'pedir-licencia', candidates: byName.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic })) };
+  // Periodo de alta abierto por el club (meta/app.openClaims, lo activa un administrador): con un único jugador que
+  // coincide en nombre y apellidos, basta con que la persona confirme «Sí, soy yo» (sin licencia)
+  if (open && confirmPid && byName.length === 1 && byName[0].pid === confirmPid) return { status: 'ok', m: byName[0], via: 'nombre' };
+  if (byName.length) return { status: Lc ? 'licencia' : 'pedir-licencia', confirm: open && byName.length === 1, candidates: byName.map(m => ({ pid: m.pid, name: m.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })), hasLic: !!m.lic })) };
   return { status: 'no' };
 }
 // Clubes con el registro de jugadores activado (el orden de incorporación lo exige)
@@ -118,12 +121,13 @@ async function linkPlayer(A, db, user, body) {
   const n = att.day === day ? att.n || 0 : 0; if (n >= 10) return { status: 'limite' };
   await aref.set({ day, n: n + 1, at: Date.now() });
   const found = [];
-  for (const c of clubs) { const cdb = await clubDbFor(db, c.id); found.push({ c, cdb, v: await verifyPlayer(cdb, body.first, body.last, body.licence) }); }
+  const confirmPid = /^[\w-]{1,60}$/.test(String(body.confirm || '')) ? String(body.confirm) : '', confirmClub = String(body.confirmClub || '');
+  for (const c of clubs) { const cdb = await clubDbFor(db, c.id); found.push({ c, cdb, v: await verifyPlayer(cdb, body.first, body.last, body.licence, !confirmClub || confirmClub === c.id ? confirmPid : '') }); }
   const oks = found.filter(x => x.v.status === 'ok');
   if (!oks.length) {
     if (found.some(x => x.v.status === 'nombre')) return { status: 'nombre' };
-    const cands = found.flatMap(x => (x.v.candidates || []).map(k => ({ ...k, club: x.c.id, clubName: x.cdb.cfg.name })));
-    if (cands.length) return { status: body.licence ? 'licencia' : 'pedir-licencia', candidates: cands };
+    const cands = found.flatMap(x => (x.v.candidates || []).map(k => ({ ...k, club: x.c.id, clubName: x.cdb.cfg.name, confirm: !!x.v.confirm })));
+    if (cands.length) return { status: body.licence ? 'licencia' : 'pedir-licencia', candidates: cands, confirm: cands.length === 1 && cands[0].confirm };
     return { status: 'no' };
   }
   const linked = [];
@@ -133,17 +137,18 @@ async function linkPlayer(A, db, user, body) {
     const mref = db.doc('clubs/' + c.id + '/members/' + user.uid), mem = await mref.get(), cur = mem.exists ? mem.data() : {};
     if (cur.status === 'inactivo') { if (oks.length === 1) return { status: 'desactivado' }; continue; }
     const at = Date.now(), b = db.batch();
-    b.set(cref, { uid: user.uid, email, at, via: 'licencia' });
+    const via = v.via || 'licencia';
+    b.set(cref, { uid: user.uid, email, at, via });
     if (!cdb.P('claims').startsWith('clubs/')) b.set(db.doc('users/' + user.uid), { pid: m.pid, email });
     b.set(db.doc('accounts/' + user.uid), { clubs: { [c.id]: true } }, { merge: true });
-    b.set(mref, { ...cur, uid: user.uid, pid: m.pid, email, roles: [...new Set([...(cur.roles || []), 'jugador'])], status: 'activo', at: cur.at || at, verifiedBy: 'licencia' }, { merge: true });
+    b.set(mref, { ...cur, uid: user.uid, pid: m.pid, email, roles: [...new Set([...(cur.roles || []), 'jugador'])], status: 'activo', at: cur.at || at, verifiedBy: via }, { merge: true });
     // Capitán oficial: se le asigna el rol de capitán de ese equipo al verificar su identidad
     const capTeams = m.teams.filter(x => x.official);
     for (const x of capTeams) { const S = (await cdb.doc('seasons/' + x.season).get()).data() || {};
       if (!(S.captains || []).includes(m.pid)) b.update(cdb.doc('seasons/' + x.season), { captains: [...(S.captains || []), m.pid] }); }
     await b.commit();
     const audit = (action, data) => db.doc('clubs/' + c.id + '/audit/' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex')).set({ action, data, by: user.uid, byEmail: email, at: Date.now(), via: 'servidor' }).catch(() => {});
-    await audit('jugador-verificado', { pid: m.pid, team: m.teams[0] && m.teams[0].id });
+    await audit('jugador-verificado', { pid: m.pid, team: m.teams[0] && m.teams[0].id, via });
     if (capTeams.length) { const pids = await captainPidsOf(cdb); await cdb.doc('meta/app').set({ captainPids: pids }, { merge: true });
       for (const x of capTeams) await audit('capitan-oficial-asignado', { pid: m.pid, team: x.id }); }
     linked.push({ club: c.id, clubName: cdb.cfg.name, pid: m.pid, name: m.name, teams: m.teams.map(x => x.id), captain: capTeams.map(x => x.id) });
