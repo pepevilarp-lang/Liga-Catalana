@@ -1217,8 +1217,9 @@ const isStandalone = () => matchMedia('(display-mode: standalone)').matches || n
 function installCard(){
   if(isStandalone()) return `<div class="mcard ok"><span class="mi">📲</span><div><b>App instalada</b><small>La tienes en la pantalla de inicio.</small></div></div>`;
   if(installEvt) return `<div class="mcard"><span class="mi">📲</span><div><b>Instala la app</b><small>Acceso directo, pantalla completa y notificaciones.</small></div><button class="btn brass sm" data-act="install">Instalar</button></div>`;
-  if(isIOS()) return `<div class="mcard"><span class="mi">📲</span><div><b>Instálala en el iPhone</b><small>En Safari pulsa <b>Compartir</b> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7"/></svg> y luego <b>Añadir a pantalla de inicio</b>. Las notificaciones en iPhone solo funcionan con la app instalada.</small></div></div>`;
-  return `<div class="mcard"><span class="mi">📲</span><div><b>Instala la app</b><small>En el menú del navegador elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</small></div></div>`;
+  if(isIOS() || window.lcInApp?.()) return `<div class="mcard"><span class="mi">📲</span><div><b>${window.lcInApp?.()? 'Ábrela en el navegador para instalarla' : 'Instálala en el iPhone'}</b><small>Te guiamos paso a paso.</small></div><button class="btn brass sm" data-act="inst-how">Cómo instalarla</button></div>`;
+  if(false) return `<div class="mcard"><span class="mi">📲</span><div><b>Instálala en el iPhone</b><small>En Safari pulsa <b>Compartir</b> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7"/></svg> y luego <b>Añadir a pantalla de inicio</b>. Las notificaciones en iPhone solo funcionan con la app instalada.</small></div></div>`;
+  return `<div class="mcard"><span class="mi">📲</span><div><b>Instala la app</b><small>En el menú del navegador elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</small></div><button class="btn ghost sm" data-act="inst-how">Cómo</button></div>`;
 }
 function pushCard(){
   if(!CFG.vapidKey) return isAdmin? `<div class="mcard"><span class="mi">🔔</span><div><b>Notificaciones sin configurar</b><small>Falta la clave vapidKey en config.js (Firebase, Cloud Messaging). Solo lo ves tú.</small></div></div>` : '';
@@ -3001,8 +3002,8 @@ function onbAfterSpot(){ spotEnd(); scrollTo(0,0); if(me){ ui.onb.stage='perfil'
 function appsStage(){ const inst=isStandalone(), push=pushState;
   const instBox = inst? `<div class="ob-app ok"><i>${svgi('check',20,2.4)}</i><div><b>App instalada</b><span>Ya la tienes en la pantalla de inicio.</span></div></div>`
     : installEvt? `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>Acceso directo, pantalla completa y más rápida.</span></div><button class="btn brass sm" data-act="install">Instalar</button></div>`
-    : isIOS()? `<div class="ob-app"><i>📲</i><div><b>Instálala en el iPhone</b><span>En Safari pulsa <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</span></div></div>`
-    : `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>En el menú del navegador, elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</span></div></div>`;
+    : isIOS()||window.lcInApp?.()? `<div class="ob-app"><i>📲</i><div><b>${window.lcInApp?.()? 'Ábrela en el navegador' : 'Instálala en el iPhone'}</b><span>Dos toques en Safari: te guiamos.</span></div><button class="btn brass sm" data-act="inst-how">Cómo</button></div>`
+    : `<div class="ob-app"><i>📲</i><div><b>Instala la app</b><span>En el menú del navegador, elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</span></div><button class="btn ghost sm" data-act="inst-how">Cómo</button></div>`;
   const pushBox = !pushReady()? (isAdmin? `<div class="ob-app"><i>🔔</i><div><b>Notificaciones sin configurar</b><span>Solo lo ves tú (administrador): falta la clave vapidKey en config.js. Mientras tanto, el resto del equipo no verá esta opción.</span></div></div>` : '')
     : push==='on'? `<div class="ob-app ok"><i>${svgi('check',20,2.4)}</i><div><b>Notificaciones activadas</b><span>Te avisaremos de disponibilidad, convocatoria, encuesta y MVP.</span></div></div>`
     : push==='denied'? `<div class="ob-app"><i>🔕</i><div><b>Notificaciones bloqueadas</b><span>Actívalas en los ajustes del navegador para esta web.</span></div><button class="btn ghost sm" data-act="push-on">Reintentar</button></div>`
@@ -3491,7 +3492,7 @@ function render(){
   cl.classList.toggle('on',canClub()); if(nav==='club') cl.setAttribute('aria-current','page'); else cl.removeAttribute('aria-current');
   document.body.classList.toggle('clubmode', nav==='club');
   setNavMode(nav==='club'); if(authReady&&authUser&&!gate&&route()==='intro'&&!ui.onb){ history.replaceState(null,'','#inicio'); startOnb({force:true}); }
-  if(authReady&&authUser){ checkCssVersion(); if(!gate) maybeTour(); if(ui.onb?.stage==='perfil' && ui.onb.step===0 && !document.querySelector('.cropper.on')) drawOnb(); if(ui.onb?.stage==='apps') drawOnb(); if(ui.onb?.stage==='spot' && document.getElementById('spot')) setTimeout(()=>spotPlace(false),30); } document.body.classList.toggle('noplayer', !me);
+  if(authReady&&authUser){ checkCssVersion(); if(!gate) maybeTour(); if(!gate && !ui.onb && !ui.instTried && (me||canClub())){ ui.instTried=true; window.maybeInstallSheet?.('entrada'); } if(ui.onb?.stage==='perfil' && ui.onb.step===0 && !document.querySelector('.cropper.on')) drawOnb(); if(ui.onb?.stage==='apps') drawOnb(); if(ui.onb?.stage==='spot' && document.getElementById('spot')) setTimeout(()=>spotPlace(false),30); } document.body.classList.toggle('noplayer', !me);
   const tc=document.querySelector('meta[name="theme-color"]'); if(tc) tc.setAttribute('content', gate? '#0E1216' : (getComputedStyle(document.documentElement).getPropertyValue('--green').trim()||'#0F3B2E'));
   document.title = gate? 'Lliga Catalana' : (nav==='club'? 'Gestión deportiva · '+CLUB.medium : teamLabel()+' · Lliga Catalana');
   const bi=$('.brand img'); if(bi && bi.getAttribute('src')!==ASSET.crestSm) bi.setAttribute('src',ASSET.crestSm);
@@ -3590,7 +3591,7 @@ document.addEventListener('click', async e=>{
   else if(a==='cmp'){ ui.cmpA=el.dataset.id; ui.statsTab='jugadores'; }
   else if(a==='admin-tab' && el.dataset.v!=='docs-go'){ ui.adminTab=el.dataset.v; render(); }
   else if(a==='avail'){ if(!me) return; const k=jid(+el.dataset.j); const cur=avail[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:el.dataset.v},at:Date.now()};
-    avail[me]=next; renderQuiet(); try{ navigator.vibrate?.(el.dataset.v==='yes'? [10,40,14] : 10); }catch(e){} if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
+    avail[me]=next; renderQuiet(); try{ navigator.vibrate?.(el.dataset.v==='yes'? [10,40,14] : 10); }catch(e){} if(!ui.instAfterAvail){ ui.instAfterAvail=true; window.maybeInstallSheet?.('avail'); } if(el.dataset.v==='yes'){ const b=el.getBoundingClientRect(); confetti(b.left+b.width/2,b.top,40); }
     await safe(()=>B.set(SEASON_PATH+'/avail/'+me,next), el.dataset.v==='yes'?'Apuntado: juegas':'Anotado: no puedes'); }
   else if(a==='pick'){ if(!me) return; const k=jid(+el.dataset.j), cur=picks[me]||{j:{}}; const next={j:{...(cur.j||{}),[k]:{p:+el.dataset.p,r:+el.dataset.r}},at:Date.now()}; picks[me]=next; renderQuiet(); await safe(()=>B.set(SEASON_PATH+'/picks/'+me,next),'Pronóstico guardado'); }
   else if(a==='survey-start'){ const j=+el.dataset.j; ui.survey={j,step:0,a:{...(myBallot?.j?.[jid(j)]?.a||{})},xs:ixSteps(j),x:ixInit(j),onlyX:el.dataset.only==='1'}; render(); scrollTo({top:0}); }
@@ -3817,6 +3818,7 @@ document.addEventListener('click', async e=>{
   else if(a==='mvp-unpublish'){ const k=jid(+el.dataset.j); if(S.published[k]){ delete S.published[k].mvp; delete S.published[k].tally; delete S.published[k].votes; } saveState('Publicación retirada'); }
   else if(a==='mvp-annul'){ const j=+el.dataset.j, voter=el.dataset.voter, vv=mvpVotes[jid(j)]?.[voter]?.v; if(!confirm('¿Anular el voto de '+pname(voter)+'?')) return; await safe(()=>B.annulVote(SEASON_PATH+'/mvp/'+jid(j), voter, vv),'Voto anulado'); }
   else if(a==='ratings-pub'){ const j=+el.dataset.j, k=jid(j), agg=aggregate(k); S.published[k]={...(S.published[k]||{}),ratings:agg.ratings,n:agg.n}; saveState('Nota del equipo publicada'); }
+  else if(a==='inst-how'){ window.instSheet?.('boton'); }
   else if(a==='install'){ if(!installEvt) return; installEvt.prompt(); const c=await installEvt.userChoice.catch(()=>null); installEvt=null; renderQuiet(); if(c?.outcome==='accepted') toast('Instalando…'); }
   else if(a==='push-on') enablePush();
   else if(a==='push-test'){ try{ const reg=await navigator.serviceWorker.ready; reg.showNotification(teamLabel(),{body:'Así te llegarán los avisos del equipo 🎾',icon:'/icons/icon-192.png',badge:'/icons/badge-96.png'}); }catch(e){ toast('No se ha podido mostrar la prueba'); } }
