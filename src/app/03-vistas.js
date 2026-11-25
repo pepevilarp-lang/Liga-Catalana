@@ -187,10 +187,10 @@ function vInicio(){
   return h;
 }
 function leadersBlock(){
-  const rows=S.players.filter(p=>p.active!==false).map(p=>({p,st:playerStats(p.id)})).filter(x=>x.st.pj).sort((a,b)=>b.st.w/b.st.pj-a.st.w/a.st.pj||b.st.w-a.st.w).slice(0,5);
+  const rows=S.players.filter(p=>p.active!==false).map(p=>({p,st:playerStats(p.id)})).filter(x=>x.st.pj).sort((a,b)=>(b.st.w-b.st.l)-(a.st.w-a.st.l)||b.st.w/b.st.pj-a.st.w/a.st.pj).slice(0,5);
   if(!rows.length) return '';
   return `<section class="sec"><div class="sec-h"><h2>Líderes en individuales</h2><a href="#stats" data-act="stats-go" data-v="jugadores">Todas las estadísticas</a></div><div class="leaders stagger">${rows.map((x,i)=>`<button class="leader press" data-player="${esc(x.p.id)}"><span class="lp">${i+1}</span>${avatar(x.p)}<span class="ln">${esc(x.p.name)}<small>${x.st.pj} ${x.st.pj===1?'individual':'individuales'}</small></span><span class="lw">${pct(x.st.w,x.st.pj)}%<small>${x.st.w}-${x.st.l}</small></span></button>`).join('')}</div>
-    <p class="source">Solo individuales. Por % de victorias y, si empatan, por número de victorias.</p></section>`;
+    <p class="source">Solo individuales. Por balance (victorias menos derrotas) y, si empatan, por %.</p></section>`;
 }
 function standingsSource(){ const lastJ=Math.max(0,...playedJornadas()), O=S.official, rules=`Victoria ${S.rules.win} puntos, derrota ${S.rules.loss}.`;
   if(O && Array.isArray(O.order) && O.asOf>0){

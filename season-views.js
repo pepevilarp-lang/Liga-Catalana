@@ -167,7 +167,7 @@ function svSeasonFacts(ts, played){
   if(n>=2) out.push(`${n} ${last==='W'?'victorias':'derrotas'} seguidas en eliminatorias.`);
   else { const f=played.at(-1), p=persp(f); out.push(`Última jornada: ${p.ps>p.rs?'victoria':'derrota'} ${p.ps}-${p.rs} ${p.home?'en casa ante el':'en las pistas del'} ${clubName(p.rival)}.`); }
   const best=ts.byJ.slice().sort((a,b)=>(b.ps-b.rs)-(a.ps-a.rs))[0]; if(best && best.ps>best.rs) out.push(`Mayor victoria: ${best.ps}-${best.rs} al ${clubName(best.rival)} (J${best.j}).`);
-  const pl=S.players.filter(p=>p.active!==false).map(p=>({p,s:playerStats(p.id)})).filter(x=>x.s.pj>=3).sort((a,b)=>b.s.w/b.s.pj-a.s.w/a.s.pj||b.s.w-a.s.w)[0];
+  const pl=S.players.filter(p=>p.active!==false).map(p=>({p,s:playerStats(p.id)})).filter(x=>x.s.pj>=3).sort((a,b)=>(b.s.w-b.s.l)-(a.s.w-a.s.l)||b.s.w/b.s.pj-a.s.w/a.s.pj)[0];
   if(pl) out.push(`${pl.p.name} lidera en individuales: ${pl.s.w}-${pl.s.l} en ${pl.s.pj} partidos.`);
   const evo=playedJornadas().map(j=>standings(j).find(r=>r.id===POLO)?.pos).filter(Boolean);
   if(evo.length>=2 && evo[0]!==evo.at(-1)) out.push(`En la clasificación: del ${evo[0]}º tras la primera jornada al ${evo.at(-1)}º ahora.`);
@@ -231,7 +231,7 @@ function svStatsTeam(){
 function svPlayers(){
   const kind=ui.statKind||'S', key=ui.sortKey||'wr';
   const rows=S.players.filter(p=>p.active!==false).map(p=>({p,st:playerStats(p.id,null,kind),o:playerStats(p.id,null,kind==='S'?'D':'S')})).filter(r=>kind==='S'||r.st.pj);
-  const val=r=> key==='wr'? (r.st.pj? r.st.w/r.st.pj*1e3+r.st.w : 0) : key==='sd'? r.st.sw-r.st.sl : key==='pj'? r.st.pj : key==='streak'? r.st.bestStreak : r.st.w*1e3+(r.st.pj? r.st.w/r.st.pj : 0);
+  const val=r=> key==='wr'? (r.st.w-r.st.l)*1e3+(r.st.pj? r.st.w/r.st.pj*100 : 0) : key==='sd'? r.st.sw-r.st.sl : key==='pj'? r.st.pj : key==='streak'? r.st.bestStreak : r.st.w*1e3+(r.st.pj? r.st.w/r.st.pj : 0);
   rows.sort((a,b)=>val(b)-val(a)||b.st.pj-a.st.pj||a.p.order-b.p.order);
   const on=rows.filter(r=>r.st.pj), off=rows.filter(r=>!r.st.pj);
   const seg=(act,v,cur,l)=>`<button class="seg-b" data-act="${act}" data-v="${v}" aria-pressed="${cur}">${l}</button>`;
