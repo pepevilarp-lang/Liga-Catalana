@@ -111,6 +111,8 @@ function rubberFromFct(e, poloCode, isD, S) {
   for (let i = 1; i <= 3; i++) { const a = e['r' + i], b = e['c' + i]; if (a == null || b == null || (+a === 0 && +b === 0)) continue; sets.push(poloIs1 ? `${a}-${b}` : `${b}-${a}`); }
   const poloWins = e.ganador ? ((e.ganador === 'jugador') === poloIs1) : null;
   const rivalNames = theirs ? (isD ? [theirs.jugador1, theirs.jugador2] : [theirs]).filter(Boolean).map(x => titleCase(x.nombreCuadro)) : [];
+  // Sin jugador rival y sin marcador: el rival no presentó jugador y la FCT no lo cuenta en el resultado (p. ej. 2-0 con un solo individual jugado)
+  if (!sets.length && !rivalNames.length) return { polo: pls.map(pl => pidForFct(S, pl)).filter(Boolean), score: '', res: null, note: 'Sin rival', wo: false, rival: '' };
   const wo = !sets.length && poloWins != null;
   return { polo: pls.map(pl => pidForFct(S, pl)).filter(Boolean), score: sets.join(' '), res: wo ? (poloWins ? 'W' : 'L') : null, note: wo ? 'W.O.' : '', wo, rival: rivalNames.join(' / ') };
 }
@@ -147,11 +149,13 @@ function teamFor(S, code, name, added, poloCode) {
   const a = toks(name); let best = null, bs = 0;
   S.teams.forEach(x => { if (x.id === POLO || (x.fct && +x.fct !== +code)) return; const b = new Set([...toks(x.name), ...toks(x.short)]); const hit = a.filter(w => b.has(w)).length; const sc = hit / Math.max(a.length, 1); if (sc > bs) { bs = sc; best = x; } });
   if (best && bs >= 0.5) { best.fct = code; return best.id; }
-  // Equipo nuevo: «Mas-Ram, CE» → «CE Mas-Ram»
-  const [base, pre] = String(name).split(/,\s*/); const full = pre ? `${pre} ${base}` : base;
-  let id = slug(base) || 'equipo'; while (S.teams.some(x => x.id === id)) id += '-2';
-  S.teams.push({ id, name: full.trim(), short: base.trim(), abbr: toks(base).map(w => w[0]).join('').toUpperCase().slice(0, 4) || base.slice(0, 3).toUpperCase(), fct: code });
-  added.push(full.trim());
+  // Equipo nuevo: «Mas-Ram, CE» → «CE Mas-Ram»; «Sant Cugat,C T N - A» → «CTN Sant Cugat A» (corto: «Sant Cugat A»)
+  const lm = /\s*-\s*([A-Z])\s*$/.exec(String(name)), L = lm ? lm[1] : '', raw = lm ? String(name).slice(0, lm.index) : String(name);
+  const [b0, p0] = raw.split(/,\s*/), base = b0.trim(), pre = String(p0 || '').trim().replace(/\b([A-Z])\s+(?=[A-Z]\b)/g, '$1');
+  const full = [pre, base, L].filter(Boolean).join(' '), short = [base, L].filter(Boolean).join(' ');
+  let id = slug(short) || 'equipo'; while (S.teams.some(x => x.id === id)) id += '-2';
+  S.teams.push({ id, name: full, short, abbr: (toks(base).map(w => w[0]).join('').toUpperCase().slice(0, 3) || base.slice(0, 3).toUpperCase()) + L, fct: code });
+  added.push(full);
   return id;
 }
 
@@ -208,7 +212,7 @@ function pickPoloCode(S, partidos) {
   const comp = S.comp || {};
   if (comp.fctTeam && seen.has(+comp.fctTeam)) return +comp.fctTeam;
   if (seen.size <= 1) return seen.size ? [...seen.keys()][0] : null;
-  const m = /\b([A-Z])\s*$/.exec(String(comp.name || '').trim()), L = m ? m[1] : 'A';
+  const m = /\b([A-Z])\s*$/.exec(String(comp.name || '').trim()), L = /^[A-Z]$/.test(comp.letter || '') ? comp.letter : m ? m[1] : 'A';
   for (const [c, n] of seen) if (new RegExp('-\\s*' + L + '\\s*$').test(n)) return c;
   return null;
 }
@@ -284,9 +288,31 @@ async function weeklyReport(db, req, now = new Date()) {
   return { sent: out.to.length, sat };
 }
 
+// Eliminar un equipo del club (solo la gestión): borra sus temporadas con todo lo que contienen
+// (disponibilidad, encuestas, documentos, MVP…) y lo quita de la lista de equipos del club.
+// El primer equipo del Real Club de Polo no se puede borrar: su temporada es la ruta original (seasons/<temporada>).
+async function deleteTeam(req, body) {
+  const ctx = await require('./_auth.js').caller(req);
+  if (!ctx.isStaff) throw Object.assign(new Error('Solo la gestión del club puede eliminar equipos'), { status: 403 });
+  const tid = String(body.team || '');
+  if (!/^[\w-]{1,40}$/.test(tid) || tid === POLO) throw Object.assign(new Error('Equipo no válido'), { status: 400 });
+  const main = ctx.clubId === CLUBCFG0.id ? ((CLUBCFG0.teams || [])[0] || {}).id : null;
+  if (main && tid === main) throw Object.assign(new Error('El primer equipo del club no se puede eliminar'), { status: 400 });
+  const db = ctx.cdb, metaRef = db.doc('meta/app'), meta = (await metaRef.get()).data() || {};
+  const seasons = [...new Set([...(meta.seasons || []), meta.current, body.season].filter(x => /^\d{4}-\d{2}$/.test(String(x || ''))))];
+  const gone = [];
+  for (const s of seasons) { const ref = db.doc('seasons/' + s + '-' + tid); if ((await ref.get()).exists || (await ref.listCollections()).length) { await ctx.db.recursiveDelete(ref); gone.push(s); } }
+  const teams = (Array.isArray(meta.teams) ? meta.teams : []).filter(t => t && t.id !== tid);
+  const removedTeams = [...new Set([...(meta.removedTeams || []), tid])];
+  await metaRef.set({ teams, removedTeams }, { merge: true });
+  await require('./_auth.js').audit(ctx, 'equipo-eliminado', { team: tid, seasons: gone });
+  return { ok: true, team: tid, seasons: gone };
+}
+
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
+    if (req.method === 'POST') { const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); if (b.action === 'team-delete') return res.status(200).json(await deleteTeam(req, b)); }
     const A = getAdmin(), raw = A.firestore();
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     const cron = !!(process.env.CRON_SECRET && tok === process.env.CRON_SECRET);
@@ -319,4 +345,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports._test = { useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
+module.exports._test = { deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
