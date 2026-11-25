@@ -105,23 +105,33 @@ function connCard(){
     <div class="row" style="margin-top:12px"><button class="btn sm" data-act="diag">Comprobar permisos</button></div>
     ${ui.diag? `<ul class="diag">${ui.diag.map(([a,b,ok])=>`<li class="${ok?'ok':'ko'}"><span>${ok?'✓':'✗'}</span><b>${esc(a)}</b><em>${esc(b)}</em></li>`).join('')}</ul>${diagHint(ui.diag)}` : ''}</section>`;
 }
+// «Yo», ordenado por secciones: tú (perfil y ficha), lo pendiente, gestión (si te toca), el móvil y la cuenta
+const yoRow=(href,ic,t,d,attrs='')=>`<${href?`a href="${href}"`:'button type="button"'} class="yo-row" ${attrs}><i>${svgi(ic,19)}</i><span><b>${t}</b>${d?`<small>${d}</small>`:''}</span><em aria-hidden="true">›</em></${href?'a':'button'}>`;
+function yoGestion(){ const rows=[];
+  if(me && canManage) rows.push(yoRow('#admin','team','Panel de capitán',(!isCaptain&&!isAdmin&&teamMode()? 'Todo el equipo gestiona. ' : '')+'Convocatorias, disponibilidad, resultados y mensajes del equipo.'));
+  if(canClub()) rows.push(yoRow('#club','trophy','Gestión deportiva','Todos los equipos del club, informes semanales, permisos y configuración.'));
+  return rows.length? `<section class="sec"><div class="sec-h"><h2>Gestión</h2></div><div class="yo-list">${rows.join('')}</div></section>` : ''; }
+function yoCuenta(){ const rows=[
+    yoRow('','clock','Ver la introducción','Repasa cómo funciona la app.','data-act="tour-again"'),
+    window.DX_ANALYTICS?.key? yoRow('','score','Estadísticas de uso: '+(dxConsent()==='yes'?'activadas':'desactivadas'),'Datos anónimos para mejorar la app. Puedes cambiarlo cuando quieras.','onclick="dxConsentOpen()"') : '',
+    yoRow('/privacidad.html','lock','Privacidad','Qué datos guarda la app y para qué.','target="_blank" rel="noopener"'),
+    yoRow('','x','Retirar consentimiento','Deja de usar tus datos y cierra la sesión.','data-acc="priv-withdraw"'),
+    yoRow('','x','Cerrar sesión','Entras como '+esc(authUser?.email||'')+'.','data-act="signout"')].filter(Boolean);
+  return `<section class="sec"><div class="sec-h"><h2>Cuenta y privacidad</h2></div><div class="yo-list">${rows.join('')}</div></section>${isAdmin||isManager? connCard() : ''}`; }
 function vYo(){
-  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1><p class="lede">Entras como ${esc(authUser?.email||'')}${isManager? ', gestor deportivo' : isAdmin? ', administrador' : ''}. No estás ligado a ningún jugador.</p><div class="row" style="margin-top:10px;gap:8px">${canClub()? `<a class="btn sm" href="#club">Gestión deportiva</a>` : ''}<button class="btn sm ghost" data-act="unskip">Soy jugador: elegir mi nombre</button><button class="btn sm ghost" data-act="signout">Cerrar sesión</button><a class="btn sm ghost" href="/privacidad.html" target="_blank" rel="noopener">Privacidad</a><button class="btn sm ghost" data-acc="priv-withdraw">Retirar consentimiento</button></div></div><section class="sec">${installCard()}${pushCard()}</section></div>`;
+  if(!me) return `<div class="wrap"><div class="pagehead"><h1>Yo</h1><p class="lede">Entras como ${esc(authUser?.email||'')}${isManager? ', gestor deportivo' : isAdmin? ', administrador' : ''}. No estás ligado a ningún jugador.</p><div class="row" style="margin-top:10px"><button class="btn sm" data-act="unskip">Soy jugador: elegir mi nombre</button></div></div>${yoGestion()}<section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>${yoCuenta()}</div>`;
   const p=player(me)||{id:me, name:rosterAll().find(x=>x.id===me)?.name||'Jugador', order:'', cat:''}, pr=profiles[me]||{}, tasks=[];
   S.fixtures.filter(f=>(f.home===POLO||f.away===POLO)&&availOpen(f)).forEach(f=>{ const v=avOf(me,f.j); tasks.push(`<a class="task ${v?'done':''}" href="#disponibilidad-${f.j}"><span class="ti">${v?'✓':'?'}</span><span><b>Disponibilidad, jornada ${f.j}</b><small>${v? 'Has dicho: '+AV_LABEL[v.s]+'. Puedes cambiarla hasta el '+esc(fmtDT(deadline(f.j))) : 'Contra '+esc(clubName(persp(f).rival))+'. Responde antes del '+esc(fmtDT(deadline(f.j)))}</small></span></a>`); });
   pendingMvp().forEach(j=>tasks.push(`<a class="task hot" href="#mvp-${j}"><span class="ti">🏆</span><span><b>Vota al MVP, jornada ${j}</b><small>Un voto, hasta el ${esc(fmtDT(new Date(mvpState(j).deadline)))}.</small></span></a>`));
   pendingSurveys().forEach(j=>tasks.push(`<a class="task hot" href="#encuesta-${j}"><span class="ti">!</span><span><b>${ixFichaPending(j)? 'Ficha de tu partido, jornada '+j : 'Encuesta de la jornada '+j}</b><small>${ixFichaPending(j)? 'Contra '+esc(clubName(persp(poloFix(j)).rival))+'. Falta para tu informe de jugador. 1 minuto.' : 'Has jugado contra '+esc(clubName(persp(poloFix(j)).rival))+'. 2 minutos.'}</small></span></a>`));
-  const roles=[isCaptain?'Capitán':'',isAdmin?'Administrador':''].filter(Boolean);
-  return `<div class="wrap"><div class="phead">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p>${roles.length? roles.join(' y ')+'. ':''}Entras como ${esc(authUser?.email||'')}.</p><div class="row" style="margin-top:8px"><a class="btn sm" href="#jugador-${esc(me)}">Ver mi perfil</a>${canManage?'<a class="btn sm brass" href="#admin">Panel de capitán</a>':''}<button class="btn sm ghost" data-act="signout">Salir</button></div></div></div>
-  <section class="sec"><div class="row" style="justify-content:flex-end;margin-bottom:-6px"><a class="btn sm ghost" href="/privacidad.html" target="_blank" rel="noopener">Privacidad</a><button class="btn sm ghost" data-acc="priv-withdraw" title="Retira tu consentimiento y cierra la sesión">Retirar consentimiento</button><button class="btn sm ghost" data-act="tour-again">Ver la introducción</button>${window.DX_ANALYTICS?.key? `<button class="btn sm ghost" onclick="dxConsentOpen()">Estadísticas de uso: ${dxConsent()==='yes'?'activadas':'desactivadas'}</button>` : ''}</div><div class="roles"><span class="op-k">Tus perfiles</span><div class="role-list">
-    <span class="role">Jugador${me&&player(me)? ' del '+esc(teamLabel()) : ''}</span>
-    ${canManage? `<a class="role cap" href="#admin">Capitán${!isCaptain&&!isAdmin&&teamMode()? ' (todo el equipo gestiona)' : ''} <em>Gestión ›</em></a>` : ''}
-    ${canClub()? `<a class="role mgr" href="#club">${isManager? 'Gestor deportivo' : 'Administrador'} <em>Gestión deportiva ›</em></a>` : ''}</div></div></section>
+  const roles=[isCaptain?'Capitán':'',isAdmin?'Administrador':isManager?'Gestor deportivo':''].filter(Boolean);
+  return `<div class="wrap"><div class="phead yo-head">${avatar(p,'lg')}<div><h1>${esc(p.name)}</h1><p class="yo-role">${esc(['Jugador del '+teamLabel(),...roles].join(' · '))}</p><p class="yo-mail">${esc(authUser?.email||'')}</p><div class="row" style="margin-top:10px"><a class="btn sm" href="#jugador-${esc(me)}">Ver mi perfil</a></div></div></div>
   <section class="sec"><a class="fcta big press" href="#mi-ficha">${avatar(p,'lg')}<span><b>Mi ficha de jugador</b><small>${(()=>{ const pc=fichaPct(me); return pc? pc+'% completada. ' : ''; })()}Foto, golpe favorito, jugador favorito, grito de guerra, ritual…</small><span class="fbar"><i style="width:${fichaPct(me)}%"></i></span></span><span class="btn brass sm">${fichaPct(me)?'Editar':'Empezar'}</span></a></section>
   <section class="sec"><div class="sec-h"><h2>Pendiente</h2></div>${tasks.length? `<div class="tasks stagger">${tasks.join('')}</div>` : '<div class="empty">Todo al día. Cuando haya disponibilidad que responder o una encuesta tuya, aparecerá aquí.</div>'}</section>
   ${ixPlayerCta(me)}
+  ${yoGestion()}
   <section class="sec"><div class="sec-h"><h2>En tu móvil</h2></div><div class="mcards">${installCard()}${pushCard()}</div></section>
-  ${connCard()}
+  ${yoCuenta()}
 </div>`;
 }
 function vEncuesta(j){
