@@ -2003,3 +2003,9 @@ body.gate::before{background:#0E1216}
 body.has-inapp .acc{padding-top:64px}
 @media (prefers-reduced-motion:reduce){.ins-arrow,.ins-steps li,.ins-ic img,.inapp{animation:none}.ins-card{transition:none}}
 .ins-ic{display:flex;justify-content:center}.ins-card h2{text-align:center}
+/* Pantalla de carga */
+.sk{display:block;background:linear-gradient(90deg,rgba(0,0,0,.06) 0%,rgba(0,0,0,.12) 40%,rgba(0,0,0,.06) 80%);background-size:300% 100%;animation:skShine 1.3s ease-in-out infinite}
+.sk-card{border-radius:20px;padding:20px;background:var(--surface,#fff);border:1px solid var(--line,#e3e6df);margin:8px 0 18px}
+.sk-row{display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line,#e3e6df)}
+@keyframes skShine{from{background-position:100% 0}to{background-position:-100% 0}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}

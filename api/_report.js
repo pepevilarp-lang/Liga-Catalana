@@ -160,7 +160,7 @@ function factualTexts(F) {
 async function analysis(F) {
   const fb = factualTexts(F);
   try {
-    const { data } = await require('./write-report.js').analyze(F);
+    const { data } = await require('./_write-report.js').analyze(F);
     const A = { ...data, _ia: true }; if (!A.resumen_ejecutivo) A.resumen_ejecutivo = fb.resumen_ejecutivo; if (!(A.seguimiento || []).length) A.seguimiento = fb.seguimiento; return A;
   } catch (e) { return { ...fb, _note: e.message }; }
 }

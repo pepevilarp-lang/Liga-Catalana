@@ -350,40 +350,85 @@ async function deleteTeam(req, body) {
   return { ok: true, team: tid, seasons: gone };
 }
 
+// Aviso a la plataforma (Dossau Lab: PLATFORM_EMAILS y administradores) cuando la sincronización nocturna falla:
+// equipos que no se han podido actualizar o tandas que no han terminado. Una vez por noche.
+async function alertPlatform(raw, fails, req) {
+  if (!fails.length) return { sent: 0 };
+  const isMail = e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+  const admins = (await raw.collection('admins').get()).docs.map(d => d.id).filter(isMail);
+  const to = [...new Set([...String(process.env.PLATFORM_EMAILS || '').split(',').map(x => x.trim().toLowerCase()).filter(isMail), ...admins])].slice(0, 10);
+  const { via, sendMail } = require('./_mail.js'); if (!to.length || !via()) return { sent: 0, noMail: true };
+  const lines = fails.map(f => `${f.club || 'club'} · ${f.season || 'tanda'}: ${f.error}`);
+  await sendMail({ to, subject: `Lliga Catalana: la sincronización con la FCT ha fallado (${fails.length})`,
+    text: ['La sincronización de esta noche con la Federació no ha podido actualizar:', '', ...lines.map(x => '· ' + x), '', 'Se volverá a intentar mañana. Para reintentarlo ya: Gestión deportiva → Federació → «Sincronizar ahora».', appUrl(req) + '/#club-fct'].join('\n'),
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#13261F;max-width:640px"><h1 style="font-size:20px">La sincronización con la FCT ha fallado</h1><ul>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p>Se volverá a intentar mañana. Para reintentarlo ya: <a href="${esc(appUrl(req) + '/#club-fct')}">Gestión deportiva → Federació → «Sincronizar ahora»</a>.</p></div>` });
+  return { sent: to.length };
+}
+// Una tanda de equipos de un club (cada tanda es una ejecución aparte, con sus 5 minutos)
+async function runPart(raw, club, ids) {
+  const db = await clubDbFor(raw, club); useClub(db.cfg);
+  const rs = [];
+  for (const id of ids) { try { rs.push(await runSeason(db, id)); } catch (e) { rs.push({ season: id, error: e.message }); await db.doc('seasons/' + id).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); } }
+  return rs;
+}
+const PART = 3, PARALLEL = 4;
+async function pool(items, n, fn) { const out = new Array(items.length); let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } })); return out; }
+
 module.exports = async (req, res) => {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return res.status(501).json({ error: 'not-configured' });
   try {
-    if (req.method === 'POST') { const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); if (b.action === 'team-delete') return res.status(200).json(await deleteTeam(req, b)); if (b.action === 'fct-discover') return res.status(200).json(await discoverTeams(req, b)); }
+    const body = req.method === 'POST' ? (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})) : {};
+    if (body.action === 'team-delete') return res.status(200).json(await deleteTeam(req, body));
+    if (body.action === 'fct-discover') return res.status(200).json(await discoverTeams(req, body));
     const A = getAdmin(), raw = A.firestore();
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     const cron = !!(process.env.CRON_SECRET && tok === process.env.CRON_SECRET);
-    // Por la noche: todos los clubes de la plataforma, uno detrás de otro. Botón «Actualizar desde la FCT»: el equipo pedido.
-    const jobs = [];
-    if (cron) { for (const id of await require('./_auth.js').allClubs(raw)) { const db = await clubDbFor(raw, id), ids = []; (await db.collection('seasons').get()).forEach(d => ids.push(d.id)); jobs.push({ db, ids }); } }
-    else {
+    // Una tanda pedida por la ejecución nocturna principal
+    if (cron && body.cronPart) { const { club, ids } = body.cronPart; return res.status(200).json({ ok: true, results: (await runPart(raw, club, (ids || []).map(String))).map(r => ({ club, ...r })) }); }
+    // Botón «Sincronizar»: el equipo pedido
+    if (!cron) {
       if (req.method !== 'POST') return res.status(401).json({ error: 'unauthorized' });
-      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
       const ctx = await needTeam(req, String(body.season || ''), 'canEdit');
-      jobs.push({ db: ctx.cdb, ids: [String(body.season)] });
-    }
-    const results = [], extra = {};
-    for (const { db, ids } of jobs) {
-      useClub(db.cfg);
+      useClub(ctx.cdb.cfg);
       const rs = [];
-      for (const id of ids) { try { rs.push(await runSeason(db, id)); } catch (e) { rs.push({ season: id, error: e.message }); await db.doc('seasons/' + id).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); } }
-      results.push(...rs.map(r => ({ club: db.club, ...r })));
-      if (cron) {
-        const k = db.club || 'club';
-        // Avisos al gestor: datos de la FCT que no cuadran con la app (solo los nuevos de esta noche)
-        try { extra['alert_' + k] = await alertManagers(db, rs, req); } catch (e) { extra['alert_' + k] = { error: e.message }; }
-        // Informe semanal automático: el domingo por la noche, después de sincronizar
-        try { extra['report_' + k] = await weeklyReport(db, req); } catch (e) { extra['report_' + k] = { error: e.message }; }
-      }
+      try { rs.push(await runSeason(ctx.cdb, String(body.season))); } catch (e) { rs.push({ season: String(body.season), error: e.message }); await ctx.cdb.doc('seasons/' + body.season).update({ fctError: { at: Date.now(), msg: String(e.message || e).slice(0, 200) } }).catch(() => {}); }
+      return res.status(200).json({ ok: true, results: rs.map(r => ({ club: ctx.cdb.club, ...r })) });
     }
-    return res.status(200).json({ ok: true, results, ...extra });
+    // Por la noche: todos los clubes, solo las temporadas de la temporada actual, en tandas de 3 equipos que se
+    // ejecutan aparte (4 a la vez). Si una tanda no responde, se intenta aquí mismo.
+    const clubs = [], parts = [];
+    for (const id of await require('./_auth.js').allClubs(raw)) {
+      const db = await clubDbFor(raw, id), meta = (await db.doc('meta/app').get()).data() || {}, cur = String(meta.current || '');
+      const ids = []; (await db.collection('seasons').get()).forEach(d => { if (!cur || d.id === cur || d.id.startsWith(cur + '-')) ids.push(d.id); });
+      clubs.push({ id, db });
+      for (let i = 0; i < ids.length; i += PART) parts.push({ club: id, ids: ids.slice(i, i + PART) });
+    }
+    const base = appUrl(req), fails = [];
+    const done = await pool(parts, PARALLEL, async p => {
+      try {
+        const r = await fetch(base + '/api/fct-sync', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.CRON_SECRET }, body: JSON.stringify({ cronPart: p }) });
+        const j = await r.json().catch(() => ({})); if (!r.ok || !Array.isArray(j.results)) throw new Error('la tanda respondió ' + r.status);
+        return j.results;
+      } catch (e) {
+        try { return (await runPart(raw, p.club, p.ids)).map(r => ({ club: p.club, ...r })); }
+        catch (e2) { fails.push({ club: p.club, season: p.ids.join(', '), error: e2.message }); return []; }
+      }
+    });
+    const results = done.flat(), extra = {};
+    results.filter(r => r.error).forEach(r => fails.push({ club: r.club, season: r.season, error: r.error }));
+    for (const { id, db } of clubs) {
+      useClub(db.cfg);
+      const rs = results.filter(r => r.club === (db.club || id) || r.club === id);
+      // Avisos al gestor: datos de la FCT que no cuadran con la app (solo los nuevos de esta noche)
+      try { extra['alert_' + id] = await alertManagers(db, rs, req); } catch (e) { extra['alert_' + id] = { error: e.message }; }
+      // Informe semanal automático: el domingo por la noche, después de sincronizar
+      try { extra['report_' + id] = await weeklyReport(db, req); } catch (e) { extra['report_' + id] = { error: e.message }; }
+    }
+    try { extra.platformAlert = await alertPlatform(raw, fails, req); } catch (e) { extra.platformAlert = { error: e.message }; }
+    return res.status(200).json({ ok: true, parts: parts.length, results, fails: fails.length, ...extra });
   } catch (e) {
     return sendErr(res, e);
   }
 };
 
-module.exports._test = { catOf, discoverTeams, deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
+module.exports._test = { pool, runPart, alertPlatform, catOf, discoverTeams, deleteTeam, useClub, syncRoster, shortOf, syncSeason, syncActa, rubberFromFct, pickPoloCode, matchPlayer, alertManagers, weeklyReport };
