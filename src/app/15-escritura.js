@@ -226,7 +226,7 @@ document.addEventListener('click', async e=>{
     logSend(kind,j,kind==='rem'?{n:availFor(j).none.length}:null); if(kind==='req') notify('avail',j); else if(kind==='rem') notify('availRem',j); }
   else if(a==='wa-one'){ const j=+el.dataset.j, pid=el.dataset.pid; const text=withLinks('remOne',S.msgs.remOne,{...msgVars(j),nombre:pname(pid).split(' ')[0]}); waOpen(text,waPhone(phones[pid])); logSend('rem',j,{pid}); }
   else if(a==='sede-save'){ const f=poloFix(+el.dataset.j), v=String($('#sede-addr')?.value||'').trim().slice(0,160); let t=S.teams.find(x=>x.id===f.home);
-    if(!t) return toast('No se encuentra el club local'); t.venue=v; saveState(v? 'Dirección guardada' : 'Dirección quitada'); }
+    if(!t) return toast('No se encuentra el club local'); t.venue=v; delete t.venueSrc; saveState(v? 'Dirección guardada' : 'Dirección quitada'); }
   else if(a==='dl-save'){ const j=+el.dataset.j, v=$('#dl').value; if(!v) return toast('Elige fecha y hora'); ensureTie(j).deadline=v; saveState('Plazo guardado'); }
   else if(a==='dl-reset'){ const t=ensureTie(+el.dataset.j); delete t.deadline; saveState('Plazo por defecto'); }
   else if(a==='conv-save'){ const j=+el.dataset.j, t=ensureTie(j); ui.capDraft=null;

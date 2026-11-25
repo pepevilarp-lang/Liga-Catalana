@@ -67,3 +67,4 @@ module.exports = async (req, res) => {
   }
 };
 module.exports._test = { title, town, domain, NOT_A_CLUB };
+module.exports.fetchAll = fetchAll;
