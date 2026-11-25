@@ -136,6 +136,8 @@ async function linkPlayer(A, db, user, body) {
     if (cl.exists && cl.data().uid !== user.uid) { if (oks.length === 1) return { status: 'ocupada', name: m.name }; continue; }
     const mref = db.doc('clubs/' + c.id + '/members/' + user.uid), mem = await mref.get(), cur = mem.exists ? mem.data() : {};
     if (cur.status === 'inactivo') { if (oks.length === 1) return { status: 'desactivado' }; continue; }
+    // Esta cuenta ya está ligada a otro jugador de este club: no se cambia (se perdería su ficha, su capitanía…)
+    if (cur.pid && cur.pid !== m.pid) { if (oks.length === 1) return { status: 'otra-ficha', name: m.name }; continue; }
     const at = Date.now(), b = db.batch();
     const via = v.via || 'licencia';
     b.set(cref, { uid: user.uid, email, at, via });
