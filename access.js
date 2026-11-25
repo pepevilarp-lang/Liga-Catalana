@@ -53,6 +53,8 @@ const ACC_INV_RE = /^invitacion-([A-Za-z0-9]{6,})(?:\.([A-Za-z0-9_-]{2,40}))?$/;
   if (iv) { ACC.invite = iv[1].toUpperCase(); try { sessionStorage.setItem('lc-invite', ACC.invite); if (iv[2]) sessionStorage.setItem('lc-invite-club', iv[2]); else sessionStorage.removeItem('lc-invite-club'); } catch (e) {} }
   else { try { ACC.invite = sessionStorage.getItem('lc-invite'); } catch (e) {} }
   if (ACC.invite && !ACC.flow) ACC.flow = { role: 'jugador', step: 'auth' };
+  // Enlace directo «Soy jugador» (QR de las presentaciones): lliga.vercel.app/#soy-jugador
+  if (h === 'soy-jugador') { ACC.flow = { role: 'jugador', club: null, who: null, join: null, step: 'auth' }; try { history.replaceState(null, '', location.pathname); } catch (e) {} }
   // Una página restaurada del historial (botón atrás) no debe enseñar datos de una sesión ya cerrada
   window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 })();
@@ -539,6 +541,12 @@ function accJoinView(f, role) {
     if (st === 'cerrado') return accShell(`${head('Tu club aún no ha abierto el registro')}<p class="acc-p">Ningún club ha abierto todavía el registro de jugadores: primero su gestor deportivo da de alta el club y prepara sus equipos y plantillas. Cuando lo active podrás entrar con tus datos. Si te han enviado una invitación, úsala:</p>${accCodeForm()}${accAccount()}`, 'acc-launch', 'join-closed');
     if (st === 'ocupada') return accShell(`${head('Esta ficha ya tiene cuenta')}<p class="acc-p">La ficha de <b>${esc(L.res.name)}</b> ya está vinculada a otra cuenta de Google. Si eres tú y no la reconoces, pide al club que la revise.</p><div class="acc-acts">${reqBtn('', 'Pedir al club que lo revise')}<button class="acc-link" data-acc="link-edit">Volver</button></div>${accAccount()}`, 'acc-launch', 'join-taken');
     if (st === 'limite' || st === 'desactivado') return accShell(`${head(st === 'limite' ? 'Demasiados intentos' : 'Tu acceso está desactivado')}<p class="acc-p">${st === 'limite' ? 'Por seguridad, hoy ya no se pueden hacer más comprobaciones con esta cuenta. Inténtalo mañana o pide al club que te vincule.' : 'La gestión del club ha desactivado el acceso de esta cuenta.'}</p><div class="acc-acts">${st === 'limite' ? reqBtn() : ''}</div>${accAccount()}`, 'acc-launch', 'join-limit');
+    if (st === 'pedir-licencia' && L.res.confirm && cand.length === 1 && !f.withLic) { const x = cand[0], pl = rosterAll().find(p => p.id === x.pid) || { id: x.pid, name: x.name };
+      return accShell(`${head('¿Eres ' + esc(x.name) + '?', x.clubName || '')}
+      <div class="acc-inv">${avatar(pl, 'lg')}<div><h2 class="acc-h sm" style="margin:0">${esc(x.name)}</h2><p class="acc-p" style="margin:4px 0 0">${esc(x.teams.map(t => t.name).join(', '))}${x.clubName ? ', ' + esc(x.clubName) : ''}</p></div></div>
+      <p class="acc-p">Estás en la plantilla oficial. Tu Gmail ${esc(authUser?.email || '')} quedará ligado a este jugador y entrarás directamente en tu equipo.</p>
+      <div class="acc-acts"><button class="acc-btn big" data-acc="link-confirm" data-v="${esc(x.pid)}" data-c="${esc(x.club || '')}">Sí, soy yo</button><button class="acc-link" data-acc="link-edit">No soy yo</button></div>
+      <p class="acc-p dim"><button class="acc-link" data-acc="link-withlic">Prefiero confirmarlo con mi licencia</button></p>${accAccount()}`, 'acc-launch', 'join-confirm'); }
     if (st === 'pedir-licencia' || st === 'licencia') return accShell(`${head(st === 'licencia' ? 'La licencia no coincide' : 'Hemos encontrado tu ficha')}
       <p class="acc-p">${cand.map(x => `<b>${esc(x.name)}</b> (${esc(x.teams.map(t => t.name).join(', '))})`).join(', ')}. ${st === 'licencia' ? 'El número de licencia no coincide con el de la plantilla oficial. Revísalo (está en tu licencia de la FCT o en las actas):' : 'Para entrar directamente, confirma tu número de licencia federativa (está en tu licencia de la FCT o en las actas):'}</p>
       <form class="acc-code" data-acc-form="lic"><label for="acc-lic">Número de licencia</label><div class="acc-cin"><input id="acc-lic" name="lic" inputmode="numeric" autocomplete="off" maxlength="20" value="${esc(who.licence || '')}" placeholder="Por ejemplo, 0712345"><button class="acc-btn" type="submit">Comprobar</button></div></form>
@@ -566,7 +574,7 @@ async function accLinkMe(who) {
   ACC.link = { busy: true }; accSetFlow({ who, join: 'link' }); render();
   try {
     const t = await B.idToken(); let res;
-    if (t) { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'link', first: who.first, last: who.last, licence: who.licence || '' }) });
+    if (t) { const r = await fetch('/api/access-request', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'link', first: who.first, last: who.last, licence: who.licence || '', confirm: who.confirm || '', confirmClub: who.confirmClub || '' }) });
       res = await r.json().catch(() => ({})); if (!r.ok) throw new Error(res.error || 'error ' + r.status); }
     else res = await accLinkLocal(who);
     ACC.link = { res };
@@ -589,10 +597,12 @@ async function accLinkLocal(who) {
       (S.players || []).filter(p => p.active !== false).forEach(p => { const m = all.get(p.id) || { pid: p.id, name: p.name, full: p.full || p.name, lic: p.lic || '', teams: [] }; m.teams.push({ id: t.id, name: t.name, season: sid, official: off.includes(p.id), S }); all.set(p.id, m); }); }
     const nameOk = m => { const n = N(m.full + ' ' + m.name); return F.every(x => n.includes(x)) && Ls.some(x => n.includes(x)); };
     const L = [...all.values()], bl = Lc ? L.filter(m => m.lic && lic(m.lic) === Lc) : [];
+    const byName = L.filter(nameOk), open = m0.openClaims === true;
     if (bl.length === 1 && nameOk(bl[0])) oks.push({ c, R, here, m: bl[0] }); else if (bl.length) nameBad = true;
-    L.filter(nameOk).forEach(m => cands.push({ pid: m.pid, name: m.name, club: c.id, clubName: c.name, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) }));
+    else if (open && who.confirm && byName.length === 1 && byName[0].pid === who.confirm) oks.push({ c, R, here, m: byName[0] });
+    byName.forEach(m => cands.push({ pid: m.pid, name: m.name, club: c.id, clubName: c.name, confirm: open && byName.length === 1, teams: m.teams.map(x => ({ id: x.id, name: x.name, season: x.season })) }));
   }
-  if (!oks.length) return nameBad ? { status: 'nombre' } : cands.length ? { status: Lc ? 'licencia' : 'pedir-licencia', candidates: cands } : { status: 'no' };
+  if (!oks.length) return nameBad ? { status: 'nombre' } : cands.length ? { status: Lc ? 'licencia' : 'pedir-licencia', candidates: cands, confirm: cands.length === 1 && cands[0].confirm } : { status: 'no' };
   const { c, R, here, m } = oks[0], cl = await B.getDoc(R + 'claims/' + m.pid); if (cl && cl.email !== authUser.email) return { status: 'ocupada', name: m.name };
   if (here) await B.claim(m.pid); else await B.set(R + 'claims/' + m.pid, { uid: authUser.uid, email: authUser.email, at: Date.now() });
   if (B.noteClub) await B.noteClub(authUser.uid, c.id);
@@ -851,7 +861,9 @@ document.addEventListener('click', async e => {
   else if (a === 'req-renotify') accNotifyReq(true);
   else if (a === 'link-req') accLinkReq(v);
   else if (a === 'go-club') accGoClub(v);
-  else if (a === 'link-edit') { ACC.link = null; accSetFlow({ join: null }); render(); }
+  else if (a === 'link-edit') { ACC.link = null; accSetFlow({ join: null, withLic: false }); render(); }
+  else if (a === 'link-confirm') { const who = { ...(ACC.flow?.who || {}), confirm: v, confirmClub: el.dataset.c || '' }; accLinkMe(who); }
+  else if (a === 'link-withlic') { accSetFlow({ withLic: true }); render(); }
   else if (a === 'join-req') { accSetFlow({ join: 'req' }); render(); scrollTo(0, 0); }
   else if (a === 'req-club') { accSetFlow({ club: v }); render(); }
   else if (a === 'back') accBack();
@@ -902,7 +914,7 @@ document.addEventListener('input', e => { if (e.target.id === 'acc-q') { ACC.q =
 document.addEventListener('submit', e => {
   const f = e.target.closest('[data-acc-form]'); if (!f) return; e.preventDefault();
   const kind = f.dataset.accForm, fd = new FormData(f), val = String(fd.get(kind === 'jreq' || kind === 'req' || kind === 'who-req' ? 'msg' : 'code') || '');
-  if (kind === 'who-find') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim(), licence: String(fd.get('licence') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; } accLinkMe(who); return; }
+  if (kind === 'who-find') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim(), licence: String(fd.get('licence') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; } accSetFlow({ withLic: false }); accLinkMe(who); return; }
   if (kind === 'lic') { const who = { ...(ACC.flow?.who || {}), licence: String(fd.get('lic') || '').trim() }; if (!who.licence) { toast('Escribe tu número de licencia'); return; } accLinkMe(who); return; }
   if (kind === 'who' || kind === 'who-req') { const who = { first: String(fd.get('first') || '').trim(), last: String(fd.get('last') || '').trim() }; if (!who.first || !who.last) { toast('Escribe tu nombre y tus apellidos'); return; }
     accSetFlow({ who }); if (kind === 'who-req') accSendReq(val, 'jugador'); else render(); return; }

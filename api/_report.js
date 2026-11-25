@@ -17,7 +17,7 @@ const MAIN_TEAM = (DEFAULT_CLUB_TEAMS[0] || {}).id || 'polo-a';
 // cfg = configuración del club (cdb.cfg). Solo el club original tiene equipos por defecto y un equipo con la ruta de temporada antigua.
 const isGeneric = cfg => !!(cfg && cfg.generic);
 const docIdFor = (tid, season, cfg) => !isGeneric(cfg) && tid === MAIN_TEAM ? season : season + '-' + tid;
-const clubTeams = (meta, cfg) => { const base = (Array.isArray(meta && meta.teams) && meta.teams.length) ? meta.teams : []; const def = isGeneric(cfg) ? [] : DEFAULT_CLUB_TEAMS; return [...base, ...def.filter(d => !base.some(t => t.id === d.id))].map(t => ({ gender: '', ...t })); };
+const clubTeams = (meta, cfg) => { const base = (Array.isArray(meta && meta.teams) && meta.teams.length) ? meta.teams : []; const def = isGeneric(cfg) ? [] : DEFAULT_CLUB_TEAMS; const gone = new Set((meta && meta.removedTeams) || []); return [...base, ...def.filter(d => !base.some(t => t.id === d.id))].filter(t => !gone.has(t.id)).map(t => ({ gender: '', ...t })); };
 const teamCat = t => [t && t.cat, ((t && t.gender) || '').toLowerCase()].filter(Boolean).join(' ');
 const ymd = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
 function weekendSat(ref) { const x = new Date(ref || Date.now()); x.setHours(12, 0, 0, 0); const day = x.getDay(); x.setDate(x.getDate() + (day === 6 ? 0 : day === 0 ? -1 : -(day + 1))); return x; }
